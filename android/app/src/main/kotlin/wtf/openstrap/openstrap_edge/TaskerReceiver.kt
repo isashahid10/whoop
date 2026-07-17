@@ -4,21 +4,26 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.plugin.common.MethodChannel
 
 class TaskerReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
+        Log.i(TAG, "onReceive: action=$action")
         if (action != ACTION_BUZZ_STRAP) return
 
         val pattern = intent.getIntExtra(EXTRA_PATTERN, DEFAULT_PATTERN)
+        Log.i(TAG, "pattern=$pattern")
 
         val engine = FlutterEngineCache.getInstance()
             .get(EdgeApplication.ENGINE_ID)
 
         if (engine != null) {
-            val args = mapOf("pattern" to pattern)
+            Log.i(TAG, "engine alive, invoking method channel")
+            val args = java.util.HashMap<String, Any>()
+            args["pattern"] = pattern
             MethodChannel(
                 engine.dartExecutor.binaryMessenger,
                 CHANNEL
@@ -26,6 +31,7 @@ class TaskerReceiver : BroadcastReceiver() {
             return
         }
 
+        Log.i(TAG, "engine dead, persisting pending flag")
         val prefs = context.getSharedPreferences(
             "openstrap_runtime",
             Context.MODE_PRIVATE
@@ -44,6 +50,7 @@ class TaskerReceiver : BroadcastReceiver() {
     }
 
     companion object {
+        const val TAG = "TaskerReceiver"
         const val ACTION_BUZZ_STRAP =
             "wtf.openstrap.openstrap_edge.BUZZ_STRAP"
         const val EXTRA_PATTERN = "pattern"

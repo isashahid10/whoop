@@ -361,7 +361,8 @@ class ProfileScreen extends StatelessWidget {
           ]),
           const _CardNote(
             'Send a Broadcast intent from Tasker or any automation app to '
-            'vibrate your WHOOP strap. Optional int extra "pattern" (default 2).',
+            'vibrate your WHOOP strap. On Android 12+, set Package to '
+            'wtf.openstrap.openstrap_edge. Optional int extra "pattern" (default 2).',
           ),
 
           const SizedBox(height: Sp.x6),

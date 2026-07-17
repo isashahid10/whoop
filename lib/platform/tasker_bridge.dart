@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
@@ -14,8 +15,16 @@ class TaskerBridge {
 
   Future<void> _onMethodCall(MethodCall call) async {
     if (call.method == 'buzz_strap') {
-      final pattern = (call.arguments as Map?)?['pattern'] as int? ?? 2;
-      await buzzPattern(pattern);
+      try {
+        final args = call.arguments;
+        debugPrint('[tasker] _onMethodCall args=$args (${args.runtimeType})');
+        final map = args is Map ? args : <dynamic, dynamic>{};
+        final pattern = (map['pattern'] as int?) ?? 2;
+        debugPrint('[tasker] buzz pattern=$pattern');
+        await buzzPattern(pattern);
+      } catch (e, st) {
+        debugPrint('[tasker] buzz failed: $e\n$st');
+      }
     }
   }
 
