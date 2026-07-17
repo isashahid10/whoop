@@ -211,19 +211,22 @@ class _ScanStepState extends State<_ScanStep> {
     // On Android / iOS < 18 we use the service-filtered scan flow.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      // ASK first: the picker needs no CoreBluetooth authorization, and before
+      // any accessory is provisioned iOS reports the adapter as unauthorized —
+      // gating on bluetoothReady() here would deadlock the pairing flow.
+      final ask = await context.read<AppState>().accessorySetupSupported();
+      if (!mounted) return;
+      if (ask) {
+        setState(() => _phase = PairPhase.askReady);
+        return;
+      }
       if (!await context.read<AppState>().bluetoothReady()) {
         if (!mounted) return;
         setState(() => _phase = PairPhase.bluetoothOff);
         return;
       }
       if (!mounted) return;
-      final ask = await context.read<AppState>().accessorySetupSupported();
-      if (!mounted) return;
-      if (ask) {
-        setState(() => _phase = PairPhase.askReady);
-      } else {
-        _scan();
-      }
+      _scan();
     });
   }
 

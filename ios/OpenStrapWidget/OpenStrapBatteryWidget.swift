@@ -17,7 +17,7 @@
 import WidgetKit
 import SwiftUI
 
-private let kAppGroup = "group.wtf.openstrap"
+private let kAppGroup = AppGroup.identifier
 
 // MARK: - Theme (mirrors OpenStrapWidget's Ember-on-Paper / Char)
 
