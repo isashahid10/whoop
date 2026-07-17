@@ -50,7 +50,9 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'dummy_api_key_for_android',
+    // Dummy value in the format FirebaseInstallations validates natively
+    // (39 chars, 'A' prefix) — a malformed key is an uncatchable NSException.
+    apiKey: 'AIzaSyDummyDummyDummyDummyDummyDummyDum',
     appId: '1:000000000000:android:0000000000000000000000',
     messagingSenderId: '000000000000',
     projectId: 'dummy-project',
@@ -58,7 +60,8 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'dummy_api_key_for_ios',
+    // See android note: format-valid dummy, never a real key.
+    apiKey: 'AIzaSyDummyDummyDummyDummyDummyDummyDum',
     appId: '1:000000000000:ios:0000000000000000000000',
     messagingSenderId: '000000000000',
     projectId: 'dummy-project',

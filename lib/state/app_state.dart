@@ -2505,7 +2505,15 @@ class AppState extends ChangeNotifier {
 
   Future<bool> bluetoothReady() async {
     if (!await FlutterBluePlus.isSupported) return false;
-    final state = await FlutterBluePlus.adapterState.first;
+    // CoreBluetooth boots in `unknown` before settling — `.first` loses that
+    // race and misreads a powered-on adapter as off. Wait for a determinate
+    // state (bounded, in case it never settles).
+    final state = await FlutterBluePlus.adapterState
+        .firstWhere((s) => s != BluetoothAdapterState.unknown)
+        .timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => BluetoothAdapterState.unknown,
+        );
     return state == BluetoothAdapterState.on;
   }
 
