@@ -1285,10 +1285,40 @@ class AppState extends ChangeNotifier {
 
   Future<void> _checkPendingTaskerBuzz() async {
     if (!Platform.isAndroid) return;
-    final pattern = await TaskerBridge.consumePendingBuzz();
+    final pattern = await TaskerBridge.peekPendingBuzz();
     if (pattern == null) return;
+    // A Tasker BUZZ_STRAP can arrive while the app is fully dead; the
+    // reconnect this _init() already kicked off may not have landed by the
+    // time we get here. Wait (bounded) for a live link rather than firing
+    // into a not-yet-connected engine and silently losing the request — and
+    // only clear the persisted flag once we actually attempt delivery on a
+    // live connection, so a request that times out here survives for the
+    // next app-open / service-start to retry instead of vanishing.
+    final connected = await _waitUntil(
+      () => engine.isConnected,
+      const Duration(seconds: 20),
+    );
+    if (!connected) {
+      _log('[tasker] pending buzz (pattern=$pattern) still queued — '
+          'no connection within 20s, leaving it for the next attempt');
+      return;
+    }
     _log('[tasker] consuming pending buzz (pattern=$pattern) from headless intent');
     await engine.buzzPattern(pattern);
+    await TaskerBridge.clearPendingBuzz();
+  }
+
+  /// Poll [check] every 500ms until it's true or [timeout] elapses. Small and
+  /// generic on purpose — currently only used for the Tasker pending-buzz
+  /// handoff, which needs to wait for a real BLE connection rather than a
+  /// fixed delay.
+  Future<bool> _waitUntil(bool Function() check, Duration timeout) async {
+    final deadline = DateTime.now().add(timeout);
+    while (!check()) {
+      if (DateTime.now().isAfter(deadline)) return check();
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    return true;
   }
 
   /// (Re)register standing scheduled reminders per the user's prefs. Idempotent;

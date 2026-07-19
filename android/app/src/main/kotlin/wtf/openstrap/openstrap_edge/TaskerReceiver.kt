@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.plugin.common.MethodChannel
@@ -13,6 +14,26 @@ class TaskerReceiver : BroadcastReceiver() {
         val action = intent.action
         Log.i(TAG, "onReceive: action=$action")
         if (action != ACTION_BUZZ_STRAP) return
+
+        // This receiver is exported with no manifest permission (a signature
+        // permission would block Tasker itself, since it isn't signed by us) —
+        // so anyone who can send an explicit broadcast can reach it. Require a
+        // per-install shared secret the user copies from Settings → Automation
+        // into their Tasker action, plus a short rate limit as defense in
+        // depth. See NativeChannels.getOrCreateTaskerToken.
+        val expected = NativeChannels.getOrCreateTaskerToken(context)
+        val provided = intent.getStringExtra(EXTRA_TOKEN)
+        if (provided == null || provided != expected) {
+            Log.w(TAG, "rejected: missing/incorrect token")
+            return
+        }
+
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (nowElapsed - lastAcceptedElapsedMs < MIN_INTERVAL_MS) {
+            Log.w(TAG, "rejected: rate-limited (< ${MIN_INTERVAL_MS}ms since last accepted broadcast)")
+            return
+        }
+        lastAcceptedElapsedMs = nowElapsed
 
         val pattern = intent.getIntExtra(EXTRA_PATTERN, DEFAULT_PATTERN)
         Log.i(TAG, "pattern=$pattern")
@@ -26,7 +47,7 @@ class TaskerReceiver : BroadcastReceiver() {
             args["pattern"] = pattern
             MethodChannel(
                 engine.dartExecutor.binaryMessenger,
-                CHANNEL
+                NativeChannels.TASKER_CHANNEL
             ).invokeMethod("buzz_strap", args)
             return
         }
@@ -54,9 +75,16 @@ class TaskerReceiver : BroadcastReceiver() {
         const val ACTION_BUZZ_STRAP =
             "wtf.openstrap.openstrap_edge.BUZZ_STRAP"
         const val EXTRA_PATTERN = "pattern"
+        const val EXTRA_TOKEN = "token"
         const val PENDING_BUZZ_KEY = "pending_tasker_buzz"
         const val PENDING_PATTERN_KEY = "pending_tasker_buzz_pattern"
         const val DEFAULT_PATTERN = 2
-        private const val CHANNEL = "openstrap/tasker"
+        private const val MIN_INTERVAL_MS = 1500L
+
+        // Process-lifetime, not persisted — a fresh process restarting the
+        // rate-limit window on cold start is fine; the goal is only to blunt a
+        // tight resend loop within one running process.
+        @Volatile
+        private var lastAcceptedElapsedMs = 0L
     }
 }
