@@ -286,7 +286,7 @@ class CycleContent extends StatelessWidget {
             child: Column(
               children: [
                 DetailRow(
-                  icon: OsIcon.hydration,
+                  icon: OsIcon.menstrualFlow,
                   label: 'Next period',
                   value: daysUntil != null && daysUntil >= 0
                       ? 'in ${daysUntil.round()} days'
@@ -375,7 +375,7 @@ class CycleContent extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   backgroundColor: DomainAccent.cycle,
                 ),
-                icon: const AppIcon(OsIcon.hydration, size: 18, color: Colors.white),
+                icon: const AppIcon(OsIcon.menstrualFlow, size: 18, color: Colors.white),
                 label: const Text('Period started today'),
               ),
             ),
@@ -396,7 +396,7 @@ class CycleContent extends StatelessWidget {
               children: [
                 for (final l in logs.take(12))
                   DetailRow(
-                    icon: OsIcon.hydration,
+                    icon: OsIcon.menstrualFlow,
                     label: '${l['date']}',
                     value: '${l['kind']}',
                     trailing: onDelete == null
