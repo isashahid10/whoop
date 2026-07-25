@@ -58,6 +58,13 @@ class ArcGauge extends StatelessWidget {
   /// Animate the first reveal (sweep from 0). Disable for scrub-driven values.
   final bool animate;
 
+  /// Soft glow behind the arc — a static, wider+blurred duplicate of the
+  /// stroke sitting under it (never animated/pulsing on its own), so it costs
+  /// nothing to "respect reduced motion": there is no motion to reduce. Off by
+  /// default — reserved for the one hero moment (the Today readiness ring),
+  /// not every mini-gauge in the app.
+  final bool glow;
+
   const ArcGauge({
     super.key,
     required this.value,
@@ -74,6 +81,7 @@ class ArcGauge extends StatelessWidget {
     this.endDot = false,
     this.trackColor,
     this.animate = true,
+    this.glow = false,
   });
 
   @override
@@ -116,6 +124,7 @@ class ArcGauge extends StatelessWidget {
         target: target,
         confidence: confidence,
         endDot: endDot,
+        glow: glow,
       ),
       child: Center(child: centerChild),
     );
@@ -148,6 +157,7 @@ class ArcGaugePainter extends CustomPainter {
   final double? target;
   final double confidence;
   final bool endDot;
+  final bool glow;
 
   ArcGaugePainter({
     required this.t,
@@ -158,6 +168,7 @@ class ArcGaugePainter extends CustomPainter {
     this.target,
     this.confidence = 1.0,
     this.endDot = false,
+    this.glow = false,
   });
 
   /// Closed ring starts at 12 o'clock; an open arc centers its gap at the
@@ -184,6 +195,19 @@ class ArcGaugePainter extends CustomPainter {
     final sweep = _maxSweep * t.clamp(0.0, 1.0);
     if (t > 0) {
       final alpha = confidenceRingAlpha(confidence);
+      if (glow) {
+        // A wider, blurred duplicate of the stroke, painted BEFORE the crisp
+        // arc so the sharp stroke sits on top of its own soft halo — a
+        // static layer, not a pulse, so there's nothing for reduced-motion
+        // to need to suppress.
+        final glowPaint = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke * 2.0
+          ..strokeCap = StrokeCap.round
+          ..color = color.withValues(alpha: 0.30 * alpha)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, stroke * 0.85);
+        canvas.drawArc(rect, _start, sweep, false, glowPaint);
+      }
       final arc = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = stroke
@@ -243,5 +267,6 @@ class ArcGaugePainter extends CustomPainter {
       old.sweepFraction != sweepFraction ||
       old.target != target ||
       old.confidence != confidence ||
-      old.endDot != endDot;
+      old.endDot != endDot ||
+      old.glow != glow;
 }

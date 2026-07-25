@@ -146,6 +146,16 @@ String partOfDay(DateTime now) {
   return 'night';
 }
 
+/// Coarse readiness band injected alongside the raw score in the prompt —
+/// without it the model free-associates tone from the sub-metrics (HRV/RHR)
+/// and can contradict the score itself (a 16/100 read as "strong overnight
+/// recovery"). The band is declared authoritative in the system prompt.
+String readinessBand(num v) {
+  if (v < 30) return 'low';
+  if (v < 60) return 'moderate';
+  return 'good';
+}
+
 String briefingSystemPrompt(BriefingPeriod period, String timeOfDay) {
   final scope = period == BriefingPeriod.morning
       ? 'last night\'s sleep and recovery, and what they mean for the day ahead'
@@ -157,6 +167,10 @@ String briefingSystemPrompt(BriefingPeriod period, String timeOfDay) {
       'HARD RULES:\n'
       '- Use ONLY the numbers provided. Never invent, estimate or mention a '
       'metric that is not in the data. No medical advice or diagnosis.\n'
+      '- If a "readiness" value is given, its parenthesized band label '
+      '(low / moderate / good) is AUTHORITATIVE for tone: a low or moderate '
+      'band must never be described as strong, solid or good recovery, even '
+      'if individual sub-metrics (HRV, RHR) look fine in isolation.\n'
       '- Warm, direct, second person. No emojis. No headers.\n'
       'OUTPUT FORMAT (exactly):\n'
       'Line 1: one plain-text sentence, max 140 characters — the whole story '
@@ -183,7 +197,14 @@ String buildBriefingUserPrompt(
     b.writeln('(no metrics available yet)');
   } else {
     inputs.forEach((k, v) {
-      b.writeln(v is List ? '$k: ${v.join(', ')}' : '$k: $v');
+      if (k == 'readiness' && v is num) {
+        // Inject the band label the model must treat as authoritative (see
+        // the system prompt) — a bare "readiness: 16" otherwise reads as
+        // just another number and gets free-associated a positive tone.
+        b.writeln('$k: $v (${readinessBand(v)})');
+      } else {
+        b.writeln(v is List ? '$k: ${v.join(', ')}' : '$k: $v');
+      }
     });
   }
   return b.toString().trimRight();

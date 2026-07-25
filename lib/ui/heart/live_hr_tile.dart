@@ -66,9 +66,11 @@ class _LiveHrTileState extends State<LiveHrTile> with TickerProviderStateMixin {
   }
 
   // Retune the beat period to the live BPM and keep it running; stop cleanly
-  // when there's no live signal.
-  void _sync(int? bpm, bool live) {
-    final shouldBeat = live && bpm != null && bpm > 0;
+  // when there's no live signal. `reduceMotion` suppresses the animation
+  // entirely (the loop never starts) — the live number itself is untouched,
+  // only the decorative beat/ring/pulsing-dot motion is skipped.
+  void _sync(int? bpm, bool live, bool reduceMotion) {
+    final shouldBeat = !reduceMotion && live && bpm != null && bpm > 0;
     if (shouldBeat) {
       final clamped = bpm.clamp(_minBpm, _maxBpm);
       if (clamped != _lastBpm) {
@@ -101,10 +103,12 @@ class _LiveHrTileState extends State<LiveHrTile> with TickerProviderStateMixin {
     final fresh = at != null && (nowMs - at) < _staleMs;
     final offWrist = hr == 0; // 0 is OFF-WRIST, never a heart rate
     final live = connected && fresh && hr != null && hr > 0;
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
     // Drive the animation off the resolved state (post-frame so we don't
     // mutate controllers during build).
-    WidgetsBinding.instance.addPostFrameCallback((_) => _sync(hr, live));
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _sync(hr, live, reduceMotion));
 
     final accent = AppColors.coral;
     final subtitle = live
@@ -120,14 +124,24 @@ class _LiveHrTileState extends State<LiveHrTile> with TickerProviderStateMixin {
       padding: const EdgeInsets.all(Sp.x6),
       child: Row(
         children: [
-          _BeatingHeart(beat: _beat, accent: accent, live: live),
+          _BeatingHeart(
+            beat: _beat,
+            accent: accent,
+            live: live,
+            reduceMotion: reduceMotion,
+          ),
           const SizedBox(width: Sp.x5),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
-                  _LiveDot(beat: _beat, accent: accent, live: live),
+                  _LiveDot(
+                    beat: _beat,
+                    accent: accent,
+                    live: live,
+                    reduceMotion: reduceMotion,
+                  ),
                   const SizedBox(width: Sp.x2),
                   Text('LIVE HEART RATE', style: AppText.overline),
                 ]),
@@ -159,7 +173,17 @@ class _BeatingHeart extends StatelessWidget {
   final AnimationController beat;
   final Color accent;
   final bool live;
-  const _BeatingHeart({required this.beat, required this.accent, required this.live});
+
+  /// When true, the loop never starts (see `_sync`) — render the plain
+  /// live/idle state with no scale/ring motion at all, rather than freezing
+  /// mid-cycle at whatever `beat.value` happens to be.
+  final bool reduceMotion;
+  const _BeatingHeart({
+    required this.beat,
+    required this.accent,
+    required this.live,
+    this.reduceMotion = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -176,11 +200,13 @@ class _BeatingHeart extends StatelessWidget {
             final x = ((t - center) / width).clamp(-1.0, 1.0);
             return amp * 0.5 * (1 + (x.abs() >= 1 ? -1.0 : math.cos(math.pi * x)));
           }
-          final s = live ? 1.0 + pulse(0.10, 0.14, 0.22) + pulse(0.30, 0.12, 0.11) : 1.0;
+          final s = (live && !reduceMotion)
+              ? 1.0 + pulse(0.10, 0.14, 0.22) + pulse(0.30, 0.12, 0.11)
+              : 1.0;
           // Ring blooms only on the first (loud) beat.
           final ringT = (t / 0.55).clamp(0.0, 1.0);
           final ringScale = 1.0 + ringT * 0.9;
-          final ringAlpha = live ? (1 - ringT) * 0.35 : 0.0;
+          final ringAlpha = (live && !reduceMotion) ? (1 - ringT) * 0.35 : 0.0;
           return Stack(
             alignment: Alignment.center,
             children: [
@@ -217,13 +243,25 @@ class _LiveDot extends StatelessWidget {
   final AnimationController beat;
   final Color accent;
   final bool live;
-  const _LiveDot({required this.beat, required this.accent, required this.live});
+  final bool reduceMotion;
+  const _LiveDot({
+    required this.beat,
+    required this.accent,
+    required this.live,
+    this.reduceMotion = false,
+  });
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: beat,
       builder: (context, _) {
-        final a = live ? (0.45 + 0.55 * (1 - beat.value).clamp(0.0, 1.0)) : 0.25;
+        // Reduced motion: a steady, still honest live/idle brightness rather
+        // than a pulsing one — data-meaningful (on vs off), never animated.
+        final a = !live
+            ? 0.25
+            : reduceMotion
+                ? 0.85
+                : (0.45 + 0.55 * (1 - beat.value).clamp(0.0, 1.0));
         return Container(
           width: 8, height: 8,
           decoration: BoxDecoration(

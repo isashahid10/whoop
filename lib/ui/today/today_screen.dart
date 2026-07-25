@@ -33,7 +33,23 @@ import '../journey/journey_screen.dart';
 import '../stress/stress_screen.dart';
 import '../records/records_screen.dart';
 import '../../widget/widget_service.dart';
-import 'ai_summary_card.dart';
+
+/// Markdown bullets ("- like this") → plain strings, for the ring-adjacent AI
+/// insight's expanded state. Deliberately simple (no full markdown parser —
+/// the breakdown contract is short, flat bullets, see
+/// briefing_engine.dart's system prompt) so this stays a pure, dependency-free
+/// mapper.
+List<String> _briefingBullets(String md) {
+  final out = <String>[];
+  for (final raw in md.split('\n')) {
+    final line = raw.trim();
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      final b = line.substring(2).trim();
+      if (b.isNotEmpty) out.add(b);
+    }
+  }
+  return out;
+}
 
 class TodayScreen extends StatefulWidget {
   const TodayScreen({super.key});
@@ -259,6 +275,7 @@ class _TodayScreenState extends State<TodayScreen>
     final coach = t.coach;
     final alert = t.bodyAlert;
     final status = t.status;
+    final hasAiBriefing = app.coachConfig?.hasKey ?? false;
 
     // Every substantive item below carries a stable Key. This list is
     // unkeyed-fragile otherwise: several conditions here (freshness banner,
@@ -305,30 +322,6 @@ class _TodayScreenState extends State<TodayScreen>
         ),
         const SizedBox(height: Sp.x3),
       ],
-      // AI briefing hero — shows the cached one-liner for the current period;
-      // tapping opens the shared breakdown screen. Reads the BriefingStore
-      // synchronously at build; AppState.notifyListeners() repaints it when a
-      // briefing is generated opportunistically on foreground.
-      // Hidden entirely with no BYOK key configured — previously this always
-      // rendered a "your morning briefing will appear here" placeholder even
-      // for users who never gave us an AI key (misleading: it can never
-      // appear without one) and even seconds after first pairing. It only
-      // shows once the user has opted into AI at all; BriefingEngine itself
-      // still won't produce a summary from a day with no real data.
-      if (app.coachConfig?.hasKey ?? false) ...[
-        KeyedSubtree(
-          key: const ValueKey('today-ai-summary'),
-          child: Builder(builder: (_) {
-            final period = currentBriefingPeriod(DateTime.now());
-            final brief = BriefingStore.read(period);
-            return AiSummaryCard(
-              summary: brief?.oneLiner,
-              onTap: () => _push(() => AiBreakdownScreen(period: period)),
-            );
-          }).dsEnter(index: 0),
-        ),
-        const SizedBox(height: Sp.x3),
-      ],
       if (alert != null) ...[
         const SizedBox(height: Sp.x3),
         KeyedSubtree(
@@ -336,15 +329,31 @@ class _TodayScreenState extends State<TodayScreen>
           child: _alertChipRow(alert),
         ),
       ],
+      // The ring renders first, full stop — the AI insight no longer leads
+      // the screen as its own card (that delayed the one number someone
+      // opened the app for). It now lives as a compact, collapsed-by-default
+      // line directly under the ring (see TodayVitals._aiInsightLine) via the
+      // same Disclosure pattern used for LF/HF, SD1/SD2, pNN elsewhere this
+      // session — same BriefingEngine, same honesty gate (hidden with no
+      // BYOK key), still the thing that replaces the HRV/RHR bento tiles
+      // when it has something to say.
       KeyedSubtree(
         key: const ValueKey('today-vitals'),
-        child: TodayVitals(
-          t: t,
-          sparks: _sparks,
-          stepsWeek: _stepsWeek,
-          liveSteps: context.read<AppState>().liveSteps,
-          onOpen: _open,
-        ),
+        child: Builder(builder: (_) {
+          final period = currentBriefingPeriod(DateTime.now());
+          return TodayVitals(
+            t: t,
+            sparks: _sparks,
+            stepsWeek: _stepsWeek,
+            liveSteps: context.read<AppState>().liveSteps,
+            onOpen: _open,
+            hasAiBriefing: hasAiBriefing,
+            aiBriefing: hasAiBriefing ? BriefingStore.read(period) : null,
+            onOpenAiBreakdown: hasAiBriefing
+                ? () => _push(() => AiBreakdownScreen(period: period))
+                : null,
+          );
+        }),
       ),
       const SizedBox(height: Sp.x3),
       if (coach != null) ...[
@@ -451,6 +460,8 @@ class _TodayScreenState extends State<TodayScreen>
   /// reading (that's the ambient "LIVE HEART RATE" tile on the Heart screen);
   /// this card is a portal, not a live gauge — so its hero is the day's
   /// peak/low HR chips + a preview curve, never an instantaneous number.
+  /// Always opens on today; JourneyScreen itself owns navigating to past
+  /// days from there (issue #112).
   Widget _lookbackCard() {
     final points = [
       for (final p in _hr.points) TimeSeriesPoint(p.t.toDouble(), p.v),
@@ -673,6 +684,27 @@ class TodayVitals extends StatelessWidget {
   /// stress | oxygen | records.
   final void Function(String id) onOpen;
 
+  /// True when the combined AI briefing paragraph card is showing above this
+  /// widget (Today's `_content()`) — hides the HRV/RHR bento tiles that would
+  /// otherwise restate exactly what the briefing already says in plain
+  /// language (and what the Heart tab already shows). Not just a raw
+  /// "AI configured" flag — this is the DECISION Today already made about
+  /// whether the paragraph card is actually on screen, so the two stay in
+  /// lockstep by construction rather than by two copies of the same check.
+  final bool hasAiBriefing;
+
+  /// The cached briefing for the current period, when [hasAiBriefing] — null
+  /// while nothing has generated yet (renders the honest "will appear here"
+  /// placeholder rather than nothing, so a freshly-configured user sees where
+  /// it'll show up).
+  final Briefing? aiBriefing;
+
+  /// Opens the full breakdown screen (regenerate + the exact "based on"
+  /// metric snapshot) — the ring-adjacent line itself only expands INLINE
+  /// (one-liner + bullets) via [Disclosure]; this is the secondary "go deeper"
+  /// action inside that expanded state.
+  final VoidCallback? onOpenAiBreakdown;
+
   const TodayVitals({
     super.key,
     required this.t,
@@ -680,6 +712,9 @@ class TodayVitals extends StatelessWidget {
     this.stepsWeek = const [],
     this.liveSteps = 0,
     required this.onOpen,
+    this.hasAiBriefing = false,
+    this.aiBriefing,
+    this.onOpenAiBreakdown,
   });
 
   /// "Hh Mm" from a minutes metric, or null when empty.
@@ -722,16 +757,39 @@ class TodayVitals extends StatelessWidget {
         ],
         // The hero floats directly on the page — no card chrome around it.
         _orbitHero().dsEnter(index: 1),
-        const SizedBox(height: Sp.x2),
+        // The AI insight — a compact, collapsed-by-default line directly
+        // under the ring's status word, not a leading card. Opening the app
+        // shows the ring first, full stop; this never renders above it.
+        if (hasAiBriefing) ...[
+          const SizedBox(height: Sp.x2),
+          _aiInsightLine(context).dsEnter(index: 1),
+        ],
+        const SizedBox(height: Sp.x3),
+        // Sleep/Heart/Strain/Stress — demoted from the ring's satellites to
+        // one quiet, low-contrast strip below it (see _orbitHero's comment).
+        // Same data, one tap away either way; it just no longer competes
+        // with the score for attention.
+        _QuickStatsRow(t: t, onOpen: onOpen).dsEnter(index: 2),
+        const SizedBox(height: Sp.x3),
         BentoColumns(
           left: [
-            _hrvTile(context),
+            // The HRV/RHR tiles here duplicated what the AI briefing card
+            // (Today's `_content()`, above this widget) now says in plain
+            // language, AND what the Heart tab already shows — shown only as
+            // an honest fallback when there's no AI briefing to say it
+            // instead (no BYOK key configured), so nobody loses the numbers.
+            if (!hasAiBriefing) _hrvTile(context),
             _caloriesTile(),
           ],
           right: [
-            _rhrTile(),
+            if (!hasAiBriefing) _rhrTile(),
             _stepsTile(),
-            _oxygenTile(),
+            // O2 dips tile removed — it's a nocturnal signal, now grouped
+            // with the Sleep tab's other overnight numbers (Nocturnal heart
+            // section), not a daytime Today metric. Removing it naturally
+            // rebalances this masonry column too: left/right go from 1v2 (AI
+            // insight showing) or 2v3 (fallback tiles showing) down to an
+            // even 1v1 / 2v2 — no gap, nothing to pad.
           ],
         ),
         if (week != null) ...[const SizedBox(height: Sp.x3), week],
@@ -789,6 +847,89 @@ class TodayVitals extends StatelessWidget {
     );
   }
 
+  // ── AI insight (ring-adjacent, collapsed by default) ────────────────────────
+
+  /// The one-liner + expand affordance living directly under the ring's
+  /// status word. Collapsed by default (just the sentence + a chevron);
+  /// expands INLINE to the breakdown bullets via the same [Disclosure] used
+  /// for LF/HF, SD1/SD2, pNN elsewhere — never a leading card, never above
+  /// the ring. Three honest states: nothing generated yet (quiet tap-to-open
+  /// placeholder), busy is folded into "not generated yet" (the full screen
+  /// owns the generating spinner), and the real one-liner + bullets.
+  Widget _aiInsightLine(BuildContext context) {
+    final b = aiBriefing;
+    final hasLine = b != null && b.oneLiner.trim().isNotEmpty;
+    if (!hasLine) {
+      return Pressable(
+        onTap: onOpenAiBreakdown,
+        child: Row(
+          children: [
+            const OsAppIcon(OsIcon.ai, size: 18),
+            const SizedBox(width: Sp.x2),
+            Expanded(
+              child: Text(
+                'Your AI insight will appear here.',
+                style: AppText.bodySoft.copyWith(
+                  color: AppColors.onSurfaceFaint,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final bullets = _briefingBullets(b.breakdownMd);
+    return Disclosure(
+      summary: b.oneLiner,
+      expandLabel: "What's driving this",
+      collapseLabel: 'Hide',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final bullet in bullets)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Sp.x1 + 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 7),
+                    child: Container(
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.onSurfaceFaint,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: Sp.x2),
+                  Expanded(child: Text(bullet, style: AppText.bodySoft)),
+                ],
+              ),
+            ),
+          if (onOpenAiBreakdown != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Pressable(
+                onTap: onOpenAiBreakdown,
+                child: Text(
+                  'Full breakdown & regenerate',
+                  style: AppText.captionMuted.copyWith(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ── the orbit hero ──────────────────────────────────────────────────────────
 
   Widget _orbitHero() {
@@ -843,37 +984,13 @@ class TodayVitals extends StatelessWidget {
       ringFill: (score == null && fill != null) ? fill.$1 / fill.$2 : null,
       center: center,
       onTap: () => onOpen('readiness'),
-      // Each satellite carries its metric's number so the hero reads at a glance.
-      satellites: [
-        OrbitSatellite(
-          icon: OsIcon.sleep,
-          label: 'Sleep',
-          value: t.sleepDuration.isEmpty ? null : _hm(t.sleepDuration),
-          color: DomainAccent.sleep,
-          onTap: () => onOpen('sleep'),
-        ),
-        OrbitSatellite(
-          icon: OsIcon.heart,
-          label: 'Heart',
-          value: _int(t.restingHr),
-          color: DomainAccent.heart,
-          onTap: () => onOpen('heart'),
-        ),
-        OrbitSatellite(
-          icon: OsIcon.bodyStrain,
-          label: 'Strain',
-          value: t.strain.isEmpty ? null : t.strain.value!.toStringAsFixed(1),
-          color: DomainAccent.strain,
-          onTap: () => onOpen('body'),
-        ),
-        OrbitSatellite(
-          icon: OsIcon.stress,
-          label: 'Stress',
-          value: t.stress?.score?.toString(),
-          color: DomainAccent.stress,
-          onTap: () => onOpen('stress'),
-        ),
-      ],
+      height: 340,
+      glow: true,
+      // No satellites here anymore (redesign): Sleep/Heart/Strain/Stress used
+      // to float around the ring at near-equal visual weight to the score
+      // itself — that data already lives one tap away on its own tab, so it's
+      // demoted to the quiet `_QuickStatsRow` below the fold instead of
+      // competing with the hero. The bigger, uncluttered ring is the point.
     );
   }
 
@@ -966,11 +1083,18 @@ class TodayVitals extends StatelessWidget {
           ),
           if (_spark('resting_hr') != null) ...[
             const SizedBox(height: Sp.x3),
-            Sparkline(
-              _spark('resting_hr')!,
-              color: const Color(0xFFFF8E6B),
-              height: 30,
-              endDot: false,
+            // Read the tile's own tone-corrected accent (BentoTile.ink
+            // lightens DomainAccent.heart for legibility on the near-black
+            // tile) instead of a separately hand-picked hex — one source for
+            // "this tile's accent colour", not two independently-tuned peach
+            // tones drifting apart over time.
+            Builder(
+              builder: (context) => Sparkline(
+                _spark('resting_hr')!,
+                color: ToneScope.of(context).accent,
+                height: 30,
+                endDot: false,
+              ),
             ),
           ],
         ],
@@ -1032,27 +1156,6 @@ class TodayVitals extends StatelessWidget {
     );
   }
 
-  Widget _oxygenTile() {
-    final spo2 = t.spo2;
-    return BentoTile(
-      accent: DomainAccent.oxygen,
-      minHeight: _statTileMinHeight,
-      onTap: () => onOpen('oxygen'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TileHeader(
-            'O₂ dips',
-            trailing: Tag('rel', color: AppColors.loadDetraining),
-          ),
-          const SizedBox(height: Sp.x2),
-          BigStat(value: spo2?.odiPerHour?.toStringAsFixed(1), unit: '/h'),
-        ],
-      ),
-    );
-  }
-
   /// Week-of-rings consistency strip: this week's (Mon→Sun) daily steps vs
   /// the daily goal. Today's ring mirrors the steps tile (day metric + live),
   /// so it fills even before today's series row exists.
@@ -1108,6 +1211,95 @@ bool shouldShowLookback(int? earliestRecordSec, {required DateTime now}) {
           .inMinutes /
       60.0;
   return spanHours >= kLookbackMinDataHours;
+}
+
+/// The demoted Sleep/Heart/Strain/Stress quick-glance strip — what used to be
+/// the ring's four floating satellites, now one quiet row underneath it.
+/// Small icons + numbers, no pill chrome, no per-item card shadow: it reads
+/// as a caption line, not a second hero, because the data already has a full
+/// home one tap away on its own tab.
+class _QuickStatsRow extends StatelessWidget {
+  final TodayData t;
+  final void Function(String id) onOpen;
+  const _QuickStatsRow({required this.t, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      (
+        icon: OsIcon.sleep,
+        label: 'Sleep',
+        value: t.sleepDuration.isEmpty
+            ? null
+            : '${t.sleepDuration.value!.toInt() ~/ 60}h '
+                '${(t.sleepDuration.value!.toInt() % 60).toString().padLeft(2, '0')}m',
+        color: DomainAccent.sleep,
+        route: 'sleep',
+      ),
+      (
+        icon: OsIcon.heart,
+        label: 'Heart',
+        value: t.restingHr.isEmpty ? null : '${t.restingHr.value!.round()}',
+        color: DomainAccent.heart,
+        route: 'heart',
+      ),
+      (
+        icon: OsIcon.bodyStrain,
+        label: 'Strain',
+        value: t.strain.isEmpty ? null : t.strain.value!.toStringAsFixed(1),
+        color: DomainAccent.strain,
+        route: 'body',
+      ),
+      (
+        icon: OsIcon.stress,
+        label: 'Stress',
+        value: t.stress?.score?.toString(),
+        color: DomainAccent.stress,
+        route: 'stress',
+      ),
+    ];
+    return SurfaceCard(
+      padding: const EdgeInsets.symmetric(horizontal: Sp.x2, vertical: Sp.x3),
+      child: Row(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0)
+              SizedBox(
+                width: 1,
+                height: 30,
+                child: ColoredBox(color: AppColors.divider),
+              ),
+            Expanded(
+              child: Pressable(
+                onTap: () => onOpen(items[i].route),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AppIcon(items[i].icon, size: 16, color: items[i].color),
+                    const SizedBox(height: 4),
+                    Text(
+                      items[i].value ?? '—',
+                      style: AppText.label.copyWith(
+                        color: items[i].value == null
+                            ? AppColors.onSurfaceFaint
+                            : AppColors.ink,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      items[i].label,
+                      style: AppText.captionMuted.copyWith(fontSize: 10.5),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 /// Pure mapper for the Today week-of-rings: Mon→Sun raw step counts → exactly

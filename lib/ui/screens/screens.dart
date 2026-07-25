@@ -38,12 +38,15 @@ class SleepScreen extends StatelessWidget {
     accent: DomainAccent.sleep,
     valueFmt: (v) =>
         v == 0 ? '' : (v / 60).toStringAsFixed(1), // minutes → hours on bars
+    // Sleep Coach now renders INSIDE SleepDetailScreen/SleepNightContent
+    // (below Cycles, above Nocturnal heart) rather than as a separate
+    // leading card here — same scroll, just reordered so the night's own
+    // numbers aren't pushed down by a bulky card before them.
     todayDetail: (ctx) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SleepCoachCard(),
-        const SizedBox(height: Sp.x3),
-        SleepDetailScreen(date: todayLabel(), embedded: true),
+        SleepDetailScreen(
+            date: todayLabel(), embedded: true, showSleepCoach: true),
         const SectionExtras(section: 'sleep'),
       ],
     ),
@@ -123,18 +126,22 @@ class BodyScreen extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: Sp.x3, vertical: 8),
           decoration: BoxDecoration(
-            color: AppColors.accent,
+            // Tonal fill, not the old solid full-saturation pill — full
+            // brightness/saturation is reserved for the readiness ring's
+            // glow alone; every other surface (including this CTA) sits
+            // below that ceiling. Icon/label stay full-brightness white on
+            // top, same as before.
+            color: AppColors.tonalFill(AppColors.accent),
             borderRadius: BorderRadius.circular(R.pill),
-            boxShadow: AppColors.isDark ? const [] : Shadows.coral,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const AppIcon(OsIcon.ai, size: 16, color: Colors.white),
+              AppIcon(OsIcon.ai, size: 16, color: AppColors.accent),
               const SizedBox(width: 6),
               Text(
                 'AI Coach',
-                style: AppText.label.copyWith(color: Colors.white),
+                style: AppText.label.copyWith(color: AppColors.accent),
               ),
             ],
           ),

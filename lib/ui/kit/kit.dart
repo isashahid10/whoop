@@ -16,64 +16,18 @@ import '../../theme/tokens.dart';
 import '../../models/metric.dart';
 import 'os_icons.dart';
 
-/// Thin wrapper over OsIcon so call sites stay short and consistent.
+/// Thin wrapper over OsIcon so call sites stay short and consistent. `color`
+/// now actually reaches the glyph (the old illustrated set couldn't be
+/// tinted; the new vector glyphs can) — omit it to get [OsAppIcon]'s
+/// domain-aware default tint.
 class AppIcon extends StatelessWidget {
   final OsIcon icon;
   final double size;
-  final Color? color; // Kept for API compatibility, but ignored by illustrated icons
+  final Color? color;
   const AppIcon(this.icon, {super.key, this.size = 22, this.color});
   @override
   Widget build(BuildContext context) =>
-      OsAppIcon(icon, size: size);
-}
-
-/// Common icon set, mapped to OsIcon.
-class Ic {
-  Ic._();
-  static const home = OsIcon.today;
-  static const sleep = OsIcon.sleep;
-  static const activity = OsIcon.activity;
-  static const stats = OsIcon.records;
-  static const profile = OsIcon.profile;
-  static const strain = OsIcon.bodyStrain;
-  static const recovery = OsIcon.recovery;
-  static const heart = OsIcon.heart;
-  static const pulse = OsIcon.heartRate;
-  static const fire = OsIcon.calories;
-  static const bed = OsIcon.bedtime;
-  static const moon = OsIcon.sleep;
-  static const clock = OsIcon.history;
-  static const calendar = OsIcon.calendar;
-  static const watch = OsIcon.wear;
-  static const bluetooth = OsIcon.bluetooth;
-  static const battery = OsIcon.battery;
-  static const settings = OsIcon.settings;
-  static const logout = OsIcon.logout;
-  static const edit = OsIcon.edit;
-  static const server = OsIcon.server;
-  static const cloud = OsIcon.sync;
-  static const shield = OsIcon.shield;
-  static const info = OsIcon.info;
-  static const check = OsIcon.check;
-  static const cancel = OsIcon.cancel;
-  static const arrowRight = OsIcon.arrowRight;
-  static const arrowLeft = OsIcon.arrowLeft;
-  static const up = OsIcon.up;
-  static const down = OsIcon.down;
-  static const chart = OsIcon.activity;
-  static const droplet = OsIcon.hydration;
-  static const run = OsIcon.run;
-  static const weights = OsIcon.strength;
-  static const bell = OsIcon.notifications;
-  static const thermometer = OsIcon.skinTemperature;
-  static const ai = OsIcon.ai;
-  static const plus = OsIcon.plus;
-  static const history = OsIcon.history;
-  static const trash = OsIcon.trash;
-  static const github = OsIcon.github;
-  static const discord = OsIcon.discord;
-  static const reddit = OsIcon.reddit;
-  static const twitter = OsIcon.twitter;
+      OsAppIcon(icon, size: size, color: color);
 }
 
 /// White rounded card with soft warm shadow. The base surface for everything.
@@ -414,7 +368,8 @@ class DeltaChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Sp.x2, vertical: 3),
       decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.12),
+        // Tonal fill, not a raw alpha wash — see AppColors.tonalFill.
+        color: AppColors.tonalFill(c),
         borderRadius: BorderRadius.circular(R.pill),
       ),
       child: Row(
@@ -470,7 +425,8 @@ class BaselineDeltaChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Sp.x2, vertical: 3),
       decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.12),
+        // Tonal fill, not a raw alpha wash — see AppColors.tonalFill.
+        color: AppColors.tonalFill(c),
         borderRadius: BorderRadius.circular(R.pill),
       ),
       child: Text(
@@ -549,7 +505,7 @@ class ConfDot extends StatelessWidget {
   );
 }
 
-/// Small honesty label pill (EST. / BETA / REL.).
+/// Small honesty label pill (EST. / BETA / REL. / TRUSTED / PROVISIONAL).
 class Tag extends StatelessWidget {
   final String text;
   final Color? color;
@@ -560,7 +516,11 @@ class Tag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.14),
+        // Tonal fill (dark, desaturated toward the app's near-black
+        // baseline), not a raw alpha wash of `c` — the label text keeps the
+        // full-saturation `c` on top, so fill and text never compete as two
+        // equally-bright versions of the same hue.
+        color: AppColors.tonalFill(c),
         borderRadius: BorderRadius.circular(R.pill),
       ),
       child: Text(
@@ -599,8 +559,8 @@ class RoundIconButton extends StatelessWidget {
   final OsIcon icon;
   final VoidCallback? onTap;
   final Color? bg;
-  final Color? fg; // Ignored for illustrated icons, kept for API compat
-  
+  final Color? fg;
+
   const RoundIconButton(
     this.icon, {
     super.key,
@@ -608,7 +568,7 @@ class RoundIconButton extends StatelessWidget {
     this.bg,
     this.fg,
   });
-  
+
   @override
   Widget build(BuildContext context) => Material(
     color: bg ?? AppColors.surface,
@@ -619,7 +579,7 @@ class RoundIconButton extends StatelessWidget {
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.all(Sp.x3 - 3),
-        child: OsAppIcon(icon, size: 26),
+        child: OsAppIcon(icon, size: 26, color: fg),
       ),
     ),
   );

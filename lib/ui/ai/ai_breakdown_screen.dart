@@ -1,6 +1,8 @@
 // AiBreakdownScreen — the ONE screen behind both the morning briefing and the
 // evening recap (parameterized by period). Deep-linked from the scheduled
-// notifications and from the Today AiSummaryCard.
+// notifications and from Today's ring-adjacent AI insight line (regenerate +
+// the exact "based on" metric snapshot live here even though the line itself
+// now shows the one-liner + breakdown bullets inline via a Disclosure).
 //
 // Generates-or-shows-cached: a cached briefing for today renders instantly;
 // otherwise it generates on open via the shared BYOK plumbing. Honest states:

@@ -266,9 +266,15 @@ class BentoTile extends StatelessWidget {
           Elevation.shadows(1, dark: dark),
         );
       case BentoTone.accent:
-        // One saturated card per board — white ink on the domain colour.
+        // The board's "highlighted" card — white ink on a tonal (not
+        // full-saturation) fill of the domain colour. Full brightness/
+        // saturation is reserved for exactly one thing in the app (the
+        // readiness ring's glow); this used to be a solid vivid card, which
+        // competed with that ring for attention. Same AppColors.tonalFill
+        // recipe as BentoTone.soft/Tag/DeltaChip — white text still pops
+        // cleanly against it, same as it did against the old solid fill.
         return (
-          a,
+          AppColors.tonalFill(a),
           ToneColors(
             fg: Colors.white,
             fgMuted: Colors.white.withValues(alpha: 0.78),
@@ -280,11 +286,13 @@ class BentoTile extends StatelessWidget {
         );
       case BentoTone.soft:
         // Quiet tint of the domain colour; ink stays the normal mode ink.
+        // Fill comes from the shared AppColors.tonalFill recipe (kept low in
+        // dark mode) so a same-hue accent/BigStat sitting on this tile never
+        // reads as two saturated colours fighting each other — one formula,
+        // reused by every colour-on-a-tint surface in the app (see
+        // AppColors.tonalFill's doc).
         return (
-          Color.alphaBlend(
-            a.withValues(alpha: dark ? 0.16 : 0.13),
-            Elevation.surfaceAt(1, dark: dark),
-          ),
+          AppColors.tonalFill(a),
           ToneColors(
             fg: AppColors.ink,
             fgMuted: AppColors.inkSoft,

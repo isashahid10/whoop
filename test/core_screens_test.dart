@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:openstrap_edge/ai/briefing.dart';
 import 'package:openstrap_edge/models/payloads.dart';
 import 'package:openstrap_edge/theme/theme.dart';
 import 'package:openstrap_edge/theme/tokens.dart';
@@ -114,8 +115,8 @@ void main() {
       expect(find.text('Primed'), findsOneWidget); // 82 → primed
       expect(find.text('48'), findsWidgets); // HRV value
       expect(find.text('52'), findsWidgets); // RHR value
-      expect(find.text('12.4'), findsOneWidget); // strain — orbit satellite
-      expect(find.text('7h 42m'), findsOneWidget); // sleep — orbit satellite
+      expect(find.text('12.4'), findsOneWidget); // strain — quick-stats row
+      expect(find.text('7h 42m'), findsOneWidget); // sleep — quick-stats row
       expect(find.text('8412'), findsOneWidget); // steps
       expect(find.text('Records & streaks'), findsOneWidget);
       expect(t.takeException(), isNull);
@@ -125,7 +126,110 @@ void main() {
       expect(opened, contains('readiness'));
     });
 
-    testWidgets('Stress + Sleep orbit satellites show their numeric value', (
+    testWidgets(
+        'hides the HRV/Resting HR bento tiles when the AI insight is showing '
+        '(it would just restate them)', (
+      t,
+    ) async {
+      await t.pumpWidget(
+        _host(
+          TodayVitals(
+            t: TodayData.fromJson(_sampleToday()),
+            onOpen: (_) {},
+            hasAiBriefing: true,
+          ),
+        ),
+      );
+      await t.pump(const Duration(milliseconds: 1200));
+      expect(find.text('HRV'), findsNothing);
+      expect(find.text('RESTING HR'), findsNothing);
+      // RHR still shows exactly once — in the demoted quick-stats row.
+      expect(find.text('52'), findsOneWidget);
+      // The other tiles (Calories/Steps/O2) are unaffected.
+      expect(find.text('CALORIES'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
+
+    testWidgets(
+        'ring renders before the AI insight, which stays collapsed to a '
+        'one-liner + chevron until tapped (Disclosure), never a leading '
+        'card', (
+      t,
+    ) async {
+      await t.pumpWidget(
+        _host(
+          TodayVitals(
+            t: TodayData.fromJson(_sampleToday()),
+            onOpen: (_) {},
+            hasAiBriefing: true,
+            aiBriefing: Briefing(
+              day: '2026-07-24',
+              period: BriefingPeriod.morning,
+              oneLiner: 'You recovered well overnight.',
+              breakdownMd: '- HRV up 6ms\n- RHR steady at 52',
+              generatedAtMs: 0,
+              inputs: const {},
+            ),
+          ),
+        ),
+      );
+      await t.pump(const Duration(milliseconds: 1200));
+      // The ring itself renders regardless (READINESS/score are the first
+      // substantive content) — the AI insight never gates it.
+      expect(find.text('READINESS'), findsOneWidget);
+      // Collapsed: the one-liner shows, the bullets do not — this is what
+      // "collapsed by default" means, not an always-expanded leading card.
+      expect(find.text('You recovered well overnight.'), findsOneWidget);
+      expect(find.text('HRV up 6ms'), findsNothing);
+      // Tap to expand — same Disclosure pattern as LF/HF, SD1/SD2, pNN.
+      await t.tap(find.text('You recovered well overnight.'));
+      await t.pump(const Duration(milliseconds: 400));
+      expect(find.text('HRV up 6ms'), findsOneWidget);
+      expect(find.text('RHR steady at 52'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
+
+    testWidgets(
+        'AI insight shows an honest tap-to-generate placeholder when '
+        'configured but nothing has generated yet', (
+      t,
+    ) async {
+      var opened = 0;
+      await t.pumpWidget(
+        _host(
+          TodayVitals(
+            t: TodayData.fromJson(_sampleToday()),
+            onOpen: (_) {},
+            hasAiBriefing: true,
+            onOpenAiBreakdown: () => opened++,
+          ),
+        ),
+      );
+      await t.pump(const Duration(milliseconds: 1200));
+      expect(find.text('Your AI insight will appear here.'), findsOneWidget);
+      await t.tap(find.text('Your AI insight will appear here.'));
+      await t.pump(const Duration(milliseconds: 250));
+      expect(opened, 1);
+    });
+
+    testWidgets(
+        'the AI insight line is absent entirely with no BYOK key configured '
+        '(hasAiBriefing false)', (
+      t,
+    ) async {
+      await t.pumpWidget(
+        _host(
+          TodayVitals(t: TodayData.fromJson(_sampleToday()), onOpen: (_) {}),
+        ),
+      );
+      await t.pump(const Duration(milliseconds: 1200));
+      expect(find.text('Your AI insight will appear here.'), findsNothing);
+      expect(t.takeException(), isNull);
+    });
+
+    testWidgets(
+        'Stress + Sleep show their numeric value in the demoted quick-stats '
+        'row (no bento tile of their own)', (
       t,
     ) async {
       await t.pumpWidget(
@@ -137,9 +241,11 @@ void main() {
         ),
       );
       await t.pump(const Duration(milliseconds: 1200));
-      // Stress + Sleep now live only on the orbit satellites (no bento tile).
-      expect(find.text('34'), findsOneWidget); // stress — orbit satellite
-      expect(find.text('7h 42m'), findsOneWidget); // sleep — orbit satellite
+      // Stress + Sleep live only in the quiet quick-stats row below the ring
+      // (the ring itself no longer carries floating satellites — see the
+      // Today redesign) and have no bento tile of their own.
+      expect(find.text('34'), findsOneWidget); // stress — quick-stats row
+      expect(find.text('7h 42m'), findsOneWidget); // sleep — quick-stats row
       expect(t.takeException(), isNull);
     });
 
@@ -408,6 +514,82 @@ void main() {
         expect(find.text('Sleep times look off? Fix them'), findsOneWidget);
         expect(t.takeException(), isNull);
       }
+    });
+
+    testWidgets(
+        'Nocturnal heart tile shows Oxygen dips (moved from the Heart tab) '
+        'alongside breath rate, with the same null-safe "—" fallback', (
+      t,
+    ) async {
+      t.view.physicalSize = const Size(390, 3200);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      final data = night()
+        ..['nocturnal'] = {
+          'sleeping_hr_avg': 47,
+          'sleeping_hr_min': 44,
+          'nadir_ts': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          'day_hr_avg': 68,
+          'dip_pct': 0.12,
+          'vs_baseline_bpm': -1.0,
+        }
+        ..['resp'] = {'value': 14.2}
+        ..['spo2'] = {'odi_per_hour': 1.2};
+      await t.pumpWidget(
+        _host(
+          SleepNightContent(
+            data: data,
+            date: today(),
+            onEditTimes: () {},
+            onConfirmFallback: () {},
+            onClearOverride: () {},
+          ),
+        ),
+      );
+      await t.pump(const Duration(milliseconds: 1200));
+      expect(find.text('SLEEPING HR'), findsOneWidget); // TileHeader uppercases
+      expect(find.text('O2 DIPS'), findsOneWidget);
+      expect(find.text('1.2'), findsOneWidget);
+      expect(find.text('BREATH'), findsOneWidget);
+      expect(t.takeException(), isNull);
+      // The number shows exactly ONCE here — drill-down is a tap on this
+      // same stat (wired to openTrend, same pattern every TrendMetricRow in
+      // this screen uses — not covered by a widget test elsewhere in this
+      // codebase either, since it needs a full ThemeController+AppState
+      // provider stack to actually push), not a second "Trends" row
+      // restating the value.
+      expect(find.text('Oxygen dips'), findsNothing);
+    });
+
+    testWidgets(
+        'Oxygen dips renders the honest "—" (not literal "null") when spo2 '
+        'is present without an odi_per_hour/value', (
+      t,
+    ) async {
+      t.view.physicalSize = const Size(390, 3200);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      final data = night()
+        ..['nocturnal'] = {'sleeping_hr_avg': 47}
+        // Present map, but neither the modern nor legacy value key — this is
+        // exactly the shape that used to render the literal string "null".
+        ..['spo2'] = {'confidence': 0.5};
+      await t.pumpWidget(
+        _host(
+          SleepNightContent(
+            data: data,
+            date: today(),
+            onEditTimes: () {},
+            onConfirmFallback: () {},
+            onClearOverride: () {},
+          ),
+        ),
+      );
+      await t.pump(const Duration(milliseconds: 1200));
+      expect(find.text('null'), findsNothing);
+      expect(find.text('O2 DIPS'), findsOneWidget);
+      expect(find.text('—'), findsWidgets);
+      expect(t.takeException(), isNull);
     });
 
     testWidgets('fallback night shows the confirm banner; confirm fires', (

@@ -78,6 +78,10 @@ class OrbitScore extends StatelessWidget {
 
   final double height;
 
+  /// Static glow layer behind the core arc — see [ArcGauge.glow]. Off by
+  /// default (mini/gallery uses); the Today readiness hero turns it on.
+  final bool glow;
+
   const OrbitScore({
     super.key,
     required this.score,
@@ -90,11 +94,14 @@ class OrbitScore extends StatelessWidget {
     this.satellites = const [],
     this.onTap,
     this.height = 280,
+    this.glow = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = color ?? AppColors.accent;
+    final hasSatellites = satellites.isNotEmpty;
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
     return SizedBox(
       height: height,
@@ -102,8 +109,13 @@ class OrbitScore extends StatelessWidget {
         builder: (context, box) {
           final w = box.maxWidth;
           final side = math.min(w, height);
-          // Core gauge ≈ half the shorter side; orbits fill the rest.
-          final coreSize = (side * 0.52).clamp(120.0, 168.0);
+          // Core gauge ≈ half the shorter side when satellites orbit it;
+          // with no satellites to make room for, the ring itself is the
+          // whole composition — let it fill far more of the space and give
+          // it generous surrounding negative space instead of chips.
+          final coreSize = hasSatellites
+              ? (side * 0.52).clamp(120.0, 168.0)
+              : (side * 0.72).clamp(160.0, 224.0);
           final orbitR = coreSize / 2 + side * 0.16;
 
           final coreCenter = Offset(w / 2, height / 2);
@@ -114,9 +126,10 @@ class OrbitScore extends StatelessWidget {
                 : (score! / 100).clamp(0.0, 1.0),
             color: c,
             size: coreSize,
-            stroke: 10,
+            stroke: hasSatellites ? 10 : 13,
             sweepFraction: 0.78,
             confidence: confidence,
+            glow: glow,
             center:
                 center ??
                 Column(
@@ -151,27 +164,47 @@ class OrbitScore extends StatelessWidget {
             core = Pressable(pressedScale: 0.96, onTap: onTap, child: core);
           }
 
+          // Spring-physics entrance: a slight overshoot pop on first build,
+          // never on rebuild (AnimatedContainer-free TweenAnimationBuilder,
+          // 0.85 → 1.0). Skipped entirely under reduced-motion — the ring
+          // just renders at its final scale, no animation to reduce.
+          Widget animatedCore = core;
+          if (!reduceMotion) {
+            animatedCore = TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.85, end: 1.0),
+              duration: Motion.ring,
+              curve: Curves.easeOutBack,
+              builder: (_, scale, child) =>
+                  Transform.scale(scale: scale, child: child),
+              child: core,
+            );
+          }
+
           return Stack(
             clipBehavior: Clip.none,
             children: [
-              // Faint concentric orbits (hairline; structure, not decoration).
-              Positioned.fill(
-                child: RepaintBoundary(
-                  child: CustomPaint(
-                    painter: _OrbitRingsPainter(
-                      center: coreCenter,
-                      radii: [orbitR * 0.82, orbitR],
-                      color: AppColors.inkMuted.withValues(
-                        alpha: AppColors.isDark ? 0.22 : 0.28,
+              // Faint concentric orbits (hairline; structure, not decoration)
+              // — only drawn when satellites actually anchor to them; with
+              // no satellites the ring is the whole composition and gets
+              // pure negative space instead of rings around nothing.
+              if (hasSatellites)
+                Positioned.fill(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _OrbitRingsPainter(
+                        center: coreCenter,
+                        radii: [orbitR * 0.82, orbitR],
+                        color: AppColors.inkMuted.withValues(
+                          alpha: AppColors.isDark ? 0.22 : 0.28,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
               Positioned(
                 left: coreCenter.dx - coreSize / 2,
                 top: coreCenter.dy - coreSize / 2,
-                child: core.dsEnter(),
+                child: animatedCore.dsEnter(),
               ),
               ..._placeSatellites(w, coreCenter, orbitR),
             ],
