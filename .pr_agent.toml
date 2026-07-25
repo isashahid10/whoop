@@ -1,0 +1,143 @@
+# .pr_agent.toml — repo-level PR-Agent config for OpenStrap/edge
+#
+# Repo facts this config assumes (verified 2026-07-25):
+#   * No CI gate runs on PRs. build.yml triggers only on `push: tags: ['v*']`,
+#     so nothing runs `flutter analyze` or `flutter test` before merge.
+#     PR-Agent and CodeRabbit are the only pre-merge checks.
+#   * AGENTS.md at the repo root carries the architecture map, hard invariants,
+#     and recurring bug patterns. It is injected automatically (see [config]).
+
+[config]
+# Inject AGENTS.md as repository context into /review, /improve, /describe, /ask.
+# NOTE: read from the DEFAULT BRANCH by default, so AGENTS.md only takes effect
+# once merged to main. Set repo_context_from_default_branch = false temporarily
+# if you want to test edits to it from a PR branch.
+repo_context_files = ["AGENTS.md"]
+repo_context_max_lines = 500   # AGENTS.md is ~250 lines; headroom to grow.
+
+[pr_reviewer]
+# This repo has no analyze/test CI gate, so allow more than the default 3.
+num_max_findings = 5
+extra_instructions = """
+Review as a senior engineer on THIS codebase, not as a generic Flutter linter.
+Follow AGENTS.md in the repository context: sections 3 (hard invariants) and
+4 (recurring bug patterns) define what counts as a real finding here.
+
+Highest-value checks, in order:
+1. Data-durability ordering in BLE sync. Decoded rows plus the cursor must be
+   committed in one transaction BEFORE the HISTORY_END ACK, and the ACK must
+   echo the received token verbatim. Flag any reordering, any regenerated
+   token, and any ACK of a partial chunk.
+2. Absent-input honesty. For every metric path touched, ask what is returned
+   when the input is missing or thin. Anything other than null / Metric.absent
+   / "-" is a bug: no imputation, no defaults, no deriving one metric from
+   another as a fallback.
+3. Recompute idempotence. Derivation reruns on every BLE drain. Flag anything
+   that appends where it should replace, that mutates a rolling baseline in
+   place, or whose persisted scalar could change on a rerun with slightly more
+   data for the same day.
+4. Analytics output changed without a kAlgoVersion bump, or a bump whose
+   changelog cites a sibling-package change that the pinned SHA in pubspec.yaml
+   does not actually contain.
+5. Boolean state latches set without a reset on the failure, timeout, and
+   give-up paths (no try/finally). This has wedged sync repeatedly.
+6. Heavy or unbounded synchronous work on the UI isolate; work that should be
+   inside Isolate.run; analytics ambient globals not re-armed inside the
+   isolate closure.
+7. context / Provider used after an await or inside dispose, and missing
+   mounted guards after navigation.
+8. Notifications that bypass NotificationCenter.emit, or check-then-record
+   dedupe without the lock.
+9. Day-label and timezone handling: local labels via day_label.dart helpers,
+   absolute epochs left alone, no assumption that a day is 86400 seconds.
+10. A capability added to one call site when sibling call sites exist for the
+    same concern (raw decode has three; export and session-write paths differ).
+11. Schema migrations: additive, idempotent, cheap enough for the iOS CPU
+    watchdog inside openDatabase; PRAGMA journal_mode via rawQuery, not execute.
+12. Pruning or finalizing a day whose derivation is not fully complete.
+
+Weight diffs in the known hotspots more heavily: lib/state/app_state.dart,
+lib/data/db.dart, lib/compute/derivation_engine.dart,
+lib/data/local_repository_impl.dart, lib/ble/ble_engine.dart.
+
+Behavior changes with no accompanying test in test/ are a legitimate finding,
+because no test suite runs in CI. Several existing tests are named for the bug
+they pin (readiness_flash_test, readiness_saturation_test,
+readiness_baseline_pollution_test) - follow that convention when asking for one.
+
+Do NOT report: formatting, import order, naming style, const constructors,
+string interpolation preference, missing dartdoc, "extract a widget",
+"add a comment", or general Flutter/Dart idiom advice untied to a behavior
+change. Another AI reviewer already covers generic lifecycle and null-handling
+nits; only raise those when this repo's invariants make the consequence
+concrete and severe. Prefer three findings that require knowing this codebase
+over ten that any linter could produce. If nothing meets that bar, say so.
+"""
+
+[pr_code_suggestions]
+# focus_only_on_problems = true is already the default; keep it.
+extra_instructions = """
+Suggest fixes only for real defects in THIS codebase, using AGENTS.md in the
+repository context as the definition of what matters. Prioritise, in order:
+absent-input handling that fabricates a value instead of abstaining;
+non-idempotent derivation or baseline updates; a boolean latch with no reset on
+the failure path; commit-before-ACK ordering in the BLE drain; heavy work left
+on the UI isolate; context/Provider after await or in dispose; a notification
+path bypassing NotificationCenter.emit; UTC used where a local day label is
+required; a change wired into one call site when sibling call sites exist.
+
+Every suggestion must change runtime behavior for the better. Do not suggest
+style, formatting, naming, const-ness, dartdoc, extraction/refactoring for
+readability, or defensive null checks on values this codebase guarantees.
+
+Suggested code must compile against the surrounding Dart and use the helpers
+that already exist rather than inventing new ones - for example todayLabel() /
+dayLabelOf() for day labels, trailingSeriesValues(key, n) rather than
+metricSeries(limit: n) for a trailing window (metricSeries is ORDER BY date ASC
+and returns the OLDEST n), NotificationCenter.emit for any user-facing alert,
+and Isolate.run for heavy compute.
+
+Never suggest adding pubspec_overrides.yaml to the repo, changing a sibling
+package pin to a branch ref such as `main`, or removing the +BUILD suffix from
+pubspec.yaml's version.
+"""
+
+[pr_description]
+extra_instructions = """
+Describe the change in terms of user-visible behavior and data effects, not a
+file-by-file restatement of the diff.
+
+Call out explicitly when the PR does any of the following, since each has
+shipped a regression here before:
+- changes any analytics output (state whether kAlgoVersion was bumped);
+- changes a sibling package pin in pubspec.yaml, or pubspec.lock;
+- changes the sqflite schema version or adds a migration;
+- changes BLE sync ordering, ACK handling, or pruning/finalization;
+- changes what is displayed when data is missing or thin;
+- changes app version, versionCode, or iOS widget/watch target versions.
+
+If the PR changes behavior and adds no test under test/, note that.
+"""
+
+[github_action_config]
+# Re-run on every push to an open PR.
+#
+# The workflow already triggers on `pull_request: [opened, synchronize]`, but in
+# github_action_runner.py a `synchronize` event returns early unless
+# handle_push_trigger is set (it defaults to false) - so without this, pushing
+# commits to an open PR ran nothing.
+handle_push_trigger = true
+
+# Full /review rather than the incremental `/review -i`. Incremental scopes to
+# the newest commits but skips the persistent comment (pr_reviewer.py:184), so
+# it posts a NEW comment per push. Full review updates one comment in place and
+# re-checks whole-PR invariants that an incremental diff cannot see - whether
+# kAlgoVersion is bumped, whether the final state still commits before ACK.
+#
+# /describe is deliberately omitted (the upstream default includes it): it would
+# regenerate the PR description on every push for no review value.
+push_commands = ["/review", "/improve"]
+
+# Left at their defaults, which are the ones we want:
+#   push_trigger_ignore_bot_commits   = true  (no self-retrigger loop)
+#   push_trigger_ignore_merge_commits = true  (no re-review on merge commits)
