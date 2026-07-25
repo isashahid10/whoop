@@ -377,8 +377,14 @@ class _TimelineContentState extends State<TimelineContent>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: dsStaggered([
-        // Legend / selector chips (the strong vital colours).
+        // Legend / selector chips (the strong vital colours). Keyed so tests
+        // (and anything else that needs to disambiguate) can target these
+        // specifically — the reserved-but-hidden crosshair readout below
+        // renders the SAME vital labels (Visibility(maintainState: true), so
+        // they stay in the element tree even while invisible/idle) and would
+        // otherwise collide with a bare `find.text('Heart rate')`.
         Wrap(
+          key: const Key('vitalChipRow'),
           spacing: Sp.x2,
           runSpacing: Sp.x2,
           children: [for (var i = 0; i < _vitals.length; i++) _chip(i)],

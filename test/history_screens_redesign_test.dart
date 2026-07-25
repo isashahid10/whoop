@@ -39,6 +39,18 @@ Future<void> _pumpTwice(WidgetTester t) async {
   await t.pump(const Duration(seconds: 1));
 }
 
+/// The merged-timeline vital SELECTOR chip for [label], scoped to the keyed
+/// chip row. A bare `find.text(label)` is ambiguous here — the timeline's
+/// crosshair readout (`_crosshairReadout`) renders the same vital labels and
+/// stays mounted at all times (`Visibility(maintainState: true)`, so its
+/// layout slot doesn't grow/shrink when scrubbing starts/stops — see its
+/// doc comment), just invisible via opacity, not `Offstage`. That means it's
+/// still "onstage" for finders/`tester.tap` even while idle/hidden.
+Finder _vitalChip(String label) => find.descendant(
+      of: find.byKey(const Key('vitalChipRow')),
+      matching: find.text(label),
+    );
+
 // ── fixtures ─────────────────────────────────────────────────────────────────
 
 RecordsData _sampleRecords() => RecordsData.fromJson({
@@ -259,7 +271,7 @@ void main() {
           // The merged multi-vital timeline (TimelineContent) is embedded
           // here — one selector chip + color per continuously-recorded vital.
           for (final label in ['Heart rate', 'HRV', 'Resp', 'Skin temp']) {
-            expect(find.text(label), findsOneWidget);
+            expect(_vitalChip(label), findsOneWidget);
           }
           expect(find.text('HEART RATE · BPM'), findsOneWidget);
           expect(find.text('PEAK · HEART RATE'), findsOneWidget);
@@ -293,7 +305,7 @@ void main() {
 
         // All four vitals present as selector chips.
         for (final label in ['Heart rate', 'HRV', 'Resp', 'Skin temp']) {
-          expect(find.text(label), findsOneWidget);
+          expect(_vitalChip(label), findsOneWidget);
         }
         // Active vital header in real units + its peak/low BigStats.
         expect(find.text('HEART RATE · BPM'), findsOneWidget);
@@ -313,7 +325,7 @@ void main() {
       await _pumpTwice(t);
       expect(find.text('HEART RATE · BPM'), findsOneWidget);
 
-      await t.tap(find.text('HRV'));
+      await t.tap(_vitalChip('HRV'));
       await _pumpTwice(t);
       expect(find.text('HRV · MS'), findsOneWidget);
       expect(find.text('PEAK · HRV'), findsOneWidget);

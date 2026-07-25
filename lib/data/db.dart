@@ -1192,10 +1192,17 @@ class LocalDb {
              json_extract(e.value,'\$.stage') AS stage
       FROM latest l, json_each(json_extract(l.payload_json,'\$.series.hypnogram')) e
     ''');
-    // Workouts (incl. HRR + steps). Passthrough.
+    // Workouts (incl. HRR + steps). `date` is the session's LOCAL calendar day
+    // (device-local, same 'localtime' pattern as dataHistoryDays()) — added so
+    // "today's workout" can be resolved with `WHERE date = 'YYYY-MM-DD'`
+    // instead of the coach having to convert a local day back into a raw
+    // start_ts/end_ts epoch range itself, which silently drifted to UTC
+    // (issue #129: coach mis-dated workouts near local-midnight boundaries).
     await db.execute('''
       CREATE VIEW v_sessions AS
-      SELECT id, start_ts, end_ts, type, status, calories, strain, max_hr,
+      SELECT id, start_ts, end_ts,
+             strftime('%Y-%m-%d', start_ts, 'unixepoch', 'localtime') AS date,
+             type, status, calories, strain, max_hr,
              duration_min, steps, hrr_bpm, source, zone_min_json
       FROM sessions
     ''');
@@ -3667,6 +3674,24 @@ class LocalDb {
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
+  }
+
+  /// The one session row (if any) still `status='live'` — i.e. its
+  /// `stopWorkout`/finalize write never happened, most likely because the app
+  /// was killed mid-workout. On a healthy run there is at most one (a second
+  /// `startWorkout` can't begin while `activeWorkout` is already set), but a
+  /// crash could in principle strand more than one across restarts, so this
+  /// returns every match, newest first, rather than assuming exactly one.
+  /// Used at startup to reconcile the orphaned-live-workout bug (issue: "can't
+  /// stop workout, only delete" — activeWorkout was never rehydrated from this
+  /// row, so the in-app stop control was unreachable after a restart).
+  static Future<List<Map<String, dynamic>>> liveSessions() async {
+    final db = await instance;
+    return db.query(
+      'sessions',
+      where: "status = 'live'",
+      orderBy: 'start_ts DESC',
+    );
   }
 
   /// Sessions whose `start_ts` (epoch SECONDS) is in [fromTs, toTs], newest first.

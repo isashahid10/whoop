@@ -77,6 +77,7 @@ class NotificationService {
   static const int idJournalLog = 2004; // scheduled daily ("log your day")
   static const int idMorningBrief = 2005; // scheduled daily (AI morning briefing)
   static const int idEveningBrief = 2006; // scheduled daily (AI evening recap)
+  static const int idStillness = 2200; // provisional one-shot ("time to move", issue #123)
 
   /// Hydration reminders occupy a contiguous slot band [idWaterBase ..
   /// idWaterBase + maxWaterSlots) — one daily-repeating slot per fire time across
@@ -338,6 +339,39 @@ class NotificationService {
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        payload: route,
+      );
+    } catch (_) {}
+  }
+
+  /// One-shot absolute-time schedule (unlike [scheduleDaily]/[scheduleWeekly],
+  /// no `matchDateTimeComponents` — this fires exactly once at [at] and is not
+  /// re-armed by the plugin). Calling again with the same [id] before it fires
+  /// replaces the pending instance (same "cancel, then reschedule" convention
+  /// [scheduleStandingReminders] already uses for the recurring reminders).
+  /// Used for the provisional "time to move" nudge (issue #123): scheduled
+  /// `lastMovement + 2h` so it fires from the OS wall-clock even while the app
+  /// is closed, instead of only being evaluated on next foreground open.
+  Future<void> scheduleOnce({
+    required int id,
+    required NotifCategory category,
+    required String title,
+    required String body,
+    required DateTime at,
+    String? route,
+  }) async {
+    try {
+      if (!await ensurePermission()) return;
+      final when = tz.TZDateTime.from(at, tz.local);
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        when,
+        _details(category),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
         payload: route,
       );
     } catch (_) {}

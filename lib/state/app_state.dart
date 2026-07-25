@@ -360,6 +360,15 @@ class AppState extends ChangeNotifier {
     return n;
   }
 
+  /// Session-triggered Health export for one just-finished workout (issue
+  /// #130) — used by callers outside this class (e.g. confirming an
+  /// auto-detected workout in workouts_screen.dart) that write a `sessions`
+  /// row directly rather than going through [stopWorkout]. See
+  /// [HealthExporter.exportWorkout] for why this can't just wait for the next
+  /// day export. Best-effort, never throws.
+  Future<bool> exportWorkoutToHealth(Map<String, Object?> session) =>
+      _healthExport.exportWorkout(session);
+
   // ── companion: anonymous telemetry + health-data contribution ────────────────
   // All anchored to a stable anonymous install id (no account). Two SEPARATE
   // consent scopes, both PRE-ENABLED at enrollment (shown on the onboarding
@@ -968,53 +977,80 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Opportunistic "time to move" nudge. HONEST LIMIT: movement is only visible
-  /// while the band is streaming live IMU, so this can only fire when we've seen
-  /// recent live data and then a daytime gap with no ambulatory movement. Silent
-  /// when we have no movement data at all (never nudges on missing data).
+  /// Sedentary desk-job posture check. HONEST LIMIT: movement/posture are only
+  /// visible while the band is streaming live IMU, so this only evaluates on
+  /// foreground open (issue #123 doesn't cover this branch — "recently prone"
+  /// is a short rolling ~15 min window, not a monotonic idle timer, so it
+  /// doesn't translate into a single OS-scheduled instant the way the
+  /// "time to move" nudge below does; still foreground-only for now).
   static const String _kLastInactivityMs = 'last_inactivity_ms';
   Future<void> _maybeNotifyInactivity() async {
     try {
-      if (_lastMovementMs == 0 && _lastWalkMs == 0) return; // no live data
+      if (_lastWalkMs == 0) return; // no live data
       final now = DateTime.now();
       if (now.hour < 9 || now.hour >= 21) return; // daytime only
       final nowMs = now.millisecondsSinceEpoch;
-      
-      final idleMs = nowMs - _lastMovementMs;
-      final walkIdleMs = _lastWalkMs > 0 ? (nowMs - _lastWalkMs) : 0;
-      final recentlyProne = _lastProneMs > 0 && (nowMs - _lastProneMs) < 15 * 60 * 1000;
-      
-      String? title;
-      String? body;
-      
-      // Feature 3: Sedentary Desk-Job Detection
-      if (walkIdleMs >= 90 * 60 * 1000 && recentlyProne) {
-        title = 'Posture Check & Stretch';
-        body = 'You’ve been in a typing posture for over 90 minutes without walking. Time to stretch your legs and reset your posture!';
-      } else if (idleMs >= 2 * 60 * 60 * 1000) {
-        // Standard inactivity (2h total stillness)
-        title = 'Time to move';
-        body = "You've been still for a couple of hours — a short walk keeps your energy and circulation up.";
-      }
-      
-      if (title == null || body == null) return;
-      
+
+      final walkIdleMs = nowMs - _lastWalkMs;
+      final recentlyProne =
+          _lastProneMs > 0 && (nowMs - _lastProneMs) < 15 * 60 * 1000;
+      if (walkIdleMs < 90 * 60 * 1000 || !recentlyProne) return;
+
       final prefs = await SharedPreferences.getInstance();
       final lastFired = prefs.getInt(_kLastInactivityMs) ?? 0;
       if (nowMs - lastFired < 2 * 60 * 60 * 1000) return; // rate-limit to /2h
       await prefs.setInt(_kLastInactivityMs, nowMs);
-      
+
       final today = '${now.year}-${now.month}-${now.day}';
       await NotificationCenter.instance.emit(
         NotificationEvent(
-          dedupeKey: '$today:move:${nowMs ~/ (2 * 60 * 60 * 1000)}',
+          dedupeKey: '$today:posture:${nowMs ~/ (2 * 60 * 60 * 1000)}',
           category: NotifCategory.reminders,
           priority: NotifPriority.low,
-          title: title,
-          body: body,
+          title: 'Posture Check & Stretch',
+          body:
+              'You’ve been in a typing posture for over 90 minutes without walking. Time to stretch your legs and reset your posture!',
           date: today,
           route: '/today',
         ),
+      );
+    } catch (_) {
+      /* best-effort */
+    }
+  }
+
+  // ── "Time to move" — provisional OS-scheduled nudge (issue #123) ───────────
+  // Previously this was ALSO only ever evaluated on foreground open (same
+  // in-memory `_lastMovementMs` this function used to read, presented via an
+  // immediate NotificationCenter.emit — no wall-clock timer, so it could only
+  // ever "fire" the instant the app happened to be opened). Fixed per the
+  // issue's own recommended lowest-risk shape: whenever live IMU shows real
+  // motion, OS-schedule a ONE-SHOT "time to move" for `now + 2h`
+  // (NotificationService.scheduleOnce, same zonedSchedule plumbing wind-down/
+  // weekly-recap/hydration already use) and cancel+reschedule it on every
+  // subsequent movement — so it only actually fires if the user stays still,
+  // uninterrupted, for the full 2h window, and it fires from the OS wall-clock
+  // even while the app is closed.
+  int _lastStillnessScheduleMs = 0;
+  Future<void> _rescheduleStillnessNudge(int nowMs) async {
+    // Throttle: _ingestLiveMags can call this many times a second while the
+    // user is actively moving — the 2h nudge window doesn't need OS-scheduler
+    // churn anywhere near that tight.
+    if (nowMs - _lastStillnessScheduleMs < 10 * 60 * 1000) return;
+    _lastStillnessScheduleMs = nowMs;
+    try {
+      await NotificationService.instance.cancel(NotificationService.idStillness);
+      final at =
+          DateTime.fromMillisecondsSinceEpoch(nowMs).add(const Duration(hours: 2));
+      if (at.hour < 9 || at.hour >= 21) return; // would land outside daytime
+      await NotificationService.instance.scheduleOnce(
+        id: NotificationService.idStillness,
+        category: NotifCategory.reminders,
+        title: 'Time to move',
+        body:
+            "You've been still for a couple of hours — a short walk keeps your energy and circulation up.",
+        at: at,
+        route: '/today',
       );
     } catch (_) {
       /* best-effort */
@@ -1242,6 +1278,9 @@ class AppState extends ChangeNotifier {
     unawaited(notificationRelay.bootstrap());
     // DB integrity check — see _checkSchemaHealth doc. Best-effort, non-blocking.
     unawaited(_checkSchemaHealth());
+    // Rehydrate/finalize any workout left `status='live'` by a killed previous
+    // run (issue: "can't stop workout, only delete"). Best-effort, non-blocking.
+    unawaited(_reconcileOrphanedLiveWorkout());
     initialized = true;
     notifyListeners();
     // Companion (anonymous telemetry + health-data contribution) — best-effort,
@@ -1571,8 +1610,6 @@ class AppState extends ChangeNotifier {
   int _liveEnmoN = 0;
   bool _imuStreamSeen = false; // prefer the 0x33 IMU stream once it appears
   static const int _minuteSamples = 6000; // 60 s @ 100 Hz — calibration chunk
-  int _lastMovementMs =
-      0; // wall-clock of the last live frame showing real motion
   int _lastWalkMs = 0; // last time steps were accumulated
   int _lastProneMs = 0; // last time the wrist was in a flat/typing posture
   int _lastLiveUiNotifyMs = 0;
@@ -1622,7 +1659,9 @@ class AppState extends ChangeNotifier {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     // Stamp last real motion (for the inactivity nudge). 0.02 g over baseline is
     // clearly dynamic movement, not resting jitter.
-    if (e > 0.02) _lastMovementMs = nowMs;
+    if (e > 0.02) {
+      unawaited(_rescheduleStillnessNudge(nowMs));
+    }
 
     // Feature 3: Live Posture Tracking (detect desk-job pronation)
     // Only trust orientation when not highly dynamic (e < 0.05).
@@ -3062,6 +3101,63 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Reconcile any session row still `status='live'` left over from a
+  /// previous run — `stopWorkout()`'s finalize write never happened, almost
+  /// certainly because the app was killed/crashed mid-workout. `activeWorkout`
+  /// was PURELY in-memory and nothing ever restored it from this row, so after
+  /// a restart the mini-player banner / live session screen (and their only
+  /// "finish" control) became unreachable — the workout's sole remaining
+  /// action was the detail screen's unconditional delete button ("can't stop
+  /// workout, only delete"). Called once from [_init].
+  ///
+  /// - Recent (<= [_kMaxLiveWorkoutAgeMs] old): genuinely resumable —
+  ///   rehydrate `activeWorkout` so the normal "hold to finish" flow works
+  ///   again. Live per-second tallies (calories, strain, zone minutes) can't
+  ///   be reconstructed from a single DB row, so they restart from zero going
+  ///   forward rather than being fabricated — honest, not perfect, but no
+  ///   worse than the row being permanently un-finishable otherwise.
+  /// - Stale (older than the ceiling), or a malformed/second stray row:
+  ///   almost certainly not something the user is still "in" — silently
+  ///   finalize it (status: 'done') instead of resurfacing a days-old "still
+  ///   live" banner. duration_min/calories are left unset rather than guessed
+  ///   (we don't know the real end time or effort).
+  static const int _kMaxLiveWorkoutAgeMs = 6 * 60 * 60 * 1000; // 6h
+  Future<void> _reconcileOrphanedLiveWorkout() async {
+    try {
+      final rows = await LocalDb.liveSessions();
+      if (rows.isEmpty) return;
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      var resumed = false;
+      for (final row in rows) {
+        final startSec = (row['start_ts'] as num?)?.toInt();
+        final ageMs = startSec == null ? null : nowMs - startSec * 1000;
+        if (!resumed && ageMs != null && ageMs >= 0 && ageMs <= _kMaxLiveWorkoutAgeMs) {
+          resumed = true;
+          final startMs = startSec! * 1000;
+          final id = row['id'] as String? ?? 'w$startMs';
+          activeWorkout = LiveWorkoutState(
+            startTime: DateTime.fromMillisecondsSinceEpoch(startMs),
+            targetKcal: 300,
+            workoutId: id,
+            type: (row['type'] as String?) ?? 'other',
+            age: (user?['age'] as num?)?.round(),
+          );
+          _workoutTimer = Timer.periodic(
+            const Duration(seconds: 1),
+            (_) => _tickWorkout(),
+          );
+          _log('[workout] resumed a live session still running after restart (id=$id).');
+        } else {
+          await LocalDb.putSession({...row, 'status': 'done'});
+          _log('[workout] finalized a stale live-session row from a previous run (id=${row['id']}).');
+        }
+      }
+      if (resumed) notifyListeners();
+    } catch (e) {
+      _log('[workout] reconcile orphaned live session failed: $e');
+    }
+  }
+
   Future<void> stopWorkout() async {
     if (activeWorkout == null) return;
     _workoutTimer?.cancel();
@@ -3086,25 +3182,32 @@ class AppState extends ChangeNotifier {
     // the per-zone seconds the 1 Hz tick accumulated (Z1..Z5, minutes).
     final id = w.workoutId ?? 'w${w.startTime.millisecondsSinceEpoch}';
     final zoneMin = w.zoneMinutes();
-    unawaited(
-      LocalDb.putSession({
-        'id': id,
-        'start_ts': w.startTime.millisecondsSinceEpoch ~/ 1000,
-        'end_ts': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        'type': w.type,
-        'status': 'done',
-        'calories': w.calories,
-        'strain': w.strain,
-        'max_hr': w.maxHrSeen > 0 ? w.maxHrSeen : null,
-        'duration_min': w.elapsed.inMinutes,
-        'zone_min_json': jsonEncode(
-          zoneMin.any((v) => v > 0) ? zoneMin : const <num>[],
-        ),
-        if (wSteps > 0) 'steps': wSteps,
-        'source': 'manual',
-        'created_at': w.startTime.millisecondsSinceEpoch,
-      }),
-    );
+    final endTs = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final sessionRow = {
+      'id': id,
+      'start_ts': w.startTime.millisecondsSinceEpoch ~/ 1000,
+      'end_ts': endTs,
+      'type': w.type,
+      'status': 'done',
+      'calories': w.calories,
+      'strain': w.strain,
+      'max_hr': w.maxHrSeen > 0 ? w.maxHrSeen : null,
+      'duration_min': w.elapsed.inMinutes,
+      'zone_min_json': jsonEncode(
+        zoneMin.any((v) => v > 0) ? zoneMin : const <num>[],
+      ),
+      if (wSteps > 0) 'steps': wSteps,
+      'source': 'manual',
+      'created_at': w.startTime.millisecondsSinceEpoch,
+    };
+    unawaited(LocalDb.putSession(sessionRow));
+    // Session-triggered Health export (issue #130) — don't wait for the next
+    // day_result/derive pass (which may not run at all if the band isn't
+    // connected right now); write this workout to Apple Health/Health Connect
+    // immediately. Best-effort, never throws, no-ops if sync is off.
+    if (healthSyncEnabled) {
+      unawaited(_healthExport.exportWorkout(sessionRow));
+    }
     activeWorkout = null;
     _workoutRawBase = null;
     notifyListeners();

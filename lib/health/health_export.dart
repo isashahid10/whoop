@@ -551,25 +551,75 @@ class HealthExporter {
       }
       if (rows != null) {
         for (final r in rows) {
-          if ((r['status']?.toString() ?? '') == 'live') continue;
-          final st = (r['start_ts'] as num?)?.toInt();
-          final en = (r['end_ts'] as num?)?.toInt();
-          if (st == null || en == null || en <= st) continue;
-          try {
-            await _health.writeWorkoutData(
-              activityType: _activity(r['type']?.toString()),
-              start: DateTime.fromMillisecondsSinceEpoch(st * 1000),
-              end: DateTime.fromMillisecondsSinceEpoch(en * 1000),
-              totalEnergyBurned: (r['calories'] as num?)?.round(),
-            );
-          } catch (e) {
-            debugPrint('[health] write workout @$st: $e');
-            success = false;
-          }
+          if (!(await _writeOneWorkout(r))) success = false;
         }
       }
     }
     return success;
+  }
+
+  /// The actual `writeWorkoutData` call, shared by [_exportDay]'s per-day loop
+  /// and [exportWorkout] below — one source of truth for "what counts as a
+  /// writable session row". Returns false (no-op, not a failure) for a still-
+  /// live or malformed row.
+  Future<bool> _writeOneWorkout(Map<String, Object?> r) async {
+    if ((r['status']?.toString() ?? '') == 'live') return false;
+    final st = (r['start_ts'] as num?)?.toInt();
+    final en = (r['end_ts'] as num?)?.toInt();
+    if (st == null || en == null || en <= st) return false;
+    try {
+      await _health.writeWorkoutData(
+        activityType: _activity(r['type']?.toString()),
+        start: DateTime.fromMillisecondsSinceEpoch(st * 1000),
+        end: DateTime.fromMillisecondsSinceEpoch(en * 1000),
+        totalEnergyBurned: (r['calories'] as num?)?.round(),
+      );
+      return true;
+    } catch (e) {
+      debugPrint('[health] write workout @$st: $e');
+      return false;
+    }
+  }
+
+  /// Write ONE just-finished workout to the platform health store immediately,
+  /// independent of day_result/derive timing (issue #130: previously a
+  /// workout only reached Apple Health/Health Connect as a side effect of
+  /// [_exportDay] running for that calendar day via [exportAll], which
+  /// requires a `day_result` row to already exist for today AND a BLE-derive
+  /// pass to have run afterward — a manual/live workout finished with the
+  /// band disconnected, or between derive passes, could sit unexported in
+  /// `sessions` for hours, or indefinitely if no further sync happened that
+  /// day). Call this directly from wherever a session's final row lands
+  /// (stopWorkout, an auto-detected-workout confirm, …) instead of waiting on
+  /// the next full-day export.
+  ///
+  /// Idempotent, but SCOPED: only deletes-then-rewrites WORKOUT-type samples
+  /// inside this workout's own [start,end] window, so it can't clobber a
+  /// same-day sibling workout or the rest of that day's health data (unlike
+  /// [_exportDay], which owns the whole-day delete). Best-effort — never
+  /// throws; no-op if the health store isn't configured/available/permitted
+  /// (mirrors [_exportDay]'s silent-no-op-on-missing-permission contract).
+  Future<bool> exportWorkout(Map<String, Object?> session) async {
+    if ((session['status']?.toString() ?? '') == 'live') return false;
+    final st = (session['start_ts'] as num?)?.toInt();
+    final en = (session['end_ts'] as num?)?.toInt();
+    if (st == null || en == null || en <= st) return false;
+    try {
+      await _ensureConfigured();
+      if (await _androidUnavailable() != null) return false;
+      final start = DateTime.fromMillisecondsSinceEpoch(st * 1000);
+      final end = DateTime.fromMillisecondsSinceEpoch(en * 1000);
+      try {
+        await _health.delete(
+            type: HealthDataType.WORKOUT, startTime: start, endTime: end);
+      } catch (e) {
+        debugPrint('[health] delete workout @$st: $e');
+      }
+      return await _writeOneWorkout(session);
+    } catch (e) {
+      debugPrint('[health] exportWorkout: $e');
+      return false;
+    }
   }
 
   HealthDataType? _sleepType(String stage) {
