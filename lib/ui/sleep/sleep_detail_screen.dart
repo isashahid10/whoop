@@ -708,6 +708,32 @@ class SleepNightContent extends StatelessWidget {
             ],
           ),
         ),
+      ],
+      // "Awake" (WASO) and "Consistency" (SRI) tiles removed from this bento
+      // per request — WASO stays available inline in the Efficiency tile's
+      // long-press detail (`_awakeMin` is still used there), and Consistency
+      // still has its own row further down in the metrics list (`_regularity`,
+      // gated the same honest way) — this only drops the duplicate summary
+      // tiles up here, neither getter/section was touched.
+      //
+      // Sleep debt moved here (was left-column row 3, stacked under
+      // Efficiency) so it sits in the same row as Efficiency side by side,
+      // per request — left/right are independent stacks in this two-column
+      // bento, so same list-index = same row.
+      right: [
+        BentoTile(
+          onLongPress: () => info(
+              'Woke', 'When you woke for the day — the end of the window.'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const TileHeader('Woke'),
+              const SizedBox(height: Sp.x2),
+              BigStat(value: wake == null ? null : _clock(wake)),
+            ],
+          ),
+        ),
         BentoTile(
           tone: noDebt ? BentoTone.paper : BentoTone.soft,
           accent: DomainAccent.sleep,
@@ -726,27 +752,6 @@ class SleepNightContent extends StatelessWidget {
                     : (noDebt ? 'all caught up' : 'carried over'),
                 captionAccent: !noDebt,
               ),
-            ],
-          ),
-        ),
-      ],
-      // "Awake" (WASO) and "Consistency" (SRI) tiles removed from this bento
-      // per request — WASO stays available inline in the Efficiency tile's
-      // long-press detail (`_awakeMin` is still used there), and Consistency
-      // still has its own row further down in the metrics list (`_regularity`,
-      // gated the same honest way) — this only drops the duplicate summary
-      // tiles up here, neither getter/section was touched.
-      right: [
-        BentoTile(
-          onLongPress: () => info(
-              'Woke', 'When you woke for the day — the end of the window.'),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const TileHeader('Woke'),
-              const SizedBox(height: Sp.x2),
-              BigStat(value: wake == null ? null : _clock(wake)),
             ],
           ),
         ),
