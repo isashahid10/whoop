@@ -21,4 +21,4 @@ jobs:
           OPENAI_KEY: ${{ secrets.PR_AGENT_API_KEY }}
           OPENAI_API_BASE: ${{ secrets.PR_AGENT_API_BASE }}
           CONFIG.MODEL: ${{ secrets.PR_AGENT_MODEL }}
-          CONFIG.FALLBACK_MODELS: '[]'
+          CONFIG.FALLBACK_MODELS: ${{ secrets.PR_AGENT_FALLBACK_MODELS }}
