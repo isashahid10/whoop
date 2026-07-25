@@ -551,7 +551,7 @@ class HealthExporter {
       }
       if (rows != null) {
         for (final r in rows) {
-          if (!(await _writeOneWorkout(r))) success = false;
+          if (await _writeOneWorkout(r) == false) success = false;
         }
       }
     }
@@ -560,13 +560,19 @@ class HealthExporter {
 
   /// The actual `writeWorkoutData` call, shared by [_exportDay]'s per-day loop
   /// and [exportWorkout] below — one source of truth for "what counts as a
-  /// writable session row". Returns false (no-op, not a failure) for a still-
-  /// live or malformed row.
-  Future<bool> _writeOneWorkout(Map<String, Object?> r) async {
-    if ((r['status']?.toString() ?? '') == 'live') return false;
+  /// writable session row". Returns null (no-op, NOT a failure — a still-live
+  /// or malformed row) / true (wrote) / false (a genuine write error). CodeRabbit
+  /// caught this as a real bug: this used to collapse "skip" and "failed" onto
+  /// the same `false`, so an in-progress workout could repeatedly trip
+  /// `_exportDay`'s attempts/backoff/give-up machinery (reserved for genuine
+  /// thrown errors per the `_kRetryCursor` doc) on every drain/derive pass,
+  /// eventually "giving up" on — and silently pausing — that WHOLE day's real
+  /// health export (RHR/HRV/steps/sleep), not just the still-live workout.
+  Future<bool?> _writeOneWorkout(Map<String, Object?> r) async {
+    if ((r['status']?.toString() ?? '') == 'live') return null; // skip, not a failure
     final st = (r['start_ts'] as num?)?.toInt();
     final en = (r['end_ts'] as num?)?.toInt();
-    if (st == null || en == null || en <= st) return false;
+    if (st == null || en == null || en <= st) return null; // skip, not a failure
     try {
       await _health.writeWorkoutData(
         activityType: _activity(r['type']?.toString()),
@@ -615,7 +621,7 @@ class HealthExporter {
       } catch (e) {
         debugPrint('[health] delete workout @$st: $e');
       }
-      return await _writeOneWorkout(session);
+      return (await _writeOneWorkout(session)) ?? false;
     } catch (e) {
       debugPrint('[health] exportWorkout: $e');
       return false;

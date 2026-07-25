@@ -1001,7 +1001,10 @@ class AppState extends ChangeNotifier {
       if (nowMs - lastFired < 2 * 60 * 60 * 1000) return; // rate-limit to /2h
       await prefs.setInt(_kLastInactivityMs, nowMs);
 
-      final today = '${now.year}-${now.month}-${now.day}';
+      // CodeRabbit caught this as un-padded (e.g. "2026-7-5" instead of
+      // "2026-07-05") — breaks the YYYY-MM-DD convention every other
+      // dedupeKey/date field in this file already follows.
+      final today = todayLabel();
       await NotificationCenter.instance.emit(
         NotificationEvent(
           dedupeKey: '$today:posture:${nowMs ~/ (2 * 60 * 60 * 1000)}',
@@ -3124,6 +3127,11 @@ class AppState extends ChangeNotifier {
   static const int _kMaxLiveWorkoutAgeMs = 6 * 60 * 60 * 1000; // 6h
   Future<void> _reconcileOrphanedLiveWorkout() async {
     try {
+      // Called unawaited from _init(); a concurrent startWorkout() could in
+      // principle already be running by the time this DB round-trip resolves
+      // (CodeRabbit flagged the race). Bail rather than clobber a real,
+      // just-started activeWorkout and leak its timer.
+      if (activeWorkout != null) return;
       final rows = await LocalDb.liveSessions();
       if (rows.isEmpty) return;
       final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -3142,6 +3150,13 @@ class AppState extends ChangeNotifier {
             type: (row['type'] as String?) ?? 'other',
             age: (user?['age'] as num?)?.round(),
           );
+          // Without this, `workoutSteps` (gated on _workoutRawBase != null)
+          // stays 0 for the rest of this resumed session, and stopWorkout()
+          // would persist 0 steps even once real pedometer data resumes
+          // flowing — CodeRabbit caught this. Mirrors startWorkout()'s own
+          // snapshot: steps count from zero going forward, same as
+          // calories/strain/zone-minutes already (honestly) do here.
+          _workoutRawBase = _liveRaw;
           _workoutTimer = Timer.periodic(
             const Duration(seconds: 1),
             (_) => _tickWorkout(),
