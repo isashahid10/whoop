@@ -249,7 +249,13 @@ void main() {
         expect(find.text('94%'), findsOneWidget);
         expect(find.text('EFFICIENCY'), findsOneWidget);
         expect(find.text('SLEEP DEBT'), findsOneWidget);
-        expect(find.text('CONSISTENCY'), findsOneWidget);
+        // "Awake" and "Consistency" summary tiles were deliberately removed
+        // from this bento (Consistency still has its own honest-gated row
+        // further down the screen; Awake/WASO still surfaces inline in the
+        // Efficiency tile's long-press detail) — assert they're GONE rather
+        // than leaving a stale assumption they still render here.
+        expect(find.text('AWAKE'), findsNothing);
+        expect(find.text('CONSISTENCY'), findsNothing);
         expect(t.takeException(), isNull);
       }
     });

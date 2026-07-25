@@ -649,7 +649,6 @@ class SleepNightContent extends StatelessWidget {
     final eff = _efficiency;
     final debt = _debtMin;
     final noDebt = debt == null || debt.round() <= 0;
-    final reg = _regularity;
 
     void info(String title, String body, [String? method]) =>
         showInfoSheet(context, title: title, body: body, methodNote: method);
@@ -731,6 +730,12 @@ class SleepNightContent extends StatelessWidget {
           ),
         ),
       ],
+      // "Awake" (WASO) and "Consistency" (SRI) tiles removed from this bento
+      // per request — WASO stays available inline in the Efficiency tile's
+      // long-press detail (`_awakeMin` is still used there), and Consistency
+      // still has its own row further down in the metrics list (`_regularity`,
+      // gated the same honest way) — this only drops the duplicate summary
+      // tiles up here, neither getter/section was touched.
       right: [
         BentoTile(
           onLongPress: () => info(
@@ -742,43 +747,6 @@ class SleepNightContent extends StatelessWidget {
               const TileHeader('Woke'),
               const SizedBox(height: Sp.x2),
               BigStat(value: wake == null ? null : _clock(wake)),
-            ],
-          ),
-        ),
-        BentoTile(
-          accent: DomainAccent.stress,
-          onLongPress: () => info(
-              'Awake (WASO)',
-              'Time awake after first falling asleep — brief wake-ups are '
-                  'normal; long stretches drag efficiency down.'),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const TileHeader('Awake'),
-              const SizedBox(height: Sp.x2),
-              BigStat(value: _awakeMin == null ? null : _hm(_awakeMin)),
-            ],
-          ),
-        ),
-        BentoTile(
-          accent: DomainAccent.recovery,
-          onLongPress: () => info(
-            'Sleep consistency',
-            'How steady your bed and wake times have been. Higher is steadier.',
-            'Sleep Regularity Index over recent nights — needs several nights to unlock',
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const TileHeader('Consistency'),
-              const SizedBox(height: Sp.x2),
-              BigStat(
-                value: reg == null ? null : '${reg.round()}',
-                unit: reg == null ? null : '/100',
-                caption: reg == null ? 'need a few more nights' : null,
-              ),
             ],
           ),
         ),
