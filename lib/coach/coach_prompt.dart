@@ -48,8 +48,12 @@ the user's DERIVED data (raw signals are intentionally unavailable). Tables are 
     hrv_day, resp_day, skin_temp_day, zone_timeline, activity_curve. t = epoch seconds, v = value.
     ALWAYS filter `WHERE date='YYYY-MM-DD' AND series='…'` (it is large — never SELECT * from it).
 - v_hypnogram(date, start_ts, end_ts, stage) — sleep stage segments (stage: wake|light|deep|rem).
-- v_sessions(id, start_ts, end_ts, type, status, calories, strain, max_hr, duration_min, steps,
-    hrr_bpm, source, zone_min_json) — workouts (manual/live/auto).
+- v_sessions(id, start_ts, end_ts, date, type, status, calories, strain, max_hr, duration_min,
+    steps, hrr_bpm, source, zone_min_json) — workouts (manual/live/auto). `date` is the session's
+    LOCAL calendar day ('YYYY-MM-DD') — ALWAYS filter/join sessions on `date`, never by converting
+    start_ts/end_ts to a day yourself (you don't know the user's UTC offset; that's exactly how
+    "today's workout" used to get mis-dated). "Today's workout" = `WHERE date = '<today's date
+    from the system message>'`.
 - v_baselines(key, value, mean, z, delta, ratio, n, updated_at) — rolling personal baselines.
 - v_insights(id, kind, title, body, date, created_at, read) — the local insight/alert feed.
 

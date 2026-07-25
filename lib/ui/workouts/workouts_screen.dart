@@ -198,7 +198,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
   /// Confirm an auto-detected suggestion → create a completed session, then
   /// drop the suggestion and refresh.
   Future<void> _confirmSuggestion(Map<String, dynamic> s) async {
-    await _logDetectedSession(s);
+    await _logDetectedSession(s, context.read<AppState>());
     await _load();
   }
 
@@ -504,9 +504,14 @@ class _StartButton extends StatelessWidget {
 /// suggestion. Shared by the Workouts tab card and the deep-linked
 /// [WorkoutSuggestionScreen] so both write an identical session. Never logs
 /// silently — only called from an explicit "Log it" tap.
-Future<void> _logDetectedSession(Map<String, dynamic> s) async {
+///
+/// [appState], when passed, triggers an immediate session-triggered Health
+/// export (issue #130) instead of leaving this workout to wait for the next
+/// day_result/derive pass — same fix as [AppState.stopWorkout].
+Future<void> _logDetectedSession(Map<String, dynamic> s,
+    [AppState? appState]) async {
   final start = (s['start_ts'] as num?)?.toInt() ?? 0;
-  await LocalDb.putSession({
+  final row = {
     'id': 'auto:$start',
     'start_ts': start,
     'end_ts': (s['end_ts'] as num?)?.toInt(),
@@ -516,8 +521,12 @@ Future<void> _logDetectedSession(Map<String, dynamic> s) async {
     'max_hr': (s['peak_bpm'] as num?)?.toInt(),
     'source': 'auto',
     'created_at': DateTime.now().millisecondsSinceEpoch,
-  });
+  };
+  await LocalDb.putSession(row);
   await LocalDb.dismissWorkoutSuggestion(s['id'] as String);
+  if (appState != null && appState.healthSyncEnabled) {
+    unawaited(appState.exportWorkoutToHealth(row));
+  }
 }
 
 /// An opt-in auto-detected workout the user can confirm (→ logs a session) or
@@ -1622,7 +1631,7 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
 
   Future<void> _confirm(Map<String, dynamic> s) async {
     try {
-      await _logDetectedSession(s);
+      await _logDetectedSession(s, context.read<AppState>());
     } catch (_) {
       _showActionFailure('Could not log this workout — try again.');
       return;

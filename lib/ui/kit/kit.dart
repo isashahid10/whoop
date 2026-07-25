@@ -269,19 +269,32 @@ class SectionHeader extends StatelessWidget {
         children: [
           Expanded(child: Text(title, style: AppText.h2)),
           if (trailing != null)
-            GestureDetector(
-              onTap: onTrailing,
-              child: Row(
-                children: [
-                  Text(
-                    trailing!,
-                    style: AppText.label.copyWith(color: AppColors.coralDeep),
-                  ),
-                  const SizedBox(width: 2),
-                  AppIcon(OsIcon.arrowRight, size: 16, color: AppColors.coralDeep),
-                ],
+            // Only render the tappable affordance (accent color + chevron)
+            // when there's actually something to tap — a purely informational
+            // trailing label (onTrailing: null, e.g. Data History's "Select
+            // days" status text) previously looked identical to a real action
+            // like "Select all", inviting a tap that did nothing (#102
+            // feedback: "Select days text looks clickable but isn't").
+            if (onTrailing != null)
+              GestureDetector(
+                onTap: onTrailing,
+                child: Row(
+                  children: [
+                    Text(
+                      trailing!,
+                      style: AppText.label.copyWith(color: AppColors.coralDeep),
+                    ),
+                    const SizedBox(width: 2),
+                    AppIcon(OsIcon.arrowRight,
+                        size: 16, color: AppColors.coralDeep),
+                  ],
+                ),
+              )
+            else
+              Text(
+                trailing!,
+                style: AppText.label.copyWith(color: AppColors.inkMuted),
               ),
-            ),
         ],
       ),
     );
