@@ -387,7 +387,19 @@ class RecapShareCard extends StatelessWidget {
                   color: AppColors.accent,
                   borderRadius: BorderRadius.circular(R.chip),
                 ),
-                child: const AppIcon(OsIcon.bodyStrain, size: 14, color: Colors.white),
+                // The share-card wordmark badge — this is a brand lockup
+                // (logo + "OpenStrap" text), so it needs the actual app icon,
+                // not a random domain glyph (`OsIcon.bodyStrain`, a barbell,
+                // was left here with no real connection to the app's own
+                // identity). Same asset + errorBuilder-degrades-safely
+                // pattern boot_splash.dart already uses for this exact icon.
+                child: Image.asset(
+                  'assets/images/icon.png',
+                  width: 14,
+                  height: 14,
+                  errorBuilder: (_, _, _) =>
+                      const AppIcon(OsIcon.recap, size: 14, color: Colors.white),
+                ),
               ),
               const SizedBox(width: Sp.x2),
               Text(

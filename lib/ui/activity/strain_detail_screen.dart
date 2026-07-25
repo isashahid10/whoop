@@ -6,7 +6,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/day_label.dart';
 import '../../data/local_repository.dart';
 import '../../state/app_state.dart';
 import '../../theme/theme.dart';
@@ -334,26 +333,17 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
   List<Widget> _content() {
     final load = _map(_data['load']);
     final fitness = _data['fitness_trend']?.toString();
-    final cals = _num(_data['calories']);
-    // Same steps figure as Today + the Steps screen: finalized day estimate
-    // + today's in-flight live fold-in, so all three never disagree.
-    final rawSteps = _num(_data['steps']);
-    final isToday = widget.date == todayLabel();
-    final liveSteps = isToday
-        ? context.select<AppState, int>((a) => a.liveSteps)
-        : 0;
-    final steps = (rawSteps == null && liveSteps == 0)
-        ? null
-        : (rawSteps?.toDouble() ?? 0) + liveSteps;
     final effort = _num(_data['effort']);
     // "Training load" is an intensity/strain concept (ACWR, fitness trend,
     // effort) — calories/steps are energy expenditure, a different concept
-    // that used to be nested under this section (contributor feedback: "why
-    // is calories under training load? that makes no sense"). Split into its
-    // own "Calories & steps" section below instead.
+    // that doesn't belong on the strain/body screen at all (already-fixed
+    // contributor feedback: "why is calories under training load? that makes
+    // no sense" led to splitting it into its own "Calories & steps" section
+    // here; the follow-up ask was to drop that section from THIS screen
+    // entirely — calories/steps live on Today and the dedicated Steps
+    // screen, which is where a reader actually expects energy-expenditure
+    // numbers, not the strain/training-load detail view).
     final hasLoad = load.isNotEmpty || fitness != null || effort != null;
-    final hasEnergy =
-        cals != null || _num(_data['calories_total']) != null || steps != null;
     final drivers = [
       for (final dr in _list(_map(_data['drivers'])['strain'])) _map(dr),
     ].where((dr) => (dr['label']?.toString() ?? '').isNotEmpty).toList();
@@ -363,11 +353,6 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
       if (hasLoad) ...[
         const SectionHeader('Training load'),
         _loadCard(load, fitness, effort),
-        const SizedBox(height: Sp.x4),
-      ],
-      if (hasEnergy) ...[
-        const SectionHeader('Calories & steps'),
-        _energyCard(cals, steps),
         const SizedBox(height: Sp.x4),
       ],
       ..._fitnessSection(),
@@ -553,25 +538,6 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
           // than the 0–21 headline, over the per-second wake HR.
           if (effort != null)
             DetailRow(label: 'Effort (0–100)', value: '${effort.round()}'),
-        ],
-      ),
-    );
-  }
-
-  /// Energy expenditure — deliberately separate from "Training load" above
-  /// (calories/steps are energy, not strain/intensity).
-  Widget _energyCard(num? cals, num? steps) {
-    final total = _num(_data['calories_total']);
-    return ProCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (cals != null)
-            DetailRow(label: 'Active calories', value: '${cals.round()} kcal'),
-          if (total != null)
-            DetailRow(label: 'Total calories', value: '${total.round()} kcal'),
-          if (steps != null)
-            DetailRow(label: 'Steps (est.)', value: '${steps.round()}'),
         ],
       ),
     );
