@@ -150,9 +150,17 @@ String partOfDay(DateTime now) {
 /// without it the model free-associates tone from the sub-metrics (HRV/RHR)
 /// and can contradict the score itself (a 16/100 read as "strong overnight
 /// recovery"). The band is declared authoritative in the system prompt.
+///
+/// THE single source of truth for readiness-score banding — also used by
+/// the Today ring's status word (`TodayVitals._orbitHero` in
+/// today_screen.dart maps good/moderate/low → Primed/Steady/Run easy).
+/// These cuts (40/66) MUST match the ring's own thresholds: a briefing band
+/// computed from different cuts than the ring's word is exactly the
+/// tone-vs-score contradiction this function exists to prevent, just moved
+/// from "sub-metrics vs score" to "briefing vs ring".
 String readinessBand(num v) {
-  if (v < 30) return 'low';
-  if (v < 60) return 'moderate';
+  if (v < 40) return 'low';
+  if (v < 66) return 'moderate';
   return 'good';
 }
 

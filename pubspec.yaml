@@ -195,3 +195,17 @@ flutter:
   assets:
     - assets/images/
     - assets/splash/
+  # Barlow Condensed is bundled here (not left to google_fonts' runtime
+  # HTTP fetch) — this app is local-first/offline by design, and the hero
+  # readiness numerals are the LAST thing that should be able to flicker or
+  # fall back on a cold offline launch. SIL Open Font License (OFL.txt
+  # alongside the .ttf files, from https://github.com/google/fonts). Manrope
+  # stays on google_fonts' runtime fetch for now (pre-existing, out of scope
+  # for this change) — see AppText's doc comment in theme.dart.
+  fonts:
+    - family: Barlow Condensed
+      fonts:
+        - asset: assets/fonts/BarlowCondensed/BarlowCondensed-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/BarlowCondensed/BarlowCondensed-ExtraBold.ttf
+          weight: 800

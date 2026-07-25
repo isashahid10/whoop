@@ -130,6 +130,11 @@ class OrbitScore extends StatelessWidget {
             sweepFraction: 0.78,
             confidence: confidence,
             glow: glow,
+            // The entrance pop (animatedCore, below) already skips itself
+            // under reduced motion; ArcGauge's own internal fill-sweep
+            // reveal needs the same treatment, or the arc still visibly
+            // sweeps in even with system animations disabled.
+            animate: !reduceMotion,
             center:
                 center ??
                 Column(

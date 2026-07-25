@@ -9,14 +9,17 @@
 // different KINDS of information and should read that way.
 //  - `hero`/`display`/`metric`/`metricSm` (the big tabular figures) use
 //    Barlow Condensed at heavy weight + slight tracking — confident and
-//    kinetic, athletic-brand register.
+//    kinetic, athletic-brand register. BUNDLED locally (assets/fonts/
+//    BarlowCondensed/*.ttf, declared in pubspec.yaml's `flutter.fonts`) —
+//    this app is local-first/offline by design, and the readiness ring's
+//    numeral is the last thing that should be able to flicker or fall back
+//    on a cold offline launch, which a google_fonts runtime HTTP fetch can
+//    do on first use. SIL Open Font License (OFL.txt ships alongside the
+//    .ttf files).
 //  - Everything else (`h1`/`h2`/`title`/`body`/`bodySoft`/`label`/`caption`/
-//    `overline`) stays Manrope — a calmer, more humane sans for prose,
-//    labels and headings, reading like a person talking rather than a data
-//    readout.
-// Both are Google Fonts already wired through the `google_fonts` package
-// (no new asset pipeline) — adding Barlow Condensed alongside Manrope is a
-// one-line change per style, not a new dependency.
+//    `overline`) stays Manrope via `google_fonts`' runtime fetch (unchanged,
+//    pre-existing — out of scope here; Manrope only ever labels/captions/
+//    prose, never the one number someone opens the app to check).
 //
 // `buildOpenStrapTheme(palette)` builds a full ThemeData from an explicit
 // [Palette] (not the live getters) so the light + dark ThemeData objects are
@@ -36,37 +39,48 @@ class AppText {
   static const _tnum = [FontFeature.tabularFigures()];
 
   // ── Display / numerics — Barlow Condensed: heavy, tight, tabular, kinetic ──
-  static TextStyle get hero => GoogleFonts.barlowCondensed(
+  // Bundled as a local asset (pubspec.yaml `flutter.fonts`), NOT fetched at
+  // runtime via google_fonts — see the file header. `_barlow` is a thin
+  // TextStyle helper standing in for GoogleFonts.barlowCondensed(...); same
+  // call shape, zero network dependency.
+  static TextStyle _barlow({
+    required double fontSize,
+    required FontWeight fontWeight,
+    required double height,
+    required double letterSpacing,
+  }) => TextStyle(
+    fontFamily: 'Barlow Condensed',
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    height: height,
+    letterSpacing: letterSpacing,
+    color: AppColors.ink,
+    fontFeatures: _tnum,
+  );
+
+  static TextStyle get hero => _barlow(
     fontSize: 68,
     fontWeight: FontWeight.w800,
     height: 0.96,
     letterSpacing: -0.4,
-    color: AppColors.ink,
-    fontFeatures: _tnum,
   );
-  static TextStyle get display => GoogleFonts.barlowCondensed(
+  static TextStyle get display => _barlow(
     fontSize: 47,
     fontWeight: FontWeight.w800,
     height: 1.0,
     letterSpacing: -0.2,
-    color: AppColors.ink,
-    fontFeatures: _tnum,
   );
-  static TextStyle get metric => GoogleFonts.barlowCondensed(
+  static TextStyle get metric => _barlow(
     fontSize: 32,
     fontWeight: FontWeight.w800,
     height: 1.0,
     letterSpacing: -0.1,
-    color: AppColors.ink,
-    fontFeatures: _tnum,
   );
-  static TextStyle get metricSm => GoogleFonts.barlowCondensed(
+  static TextStyle get metricSm => _barlow(
     fontSize: 23,
     fontWeight: FontWeight.w700,
     height: 1.0,
     letterSpacing: 0,
-    color: AppColors.ink,
-    fontFeatures: _tnum,
   );
 
   // ── Headings ──

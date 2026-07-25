@@ -403,6 +403,40 @@ void main() {
     expect((records['top_readiness'] as Map)['value'], 91.0);
   });
 
+  test(
+      "getRecords doesn't throw when baselines.resting_hr is malformed — "
+      "falls into the honest 'not trusted' branch instead of "
+      'NoSuchMethodError (the dotted-_sub-path fix)', () async {
+    // resting_hr is a String here, not a Map — the old chained
+    // `?['resting_hr']?['status']` indexing would throw on this shape.
+    await LocalDb.putDayResult(
+      dayId: todayLabel(),
+      algoVersion: 1,
+      payloadJson: jsonEncode({
+        'date': todayLabel(),
+        'scalars': {'rhr': 55.0},
+        'baselines': {'resting_hr': 'not-a-map'},
+        'sleep': {
+          'accounting': {'value': {'tst_sec': 24000}},
+        },
+      }),
+      windowJson: '{}',
+      finalized: false,
+      series: const {
+        'rhr': 55.0,
+        'strain': 12.1,
+        'tst_min': 400.0,
+        'efficiency': 0.88,
+        'steps': 8000.0,
+        'readiness': 80.0,
+      },
+    );
+
+    final r = await repo.getRecords();
+    final records = (r['records'] as Map).cast<String, dynamic>();
+    expect(records.containsKey('lowest_rhr'), isFalse);
+  });
+
   // ── zone_min accumulation shape (#15) ─────────────────────────────────────
 
   test('LiveWorkoutState.zoneMinutes emits the 5-element Z1..Z5 minutes shape',

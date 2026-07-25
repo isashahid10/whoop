@@ -1561,8 +1561,12 @@ class LocalRepositoryImpl extends LocalRepository {
     // inventing a new trust proxy for six unrelated metrics.)
     if (records.containsKey('lowest_rhr')) {
       final latest = await _latestBundle();
-      final rhrStatus =
-          _sub(latest, 'baselines')?['resting_hr']?['status'] as String?;
+      // Dotted-path _sub instead of chained dynamic indexing — a bundle
+      // where baselines.resting_hr isn't a Map (or is missing/a List) would
+      // otherwise throw NoSuchMethodError out of getRecords() instead of
+      // falling into the honest "not trusted" branch. _sub already walks
+      // the whole path defensively, returning null on any mismatch.
+      final rhrStatus = _sub(latest, 'baselines.resting_hr')?['status'] as String?;
       if (rhrStatus != 'trusted') records.remove('lowest_rhr');
     }
 

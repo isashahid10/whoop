@@ -173,62 +173,77 @@ class _SleepCoachCardState extends State<SleepCoachCard> {
           if (pct != null) Tag('$pct% of need', color: accent),
         ]),
         const SizedBox(height: Sp.x3),
-        Disclosure(
-          summary: needLine,
-          expandLabel: 'Bedtime & alarm',
-          collapseLabel: 'Hide',
-          summaryWidget: Row(children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Tonight you need', style: AppText.captionMuted),
-                  const SizedBox(height: 2),
-                  Text(_dur(needSec), style: AppText.h2.copyWith(color: accent)),
-                ],
-              ),
-            ),
-            if (pct != null)
-              RingStat(
-                t: pct / 100.0,
-                color: accent,
-                size: 70,
-                stroke: 9,
-                center: Text('$pct%', style: AppText.label),
-              ),
-          ]),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (bedMin != null)
-                _row(OsIcon.sleep, accent, 'Recommended bedtime', _hhmm(bedMin)),
-              if (wakeMin != null)
-                _row(OsIcon.notifications, AppColors.coral, 'Wake (cycle-aligned)',
-                    _hhmm(wakeMin)),
-              if (wakeMin != null) ...[
-                const SizedBox(height: Sp.x3),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => _setAlarm(wakeMin.toDouble()),
-                    icon: const AppIcon(OsIcon.notifications,
-                        size: 16, color: Colors.white),
-                    label: Text('Set band alarm for ${_hhmm(wakeMin)}'),
+        // Only offer the expand affordance when there's actually detail
+        // behind it — with bedtime/wake both absent (need computed, but the
+        // schedule recommendation isn't yet) a Disclosure here would show
+        // "Bedtime & alarm" and expand into an empty column.
+        if (bedMin == null && wakeMin == null)
+          _needSummary(needSec, pct, accent)
+        else
+          Disclosure(
+            summary: needLine,
+            expandLabel: 'Bedtime & alarm',
+            collapseLabel: 'Hide',
+            summaryWidget: _needSummary(needSec, pct, accent),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (bedMin != null)
+                  _row(OsIcon.sleep, accent, 'Recommended bedtime',
+                      _hhmm(bedMin)),
+                if (wakeMin != null)
+                  _row(OsIcon.notifications, AppColors.coral,
+                      'Wake (cycle-aligned)', _hhmm(wakeMin)),
+                if (wakeMin != null) ...[
+                  const SizedBox(height: Sp.x3),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => _setAlarm(wakeMin.toDouble()),
+                      icon: const AppIcon(OsIcon.notifications,
+                          size: 16, color: Colors.white),
+                      label: Text('Set band alarm for ${_hhmm(wakeMin)}'),
+                    ),
                   ),
-                ),
-                if (_alarmCaption(context.read<AppState>()) != null) ...[
-                  const SizedBox(height: Sp.x2),
-                  Text(_alarmCaption(context.read<AppState>())!,
-                      style: AppText.captionMuted),
+                  ?switch (_alarmCaption(context.read<AppState>())) {
+                    final String c => Padding(
+                        padding: const EdgeInsets.only(top: Sp.x2),
+                        child: Text(c, style: AppText.captionMuted),
+                      ),
+                    _ => null,
+                  },
                 ],
               ],
-            ],
+            ),
           ),
-        ),
       ]),
     );
   }
+
+  /// The always-visible "tonight you need" line + ring — shared by the
+  /// collapsed Disclosure summary and the no-detail-to-expand fallback, so
+  /// both read identically.
+  Widget _needSummary(num needSec, int? pct, Color accent) => Row(children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Tonight you need', style: AppText.captionMuted),
+              const SizedBox(height: 2),
+              Text(_dur(needSec), style: AppText.h2.copyWith(color: accent)),
+            ],
+          ),
+        ),
+        if (pct != null)
+          RingStat(
+            t: pct / 100.0,
+            color: accent,
+            size: 70,
+            stroke: 9,
+            center: Text('$pct%', style: AppText.label),
+          ),
+      ]);
 
   Widget _row(OsIcon icon, Color accent, String label, String value) =>
       Padding(

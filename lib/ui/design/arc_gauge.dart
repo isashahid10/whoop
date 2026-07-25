@@ -195,7 +195,11 @@ class ArcGaugePainter extends CustomPainter {
     final sweep = _maxSweep * t.clamp(0.0, 1.0);
     if (t > 0) {
       final alpha = confidenceRingAlpha(confidence);
-      if (glow) {
+      // Suppressed under the same confidence < 0.4 threshold that dashes the
+      // foreground arc below — a continuous glow would otherwise paint a
+      // solid halo straight through the dashed gaps, undercutting the
+      // "this value is uncertain" signal the dashes exist to give.
+      if (glow && confidence >= 0.4) {
         // A wider, blurred duplicate of the stroke, painted BEFORE the crisp
         // arc so the sharp stroke sits on top of its own soft halo — a
         // static layer, not a pulse, so there's nothing for reduced-motion

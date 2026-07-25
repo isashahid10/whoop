@@ -145,6 +145,19 @@ void main() {
           BriefingPeriod.evening, '2026-07-04', {}, 'evening');
       expect(empty, contains('no metrics available'));
     });
+
+    test(
+        'readinessBand cuts at 40/66 — MUST match the Today ring\'s own '
+        'word-thresholds (score>=66 Primed, >=40 Steady, else Run easy) or '
+        'the briefing and the ring can disagree again', () {
+      // Just below/at each ring boundary.
+      expect(readinessBand(39), 'low'); // ring: "Run easy"
+      expect(readinessBand(40), 'moderate'); // ring: "Steady"
+      expect(readinessBand(65), 'moderate'); // ring: "Steady"
+      expect(readinessBand(66), 'good'); // ring: "Primed"
+      expect(readinessBand(100), 'good');
+      expect(readinessBand(0), 'low');
+    });
   });
 
   group('response parsing', () {

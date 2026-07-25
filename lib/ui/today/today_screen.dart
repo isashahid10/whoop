@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../ai/briefing.dart';
+import '../../ai/briefing_engine.dart' show readinessBand;
 import '../../models/metric.dart';
 import '../../models/payloads.dart';
 import '../../data/day_label.dart';
@@ -263,9 +264,12 @@ class _TodayScreenState extends State<TodayScreen>
   // still call build() once up front, throwaway, just to read its runtime
   // type for the route name (current_screen on a crash/ANR report) — the
   // real navigation still goes through the fresh builder each time.
-  void _push(Widget Function() build) {
+  // Returns the push's Future so a caller that needs to react to the route
+  // popping (see the AI-breakdown callback below) can await it; existing
+  // fire-and-forget call sites are unaffected — they simply don't await it.
+  Future<void> _push(Widget Function() build) {
     final name = build().runtimeType.toString();
-    Navigator.of(context).push(themedRoute((_) => build(), name: name));
+    return Navigator.of(context).push(themedRoute((_) => build(), name: name));
   }
 
   // ── content ──────────────────────────────────────────────────────────────────
@@ -349,8 +353,17 @@ class _TodayScreenState extends State<TodayScreen>
             onOpen: _open,
             hasAiBriefing: hasAiBriefing,
             aiBriefing: hasAiBriefing ? BriefingStore.read(period) : null,
+            // Awaits the pushed route and rebuilds on return — the
+            // breakdown screen can generate a fresh briefing (writing to
+            // BriefingStore) and pop back; without this, `aiBriefing` above
+            // was sampled once at THIS build and the ring-adjacent line
+            // would keep showing the stale placeholder/one-liner until some
+            // unrelated notifyListeners() happened to rebuild Today.
             onOpenAiBreakdown: hasAiBriefing
-                ? () => _push(() => AiBreakdownScreen(period: period))
+                ? () async {
+                    await _push(() => AiBreakdownScreen(period: period));
+                    if (mounted) setState(() {});
+                  }
                 : null,
           );
         }),
@@ -684,13 +697,14 @@ class TodayVitals extends StatelessWidget {
   /// stress | oxygen | records.
   final void Function(String id) onOpen;
 
-  /// True when the combined AI briefing paragraph card is showing above this
-  /// widget (Today's `_content()`) — hides the HRV/RHR bento tiles that would
-  /// otherwise restate exactly what the briefing already says in plain
-  /// language (and what the Heart tab already shows). Not just a raw
-  /// "AI configured" flag — this is the DECISION Today already made about
-  /// whether the paragraph card is actually on screen, so the two stay in
-  /// lockstep by construction rather than by two copies of the same check.
+  /// True when the AI insight is enabled (`coachConfig.hasKey`) — drives two
+  /// things in lockstep: whether `_aiInsightLine` renders at all (the
+  /// collapsed-by-default line + ring, below the ring inside this widget —
+  /// NOT a separate leading card above it) and whether the HRV/RHR bento
+  /// tiles are hidden, since they'd otherwise restate exactly what that
+  /// insight already says in plain language (and what the Heart tab already
+  /// shows). One flag driving both keeps them from silently drifting apart
+  /// via two copies of the same check.
   final bool hasAiBriefing;
 
   /// The cached briefing for the current period, when [hasAiBriefing] — null
@@ -942,13 +956,17 @@ class TodayVitals extends StatelessWidget {
     final accent = score == null
         ? AppColors.accent
         : AppColors.scoreColor(score / 100);
+    // Derived from the SAME band cuts briefing_engine.dart's readinessBand
+    // uses (40/66) — the ring's word and the AI briefing's band must always
+    // agree, or the app can tell the user two different things about the
+    // same score again (exactly the bug this shared source of truth fixes).
     final word = score == null
         ? null
-        : score >= 66
-        ? 'Primed'
-        : score >= 40
-        ? 'Steady'
-        : 'Run easy';
+        : switch (readinessBand(score)) {
+            'good' => 'Primed',
+            'moderate' => 'Steady',
+            _ => 'Run easy',
+          };
 
     // Honest "still learning you" center: nights-to-go over a dashed
     // progress ring; plain em-dash center when there is nothing at all.
@@ -1253,7 +1271,10 @@ class _QuickStatsRow extends StatelessWidget {
       (
         icon: OsIcon.stress,
         label: 'Stress',
-        value: t.stress?.score?.toString(),
+        // Rounded like its siblings (RHR uses .round(), Strain uses
+        // toStringAsFixed(1)) — score is a num, so a raw toString() could
+        // render "34.0" beside "52"/"12.4".
+        value: t.stress?.score?.round().toString(),
         color: DomainAccent.stress,
         route: 'stress',
       ),

@@ -129,8 +129,9 @@ class BodyScreen extends StatelessWidget {
             // Tonal fill, not the old solid full-saturation pill — full
             // brightness/saturation is reserved for the readiness ring's
             // glow alone; every other surface (including this CTA) sits
-            // below that ceiling. Icon/label stay full-brightness white on
-            // top, same as before.
+            // below that ceiling. Icon/label carry the accent hue at full
+            // saturation on top of that tonal fill (was white on a solid
+            // pill before).
             color: AppColors.tonalFill(AppColors.accent),
             borderRadius: BorderRadius.circular(R.pill),
           ),
