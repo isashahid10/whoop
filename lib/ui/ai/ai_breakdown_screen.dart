@@ -104,8 +104,12 @@ class _AiBreakdownScreenState extends State<AiBreakdownScreen> {
     return AppScaffold(
       title: widget.period.title,
       actions: [
+        // Regenerate/rerun action — was OsIcon.activity (a generic pulse
+        // glyph with no "refresh/rerun" meaning); OsIcon.sync (arrows in a
+        // circle) is the icon this app already uses everywhere else for
+        // "run this again"/refresh, so this button now actually reads as one.
         if (_phase == _Phase.ready)
-          RoundIconButton(OsIcon.activity, onTap: _generate),
+          RoundIconButton(OsIcon.sync, onTap: _generate),
       ],
       children: switch (_phase) {
         _Phase.noKey => _noKey(),

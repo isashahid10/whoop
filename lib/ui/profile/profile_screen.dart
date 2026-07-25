@@ -40,11 +40,14 @@ class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   // Community links. Editable here; swap any URL and rebuild — no backend needed.
+  // Real per-brand marks now (were all OsIcon.activity — a generic pulse
+  // glyph standing in for every single one, so GitHub/Discord/Reddit/X all
+  // looked identical in this list).
   static const List<({String label, OsIcon icon, String url})> _socials = [
-    (icon: OsIcon.activity, label: 'GitHub', url: 'https://github.com/OpenStrap'),
-    (icon: OsIcon.activity, label: 'Discord', url: 'https://discord.gg/dUXds5MWkd'),
-    (icon: OsIcon.activity, label: 'Reddit', url: 'https://reddit.com/r/openstrap'),
-    (icon: OsIcon.activity, label: 'X', url: 'https://x.com/OpenStrap'),
+    (icon: OsIcon.github, label: 'GitHub', url: 'https://github.com/OpenStrap'),
+    (icon: OsIcon.discord, label: 'Discord', url: 'https://discord.gg/dUXds5MWkd'),
+    (icon: OsIcon.reddit, label: 'Reddit', url: 'https://reddit.com/r/openstrap'),
+    (icon: OsIcon.xTwitter, label: 'X', url: 'https://x.com/OpenStrap'),
   ];
 
   static Future<void> _openUrl(String url) async {

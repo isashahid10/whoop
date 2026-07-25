@@ -40,7 +40,11 @@ import 'package:fluentui_system_icons/fluentui_system_icons.dart' show FluentIco
 import 'package:hugeicons/hugeicons.dart' show HugeIcons;
 import 'package:iconsax_flutter/iconsax_flutter.dart' show Iconsax;
 import 'package:phosphor_flutter/phosphor_flutter.dart'
-    show PhosphorIconsDuotone, PhosphorIcon, PhosphorDuotoneIconData;
+    show
+        PhosphorIconsDuotone,
+        PhosphorIconsRegular,
+        PhosphorIcon,
+        PhosphorDuotoneIconData;
 import 'package:solar_icons/solar_icons.dart' show SolarIconsBold;
 
 import '../../theme/tokens.dart';
@@ -125,9 +129,17 @@ enum OsIcon {
   logout,
   server,
   shield,
-  // NOTE: `github`/`discord`/`reddit`/`twitter` existed in the old package
-  // enum but had zero live call sites (they were only referenced from the
-  // now-deleted dead `Ic` class in kit.dart) — dropped rather than mapped.
+  // Community/social brand marks (Profile → Community links). These DID
+  // exist as real call sites all along (`profile_screen.dart`'s `_socials`
+  // list) — just passing `OsIcon.activity` as a stand-in for every one of
+  // them, not an actual per-brand glyph. An earlier pass at this migration
+  // checked for direct `OsIcon.github`-style references, found none, and
+  // wrongly concluded the concept itself was unused — missed that the call
+  // sites were already degraded to a generic icon rather than removed.
+  github,
+  discord,
+  reddit,
+  xTwitter,
 }
 
 /// The pack-specific glyph for each [OsIcon]. `IconData` is the common
@@ -231,6 +243,13 @@ const Map<OsIcon, IconData> _glyphs = {
   OsIcon.logout: PhosphorIconsDuotone.signOut,
   OsIcon.server: PhosphorIconsDuotone.database,
   OsIcon.shield: PhosphorIconsDuotone.shield,
+  // Real brand marks, not duotone (a two-tone render would misrepresent a
+  // monochrome brand logo) — Phosphor's flat Regular weight, same "plain
+  // chrome" register Fluent already occupies elsewhere in this map.
+  OsIcon.github: PhosphorIconsRegular.githubLogo,
+  OsIcon.discord: PhosphorIconsRegular.discordLogo,
+  OsIcon.reddit: PhosphorIconsRegular.redditLogo,
+  OsIcon.xTwitter: PhosphorIconsRegular.xLogo,
 };
 
 /// Sensible per-domain default tint, used whenever a call site doesn't pass

@@ -855,21 +855,27 @@ class WorkoutFeedCard extends StatelessWidget {
                 ),
                 const SizedBox(width: Sp.x3),
                 if (!live && !detected)
-                  (noData
+                  // `noData` alone missed the case where avg_hr is real but
+                  // strain itself is null (e.g. an old pruned workout with HR
+                  // but no strain recompute) — that fell through to ArcGauge
+                  // with `value: double.nan`, which the gauge's own contract
+                  // renders as a "muted empty ring" (see arc_gauge.dart) —
+                  // exactly the hollow "training load" circle users were
+                  // seeing for workouts with no real strain figure. Gate the
+                  // text-vs-gauge choice on strain==null directly instead.
+                  ((noData || strain == null)
                       ? Text('No data',
                           style: AppText.captionMuted
                               .copyWith(color: tone.fgMuted))
                       : ArcGauge(
-                          value: strain == null
-                              ? double.nan
-                              : (strain / 21).clamp(0.0, 1.0).toDouble(),
+                          value: (strain / 21).clamp(0.0, 1.0).toDouble(),
                           color: tone.accent,
                           size: 54,
                           stroke: 6,
                           sweepFraction: 0.75,
                           animate: false,
                           center: Text(
-                            strain == null ? '—' : strain.toStringAsFixed(1),
+                            strain.toStringAsFixed(1),
                             style: AppText.metricSm
                                 .copyWith(fontSize: 13, color: tone.fg),
                           ),
