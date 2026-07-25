@@ -27,12 +27,12 @@ class NotificationCenter {
   final FiredKeyStore _fired = const FiredKeyStore();
 
   /// Tail of a chained-Future lock that serialises the check-present-record
-  /// critical section in [emit]. Without it two overlapping emits could both
-  /// pass [FiredKeyStore.hasFired] before either records (→ both present), and
-  /// their read-modify-write of the fired-key list could clobber each other
-  /// (losing a key). More likely now the UI-thread stress alert can race the
-  /// background derive loop. Dart is single-isolate, so this in-memory lock
-  /// fully orders the awaits within emit.
+  /// critical section in [emit]. Without it two overlapping emits of the SAME
+  /// key could both pass [FiredKeyStore.hasFired] before either records, and both
+  /// present. More likely now the UI-thread stress alert can race the background
+  /// derive loop. This lock only orders emits WITHIN this isolate — cross-isolate
+  /// fire-once (the foreground vs WorkManager derivation passes) is enforced by
+  /// FiredKeyStore itself (reload-before-read + independent per-key flags).
   Future<void> _lock = Future<void>.value();
 
   /// Run [action] after any in-flight critical section completes, exclusively.
