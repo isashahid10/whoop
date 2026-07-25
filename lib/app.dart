@@ -221,7 +221,7 @@ class _ShellState extends State<_Shell> {
         WorkoutsScreen(),
       ];
 
-  // Illustrated tab icons (theme-aware art from openstrap_icons).
+  // Tab icons (see lib/ui/kit/os_icons.dart for the pack each one resolves to).
   static const _nav = [
     NavPillItem(OsIcon.today, 'Today'),
     NavPillItem(OsIcon.sleep, 'Sleep'),

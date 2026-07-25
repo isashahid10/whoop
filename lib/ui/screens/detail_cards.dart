@@ -22,6 +22,22 @@ String hm(num? minutes) {
   return '${m ~/ 60}h ${m % 60}m';
 }
 
+/// The plain-language line shown collapsed for the SDNN/LF-HF/HRV-stability/
+/// breathing-variability [Disclosure] — deterministic from real numbers
+/// already computed elsewhere (RMSSD vs its trend baseline), never a
+/// fabricated interpretation. Honest fallback when there's no baseline yet.
+String _hrvDetailSummary(Map hrv) {
+  final rmssd = (hrv['rmssd'] as num?)?.toDouble();
+  final baseline = (hrv['baseline'] as num?)?.toDouble();
+  if (rmssd == null || baseline == null || baseline <= 0) {
+    return 'SDNN, LF/HF, stability and breathing detail below.';
+  }
+  final pct = (rmssd - baseline) / baseline;
+  if (pct.abs() < 0.08) return 'A typical HRV rhythm for you today.';
+  if (pct > 0) return 'HRV rhythm running higher than your normal today.';
+  return 'HRV rhythm running lower than your normal today.';
+}
+
 /// Signed deviation string for relative metrics ("+0.3", "-0.2", "0.0").
 String _signed(num? v) {
   if (v == null) return '—';
@@ -29,13 +45,17 @@ String _signed(num? v) {
   return v > 0 ? '+$s' : s;
 }
 
-/// One Winsorized-EWMA baseline row: "center unit · z value" plus a status tag.
+/// One Winsorized-EWMA baseline row: "center unit · z value", plus a status
+/// tag ONLY when [showBadge] — badge clutter is consolidated to a single
+/// header count (see the "Personal baselines" section below); a row only
+/// carries its own tag when it's an EXCEPTION to that summary (not trusted).
 /// [relative] metrics (skin temp, raw ADC) show only z + status (no absolute).
 Widget _baselineRow(
   Map<String, dynamic> b,
   String label,
   String unit, {
   bool relative = false,
+  bool showBadge = true,
 }) {
   num? n(Object? v) => v is num ? v : null;
   final center = n(b['baseline']);
@@ -54,7 +74,7 @@ Widget _baselineRow(
   return DetailRow(
     label: label,
     value: value,
-    trailing: Tag(status, color: tagColor),
+    trailing: showBadge ? Tag(status, color: tagColor) : null,
   );
 }
 
@@ -252,7 +272,6 @@ class HeartDayContent extends StatelessWidget {
     final noct = (d['nocturnal'] as Map?);
     final illness = (d['illness'] as Map?);
     final resp = (d['resp'] as Map?);
-    final spo2 = (d['spo2'] as Map?);
     final irr24 = (d['irregular_24h'] as Map?);
     final irr24v = (irr24?['value'] is Map)
         ? (irr24!['value'] as Map).cast<String, dynamic>()
@@ -509,62 +528,80 @@ class HeartDayContent extends StatelessWidget {
               metric: 'hrv',
               trendTitle: 'HRV (RMSSD)',
             ),
-            if (hrv['sdnn'] != null)
-              TrendMetricRow(
-                icon: OsIcon.heartRate,
-                accent: DomainAccent.recovery,
-                label: 'SDNN',
-                info: infoFor('sdnn'),
-                value: '${hrv['sdnn']}',
-                unit: 'ms',
-                metric: 'sdnn',
-                trendTitle: 'HRV (SDNN)',
-              ),
-            if (hrv['lf_hf'] != null)
-              TrendMetricRow(
-                icon: OsIcon.heartRate,
-                accent: DomainAccent.recovery,
-                label: 'LF / HF',
-                info: infoFor('lf_hf'),
-                value: '${hrv['lf_hf']}',
-                metric: 'lf_hf',
-                trendTitle: 'LF / HF',
-              ),
-            if (hrv['cv'] != null)
-              TrendMetricRow(
-                icon: OsIcon.activity,
-                accent: DomainAccent.recovery,
-                label: 'HRV stability',
-                info: infoFor('hrv_cv'),
-                value: '${hrv['cv']}',
-                unit: '%',
-                metric: 'hrv_cv',
-                trendTitle: 'HRV stability (CV)',
-              ),
             if (hrv['baseline'] != null)
               MetricRow(
                 icon: OsIcon.activity,
                 accent: AppColors.inkSoft,
-                label: 'Your baseline',
-                info: 'Your typical RMSSD — recovery is measured against this.',
+                label: 'Baseline (trend)',
+                info: 'Your typical RMSSD over recent history (simple '
+                    'trailing average) — recovery is measured against this.',
                 value: '${(_n(hrv['baseline']) ?? 0).round()}',
                 unit: 'ms',
               ),
-            if (brvHas)
-              TrendMetricRow(
-                icon: OsIcon.activity,
-                accent: DomainAccent.recovery,
-                label: 'Breathing variability',
-                info: 'How much your breathing rate varied overnight '
-                    '(within-user trend), tracked against your own history.',
-                value: () {
-                  final cv = _n((((d['brv'] as Map)['value']) as Map)['cv']);
-                  return cv == null ? '—' : cv.toStringAsFixed(2);
-                }(),
-                metric: 'brv',
-                trendTitle: 'Breathing-rate variability',
-              ),
           ]),
+          // Progressive disclosure: SDNN/LF-HF/HRV-stability/breathing
+          // variability are always-visible-but-cryptic acronyms otherwise —
+          // collapsed by default behind a plain-language summary line so the
+          // Heart tab's resting scroll height SHRINKS rather than grows.
+          if (hrv['sdnn'] != null ||
+              hrv['lf_hf'] != null ||
+              hrv['cv'] != null ||
+              brvHas) ...[
+            const SizedBox(height: Sp.x2),
+            Disclosure(
+              summary: _hrvDetailSummary(hrv),
+              child: MetricGroup([
+                if (hrv['sdnn'] != null)
+                  TrendMetricRow(
+                    icon: OsIcon.heartRate,
+                    accent: DomainAccent.recovery,
+                    label: 'SDNN',
+                    info: infoFor('sdnn'),
+                    value: '${hrv['sdnn']}',
+                    unit: 'ms',
+                    metric: 'sdnn',
+                    trendTitle: 'HRV (SDNN)',
+                  ),
+                if (hrv['lf_hf'] != null)
+                  TrendMetricRow(
+                    icon: OsIcon.heartRate,
+                    accent: DomainAccent.recovery,
+                    label: 'LF / HF',
+                    info: infoFor('lf_hf'),
+                    value: '${hrv['lf_hf']}',
+                    metric: 'lf_hf',
+                    trendTitle: 'LF / HF',
+                  ),
+                if (hrv['cv'] != null)
+                  TrendMetricRow(
+                    icon: OsIcon.activity,
+                    accent: DomainAccent.recovery,
+                    label: 'HRV stability',
+                    info: infoFor('hrv_cv'),
+                    value: '${hrv['cv']}',
+                    unit: '%',
+                    metric: 'hrv_cv',
+                    trendTitle: 'HRV stability (CV)',
+                  ),
+                if (brvHas)
+                  TrendMetricRow(
+                    icon: OsIcon.activity,
+                    accent: DomainAccent.recovery,
+                    label: 'Breathing variability',
+                    info: 'How much your breathing rate varied overnight '
+                        '(within-user trend), tracked against your own '
+                        'history.',
+                    value: () {
+                      final cv =
+                          _n((((d['brv'] as Map)['value']) as Map)['cv']);
+                      return cv == null ? '—' : cv.toStringAsFixed(2);
+                    }(),
+                    metric: 'brv',
+                    trendTitle: 'Breathing-rate variability',
+                  ),
+              ]),
+            ),
+          ],
         ],
 
         // ── 24/7 irregular-rhythm SCREEN (not a diagnosis) ───────────────────
@@ -621,24 +658,36 @@ class HeartDayContent extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: Sp.x3),
-                Row(
-                  children: [
-                    Expanded(
-                      child: BigStat(
-                        value: ratio?.toStringAsFixed(2),
-                        label: 'SD1/SD2',
-                        size: BigStatSize.md,
+                // Progressive disclosure: the StatusChip above already gives
+                // the plain-language verdict — the raw SD1/SD2 ratio + pNN
+                // acronyms are opt-in detail, collapsed by default.
+                Disclosure(
+                  summary: flag
+                      ? 'Beat-timing pattern irregular — see the numbers.'
+                      : 'Beat-timing pattern normal — see the numbers.',
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: BigStat(
+                          value: ratio?.toStringAsFixed(2),
+                          // "(ratio)" distinguishes this unitless SD1/SD2
+                          // ratio from the raw-ms Poincaré SD1/SD2 axes shown
+                          // lower on this screen's nocturnal irregular-beat
+                          // card.
+                          label: 'SD1/SD2 (ratio)',
+                          size: BigStatSize.md,
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: BigStat(
-                        value: pnn?.toStringAsFixed(0),
-                        unit: '%',
-                        label: 'pNN',
-                        size: BigStatSize.md,
+                      Expanded(
+                        child: BigStat(
+                          value: pnn?.toStringAsFixed(0),
+                          unit: '%',
+                          label: 'pNN',
+                          size: BigStatSize.md,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -649,72 +698,93 @@ class HeartDayContent extends StatelessWidget {
         if (baselines != null && baselines.isNotEmpty) ...[
           const SizedBox(height: Sp.x6),
           const SectionHeader('Personal baselines'),
-          SurfaceCard(
-            padding: const EdgeInsets.symmetric(
-              horizontal: Sp.x4,
-              vertical: Sp.x2,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TileHeader(
-                  'You vs your normal',
-                  trailing: InfoDot(
-                    title: 'Personal baselines',
-                    body:
-                        'Robust, recency-weighted baselines (Winsorized EWMA). '
-                        '"z" is today vs your personal range; the tag shows how '
-                        'settled each baseline is (calibrating → trusted).',
-                  ),
-                ),
-                for (final e in const [
-                  ['resting_hr', 'Resting HR', 'bpm', false],
-                  ['hrv', 'HRV (RMSSD)', 'ms', false],
-                  ['resp', 'Respiratory rate', 'rpm', false],
-                  ['skin_temp', 'Skin temp', '', true], // relative-only (ADC)
-                ])
-                  if (baselines[e[0] as String] is Map)
-                    _baselineRow(
-                      (baselines[e[0] as String] as Map)
-                          .cast<String, dynamic>(),
-                      e[1] as String,
-                      e[2] as String,
-                      relative: e[3] as bool,
+          Builder(builder: (context) {
+            const rows = [
+              ['resting_hr', 'Resting HR', 'bpm', false],
+              // "(EWMA)" disambiguates this from the "Baseline (trend)" row
+              // above (simple trailing mean) — same day, two legitimate
+              // different numbers, now two different labels.
+              ['hrv', 'HRV (RMSSD) · EWMA', 'ms', false],
+              ['resp', 'Respiratory rate', 'rpm', false],
+              ['skin_temp', 'Skin temp', '', true], // relative-only (ADC)
+            ];
+            // Consolidated badge count: one header note instead of one pill
+            // per row (was 4 TRUSTED/PROVISIONAL pills stacked vertically) —
+            // a row only gets its OWN tag when it's an exception (not yet
+            // trusted); the honesty is preserved, just summarized.
+            var building = 0;
+            for (final e in rows) {
+              final b = baselines[e[0] as String];
+              if (b is Map && (b['status'] as String?) != 'trusted') {
+                building++;
+              }
+            }
+            return SurfaceCard(
+              padding: const EdgeInsets.symmetric(
+                horizontal: Sp.x4,
+                vertical: Sp.x2,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TileHeader(
+                    'You vs your normal',
+                    trailing: InfoDot(
+                      title: 'Personal baselines',
+                      body:
+                          'Robust, recency-weighted baselines (Winsorized '
+                          'EWMA). "z" is today vs your personal range; a '
+                          'baseline needs enough recent history before it\'s '
+                          'trusted.',
                     ),
-              ],
-            ),
-          ),
+                  ),
+                  if (building > 0) ...[
+                    const SizedBox(height: Sp.x1),
+                    Text(
+                      '$building metric${building == 1 ? '' : 's'} still '
+                      'building baseline',
+                      style: AppText.captionMuted,
+                    ),
+                  ],
+                  const SizedBox(height: Sp.x1),
+                  for (final e in rows)
+                    if (baselines[e[0] as String] is Map)
+                      _baselineRow(
+                        (baselines[e[0] as String] as Map)
+                            .cast<String, dynamic>(),
+                        e[1] as String,
+                        e[2] as String,
+                        relative: e[3] as bool,
+                        showBadge: ((baselines[e[0] as String] as Map)
+                                    ['status'] as String?) !=
+                                'trusted',
+                      ),
+                ],
+              ),
+            );
+          }),
         ],
 
-        // ── Respiratory + skin temperature ───────────────────────────────────
-        if (resp != null || spo2 != null) ...[
+        // ── Respiratory ───────────────────────────────────────────────────────
+        // "Oxygen dips" (SpO2/ODI) moved to the Sleep tab's nocturnal grouping
+        // — it's an overnight signal, not a general daytime heart metric (see
+        // the Sleep tab's "Nocturnal heart" section).
+        if (resp != null) ...[
           const SizedBox(height: Sp.x6),
           const SectionHeader('Respiratory'),
           MetricGroup([
-            if (resp != null)
-              MetricRow(
-                icon: OsIcon.activity,
-                accent: DomainAccent.oxygen,
-                label: 'Respiratory rate',
-                info: infoFor('resp'),
-                value: '${resp['value']}',
-                unit: 'brpm',
-              ),
-            if (spo2 != null)
-              TrendMetricRow(
-                icon: OsIcon.hydration,
-                accent: DomainAccent.oxygen,
-                label: 'Oxygen dips',
-                info: infoFor('spo2'),
-                value: '${spo2['odi_per_hour'] ?? spo2['value']}',
-                unit: '/h',
-                metric: 'spo2',
-                trendTitle: 'Overnight oxygen dips',
-              ),
+            MetricRow(
+              icon: OsIcon.activity,
+              accent: DomainAccent.oxygen,
+              label: 'Respiratory rate',
+              info: infoFor('resp'),
+              value: '${resp['value']}',
+              unit: 'brpm',
+            ),
           ]),
         ],
 
-        if (spo2 != null || d['skin_temp'] is Map) ...[
+        if (d['skin_temp'] is Map) ...[
           const SizedBox(height: Sp.x6),
           const SectionHeader('Skin temperature'),
           MetricGroup([
@@ -1775,12 +1845,25 @@ class _IrregularCard extends StatelessWidget {
           ),
           if (irr!['sd1'] != null && irr!['sd2'] != null) ...[
             const SizedBox(height: Sp.x2),
-            DetailRow(
-              label: 'Poincaré SD1 / SD2',
-              value: '${irr!['sd1']} / ${irr!['sd2']} ms',
+            // Progressive disclosure — the StatusChip above already gives the
+            // plain-language verdict; the raw Poincaré/pNN acronyms are
+            // opt-in, collapsed by default.
+            Disclosure(
+              summary: flag
+                  ? 'Overnight beat-timing irregular — see the numbers.'
+                  : 'Overnight beat-timing normal — see the numbers.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DetailRow(
+                    label: 'Poincaré SD1 / SD2',
+                    value: '${irr!['sd1']} / ${irr!['sd2']} ms',
+                  ),
+                  if (irr!['pnn50'] != null)
+                    DetailRow(label: 'pNN50', value: '${irr!['pnn50']}%'),
+                ],
+              ),
             ),
-            if (irr!['pnn50'] != null)
-              DetailRow(label: 'pNN50', value: '${irr!['pnn50']}%'),
           ],
         ],
       ),

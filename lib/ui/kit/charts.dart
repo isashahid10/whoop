@@ -1268,7 +1268,9 @@ class StatTile extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.12),
+                        // Tonal fill so the full-saturation icon on top
+                        // doesn't sit on an equally-bright wash of itself.
+                        color: AppColors.tonalFill(accent),
                         borderRadius: BorderRadius.circular(R.chip),
                       ),
                       child: AppIcon(icon, size: 16, color: accent),

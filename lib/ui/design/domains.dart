@@ -5,7 +5,11 @@
 // versions that read on char without turning neon.
 //
 // Use `DomainAccent.sleep` etc. wherever a card/visual belongs to a domain;
-// keep `AppColors.accent` (ember coral) for brand moments + the heart domain.
+// keep `AppColors.accent` (brand cyan/teal) for brand moments. `heart` is a
+// deliberate, contained exception: it keeps the ember coral as ITS domain
+// identity (distinct from the app-wide brand accent, which moved off orange
+// so genuinely low/urgent states stay legible) — every other domain below is
+// a non-alert hue so nothing outside Heart/status colours reads as "urgent".
 
 import 'package:flutter/widgets.dart';
 
@@ -33,9 +37,12 @@ class DomainAccent {
   static Color get steps =>
       AppColors.isDark ? const Color(0xFF3ECFC0) : const Color(0xFF0E9E92);
 
-  /// Energy / calories — the refs' confident orange card.
+  /// Energy / calories — a confident chartreuse-gold, deliberately NOT
+  /// orange: calories is a routine daily-glance number, not an alert, and the
+  /// old orange card sat in the same "something needs attention" family as
+  /// the brand accent, the AI card and the strain domain all at once.
   static Color get calories =>
-      AppColors.isDark ? const Color(0xFFFF9D57) : const Color(0xFFF97316);
+      AppColors.isDark ? const Color(0xFFB4D94A) : const Color(0xFF7A9D1E);
 
   /// Respiration / oxygen — soft slate blue.
   static Color get oxygen => AppColors.loadDetraining;

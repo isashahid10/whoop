@@ -47,13 +47,13 @@ void main() {
         Column(children: [
           const WelcomeHero(),
           WelcomeOptionCard(
-            icon: Ic.cloud,
+            icon: OsIcon.sync,
             title: 'I used OpenStrap before',
             body: 'Sign in and pull your history onto this phone.',
             onTap: () => tapped++,
           ),
           WelcomeOptionCard(
-            icon: Ic.profile,
+            icon: OsIcon.profile,
             title: 'I’m new',
             body: 'A few basics and you’re in.',
             accent: true,

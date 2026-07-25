@@ -560,7 +560,7 @@ class _PulseRingsState extends State<_PulseRings>
                   decoration: BoxDecoration(
                     color: AppColors.accent,
                     shape: BoxShape.circle,
-                    boxShadow: AppColors.isDark ? const [] : Shadows.coral,
+                    boxShadow: AppColors.isDark ? const [] : Shadows.brand,
                   ),
                   child:
                       const AppIcon(OsIcon.bluetooth, size: 40, color: Colors.white),

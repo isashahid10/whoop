@@ -21,7 +21,7 @@ import 'package:openstrap_edge/ui/design/radial_heatmap.dart';
 import 'package:openstrap_edge/ui/design/recap_card.dart';
 import 'package:openstrap_edge/ui/design/ring_week.dart';
 import 'package:openstrap_edge/ui/design/state_chips.dart';
-import 'package:openstrap_edge/ui/kit/kit.dart' show Ic;
+import 'package:openstrap_edge/ui/kit/kit.dart' show OsIcon;
 import 'package:openstrap_edge/ui/today/today_screen.dart' show TodayVitals;
 
 Widget _host(Widget child, {Palette palette = kLightPalette}) {
@@ -77,12 +77,12 @@ void main() {
             onTap: () => core++,
             satellites: [
               OrbitSatellite(
-                icon: Ic.moon,
+                icon: OsIcon.sleep,
                 label: 'Sleep',
                 onTap: () => opened.add('sleep'),
               ),
               OrbitSatellite(
-                icon: Ic.heart,
+                icon: OsIcon.heart,
                 label: 'Heart',
                 onTap: () => opened.add('heart'),
               ),
@@ -448,17 +448,20 @@ void main() {
             ),
           );
           await t.pump(const Duration(milliseconds: 1400));
-          // Hero + satellites.
+          // Hero (no floating satellites anymore) + the demoted quick-stats
+          // row underneath it.
           expect(find.text('READINESS'), findsOneWidget);
           expect(find.text('Primed'), findsOneWidget);
-          expect(find.text('Sleep'), findsOneWidget); // satellite route
-          // Bento numbers. RHR also appears on its orbit satellite (Heart), so
-          // it matches >1; HRV is bento-only. Strain/Sleep have no bento tile
-          // anymore — each shows exactly once, on its orbit satellite.
+          expect(find.text('Sleep'), findsOneWidget); // quick-stats row route
+          // Bento numbers. RHR also appears in the quick-stats row (Heart),
+          // so it matches >1; HRV is bento-only (shown as an AI-briefing
+          // fallback here since hasAiBriefing defaults false). Strain/Sleep
+          // have no bento tile — each shows exactly once, in the quick-stats
+          // row.
           expect(find.text('48'), findsOneWidget); // HRV — bento only
-          expect(find.text('52'), findsWidgets); // RHR — tile + Heart satellite
-          expect(find.text('12.4'), findsOneWidget); // strain — satellite only
-          expect(find.text('7h 42m'), findsOneWidget); // sleep — satellite only
+          expect(find.text('52'), findsWidgets); // RHR — tile + quick-stats row
+          expect(find.text('12.4'), findsOneWidget); // strain — quick-stats row only
+          expect(find.text('7h 42m'), findsOneWidget); // sleep — quick-stats row only
           expect(find.text('8412'), findsOneWidget);
           expect(find.text('640'), findsOneWidget);
           // Week rings card present (steps spark provided).
@@ -468,7 +471,7 @@ void main() {
           expect(find.textContaining('stored to'), findsNothing);
           expect(t.takeException(), isNull, reason: 'palette $p');
 
-          // Satellite routes.
+          // Quick-stats row routes.
           await t.tap(find.text('Heart'));
           await t.pump(const Duration(milliseconds: 250));
           expect(opened, contains('heart'));

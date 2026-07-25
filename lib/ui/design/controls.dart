@@ -173,7 +173,7 @@ class PrBadge extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.accent,
             borderRadius: BorderRadius.circular(R.pill),
-            boxShadow: AppColors.isDark ? const [] : Shadows.coral,
+            boxShadow: AppColors.isDark ? const [] : Shadows.brand,
           ),
           child: Text(
             text.toUpperCase(),

@@ -50,22 +50,18 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    // Dummy value in the format FirebaseInstallations validates natively
-    // (39 chars, 'A' prefix) — a malformed key is an uncatchable NSException.
-    apiKey: 'AIzaSyDummyDummyDummyDummyDummyDummyDum',
-    appId: '1:000000000000:android:0000000000000000000000',
-    messagingSenderId: '000000000000',
-    projectId: 'dummy-project',
-    storageBucket: 'dummy-project.appspot.com',
+    apiKey: 'AIzaSyAGX9snh746gJwQRIbvPlx5-XNeYgWSOmw',
+    appId: '1:500936306874:android:89a22a1f2d36fed48b9283',
+    messagingSenderId: '500936306874',
+    projectId: 'portofliowebsite-387909',
+    storageBucket: 'portofliowebsite-387909.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
-    // See android note: format-valid dummy, never a real key.
-    apiKey: 'AIzaSyDummyDummyDummyDummyDummyDummyDum',
-    appId: '1:000000000000:ios:0000000000000000000000',
-    messagingSenderId: '000000000000',
-    projectId: 'dummy-project',
-    storageBucket: 'dummy-project.appspot.com',
-    iosBundleId: 'wtf.openstrap.dummy',
+    apiKey: 'AIzaSyDQ5VouWAUuYpDZyn01_h1TsVvcMoBVcpY',
+    appId: '1:500936306874:ios:8269170d67e7ab968b9283',
+    messagingSenderId: '500936306874',
+    projectId: 'portofliowebsite-387909',
+    storageBucket: 'portofliowebsite-387909.firebasestorage.app',
+    iosBundleId: 'wtf.openstrap',
   );
 }

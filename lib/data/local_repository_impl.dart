@@ -133,6 +133,11 @@ class LocalRepositoryImpl extends LocalRepository {
     return v is num ? v : null;
   }
 
+  /// Round a display value to 2dp without upgrading an int to a double —
+  /// used where a raw analytics metric (e.g. round6()'d lf_hf) would
+  /// otherwise render with far more precision than its sibling scalars.
+  num? _round2(num? v) => v == null ? null : num.parse(v.toStringAsFixed(2));
+
   /// A bare metric from a scalar (used where a screen reads a number directly).
   /// An optional [note] (e.g. a `need_baseline:…` string) is carried through so
   /// the UI can render "Need N more nights" for baseline-gated abstentions.
@@ -482,7 +487,12 @@ class LocalRepositoryImpl extends LocalRepository {
         'baseline': (await _seriesMean('rmssd'))?.round(),
         // HRV stability (CV %) + LF/HF — both now computed.
         'cv': _sub(b, 'clinical')?['cv'],
-        'lf_hf': _sub(b, 'clinical.hrv_freq.value')?['lf_hf'],
+        // Rounded to 2dp for display — the raw clinical metric is round6()'d
+        // in analytics, which read as a raw-looking "0.354402" next to the
+        // whole-number RMSSD/SDNN beside it. Only consumer is this HRV group
+        // (detail_cards.dart HeartDayContent), so rounding at the source here
+        // is safe.
+        'lf_hf': _round2(_sub(b, 'clinical.hrv_freq.value')?['lf_hf'] as num?),
       },
       // Poincaré irregular-beat screen (sd1/sd2/flag/confidence).
       'irregular': _sub(b, 'clinical')?['irregular'],
@@ -499,7 +509,9 @@ class LocalRepositoryImpl extends LocalRepository {
       'daytime_hrv': b['daytime_hrv'],
       'nocturnal': _nocturnal(b, baselineRhr: await _seriesMean('rhr')),
       'resp': _respObj(b),
-      'spo2': b['spo2'],
+      // 'spo2' (oxygen dips) moved to _daySleep()/getDaySleep — it's an
+      // overnight signal, grouped with the Sleep tab's nocturnal numbers now,
+      // not shown on the Heart tab anymore.
       // Illness watch (CUSUM/NightSignal) — carries `note` (need_baseline) while
       // baseline is short, so the card can say "Need N more nights".
       'illness': cd?['illness'],
@@ -582,6 +594,11 @@ class LocalRepositoryImpl extends LocalRepository {
       'hypnogram': _hypnoPoints(b), // [{t, stage}] points the screen merges
       'nocturnal': _nocturnal(b, baselineRhr: await _seriesMean('rhr')),
       'resp': _respObj(b),
+      // Oxygen dips (SpO2/ODI) — moved here from getDayHeart's payload: an
+      // overnight signal belongs with the rest of this night's numbers, not
+      // a general daytime heart metric. Pure re-exposure of the same bundle
+      // field getDayHeart already read; no new computation.
+      'spo2': b['spo2'],
       // Sleep need: default 8 h (480 min) until a personal sleep-need baseline
       // exists. Debt = need − actual TST (≥0). Never null so the gauge always reads.
       'need_min': 480,
@@ -1532,6 +1549,26 @@ class LocalRepositoryImpl extends LocalRepository {
         mapValue: (v) => v > 1.5 ? v / 100.0 : v);
     await extreme('most_steps', 'steps');
     await extreme('top_readiness', 'readiness');
+
+    // Honest gamification: don't celebrate a "personal best" built on a
+    // baseline the app itself still calls "calibrating"/"provisional"
+    // elsewhere (the Heart tab's Personal-baselines card) — resting_hr is
+    // the one record key with a real Winsorized-EWMA trust status to check.
+    // (The other record keys — strain/sleep/efficiency/steps/readiness/
+    // workout — have no equivalent trust concept in this codebase to gate
+    // on; celebrating an all-time extreme from a short history is a smaller,
+    // pre-existing honesty gap for those, left as-is here rather than
+    // inventing a new trust proxy for six unrelated metrics.)
+    if (records.containsKey('lowest_rhr')) {
+      final latest = await _latestBundle();
+      // Dotted-path _sub instead of chained dynamic indexing — a bundle
+      // where baselines.resting_hr isn't a Map (or is missing/a List) would
+      // otherwise throw NoSuchMethodError out of getRecords() instead of
+      // falling into the honest "not trusted" branch. _sub already walks
+      // the whole path defensively, returning null on any mismatch.
+      final rhrStatus = _sub(latest, 'baselines.resting_hr')?['status'] as String?;
+      if (rhrStatus != 'trusted') records.remove('lowest_rhr');
+    }
 
     // Sessions: top workout strain (with its type) + total tracked count.
     var workoutsTracked = 0;

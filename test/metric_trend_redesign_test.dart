@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:openstrap_edge/theme/theme.dart';
 import 'package:openstrap_edge/theme/tokens.dart';
-import 'package:openstrap_edge/ui/kit/kit.dart' show Ic;
+import 'package:openstrap_edge/ui/kit/kit.dart' show OsIcon;
 import 'package:openstrap_edge/ui/screens/detail_cards.dart'
     show HeartDayContent, OxygenNightContent, WearDayContent;
 import 'package:openstrap_edge/ui/screens/metric_screen.dart'
@@ -83,7 +83,9 @@ Map<String, dynamic> _sampleHeartDay() => {
   },
   'hrr': 28,
   'resp': {'value': 14.2},
-  'spo2': {'odi_per_hour': 1.2},
+  // No 'spo2' here deliberately — Oxygen dips moved off the Heart tab onto
+  // the Sleep tab's nocturnal grouping; getDayHeart no longer even supplies
+  // this key (see the "no Oxygen dips" test below).
   'skin_temp': {'value': 0.2},
   'baselines': {
     'resting_hr': {'baseline': 54, 'z': -0.6, 'status': 'trusted'},
@@ -180,7 +182,7 @@ void main() {
             TrendBoard(
               data: _sampleTrend(),
               title: 'Heart',
-              icon: Ic.heart,
+              icon: OsIcon.heart,
               metric: 'resting_hr',
               scale: 'week',
               accent: AppColors.coral,
@@ -220,7 +222,7 @@ void main() {
           TrendBoard(
             data: data,
             title: 'Heart',
-            icon: Ic.heart,
+            icon: OsIcon.heart,
             metric: 'resting_hr',
             scale: 'week',
             accent: AppColors.coral,
@@ -264,6 +266,42 @@ void main() {
         expect(find.text('Normal'), findsWidgets); // 24/7 rhythm screen
         expect(t.takeException(), isNull);
       }
+    });
+
+    testWidgets(
+        'no longer shows Oxygen dips — moved to the Sleep tab\'s nocturnal '
+        'grouping (it\'s an overnight signal, not a daytime heart metric)', (
+      t,
+    ) async {
+      _phone(t, height: 4200);
+      final d = _sampleHeartDay();
+      // Even if a caller still passes a legacy 'spo2' key (getDayHeart no
+      // longer supplies one), the Heart screen must not render it.
+      d['spo2'] = {'odi_per_hour': 1.2};
+      await t.pumpWidget(_host(HeartDayContent(data: d, date: _today())));
+      await t.pump(const Duration(milliseconds: 1200));
+      expect(find.text('Oxygen dips'), findsNothing);
+      expect(t.takeException(), isNull);
+    });
+
+    testWidgets(
+        'Personal baselines: one consolidated header count replaces one pill '
+        'per row — only the non-trusted exception keeps its own tag', (
+      t,
+    ) async {
+      _phone(t, height: 4200);
+      await t.pumpWidget(
+        _host(HeartDayContent(data: _sampleHeartDay(), date: _today())),
+      );
+      await t.pump(const Duration(milliseconds: 1200));
+      // Sample data: resting_hr=trusted, hrv=provisional → exactly 1 building.
+      expect(find.text('1 metric still building baseline'), findsOneWidget);
+      // The exception (hrv, provisional) still carries its own tag (Tag
+      // uppercases its text)…
+      expect(find.text('PROVISIONAL'), findsOneWidget);
+      // …but the trusted resting_hr row does NOT get a redundant tag anymore.
+      expect(find.text('TRUSTED'), findsNothing);
+      expect(t.takeException(), isNull);
     });
 
     testWidgets('no-baseline illness watch shows the honest building state', (

@@ -1,8 +1,8 @@
-// Wiring tests for the openstrap_icons illustrated set: the nav pill renders
-// the custom tab icons (every tab full opacity/size — never tinted, dimmed,
-// or shrunk; selection is the lozenge + label), and a domain content widget
-// (Steps) shows its OsIcon in the tile header. Explicit pump durations —
-// kit widgets animate/repeat, never blind pumpAndSettle.
+// Wiring tests for the OsIcon glyph set (lib/ui/kit/os_icons.dart): the nav
+// pill renders the custom tab icons (every tab full opacity/size — never
+// dimmed or shrunk; selection is the lozenge + label), and a domain content
+// widget (Steps) shows its OsIcon in the tile header. Explicit pump
+// durations — kit widgets animate/repeat, never blind pumpAndSettle.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,7 +31,7 @@ const _navItems = [
 ];
 
 void main() {
-  group('FloatingNavPill · illustrated tabs', () {
+  group('FloatingNavPill · tab icons', () {
     testWidgets('renders every tab as its custom OsIcon (both palettes)', (
       t,
     ) async {
@@ -47,7 +47,7 @@ void main() {
               (w) => w is OsAppIcon && w.icon == item.icon,
             ),
             findsOneWidget,
-            reason: 'tab ${item.label} should render its illustrated icon',
+            reason: 'tab ${item.label} should render its icon',
           );
         }
       }
@@ -60,9 +60,8 @@ void main() {
       ));
       await t.pump(const Duration(milliseconds: 600));
       expect(find.byType(OsAppIcon), findsNWidgets(_navItems.length));
-      // The illustrated art is barely legible when faded/shrunk, so the pill
-      // wraps no icon in AnimatedOpacity/AnimatedScale — selection is the
-      // lozenge background + label only.
+      // Selection is carried by the lozenge background + label only — the
+      // pill wraps no icon in AnimatedOpacity/AnimatedScale.
       for (final item in _navItems) {
         final icon = find.byWidgetPredicate(
           (w) => w is OsAppIcon && w.icon == item.icon,
@@ -86,7 +85,7 @@ void main() {
     });
   });
 
-  group('domain screen · illustrated header', () {
+  group('domain screen · icon header', () {
     testWidgets('Steps content shows the OsIcon.steps tile icon', (t) async {
       await t.pumpWidget(_host(
         const StepsDayContent(steps: 4200, goal: 10000),
@@ -172,13 +171,13 @@ void main() {
         ),
       ));
       await t.pump(const Duration(milliseconds: 1200));
-      // Section header keeps its illustrated art.
+      // Section header keeps its icon.
       expect(
         find.byWidgetPredicate(
           (w) => w is OsAppIcon && w.icon == OsIcon.sleepHypnogram,
         ),
         findsOneWidget,
-        reason: 'the hypnogram section header should render its art',
+        reason: 'the hypnogram section header should render its icon',
       );
       // MetricRow trend rows (Deep/Light/etc.) are deliberately icon-free —
       // a whole list of "heading left, score right" rows each with their own

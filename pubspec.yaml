@@ -41,14 +41,6 @@ dependencies:
       # but the previous pin never actually contained; it ships at v46).
       ref: e3705bf6fc591560e0d6f9d68343a3b861ef3765
 
-  # Illustrated icon set — theme-aware full-colour WebP icons (nav tabs, domain
-  # heroes, metric tiles). Path dep for local dev; a release build would need
-  # this published to pub.dev or pinned to a git ref instead.
-  openstrap_icons:
-    git:
-      url: https://github.com/OpenStrap/icons.git
-      ref: main
-
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
 
@@ -85,10 +77,28 @@ dependencies:
   latlong2: ^0.9.1
   geolocator: ^13.0.2
 
-  # Modern type (ONE family — Manrope, tabular figures for all metrics) and a
-  # professional icon set.
+  # Modern type (ONE family — Manrope, tabular figures for all metrics).
   google_fonts: ^6.2.1
+
+  # Icon packs backing lib/ui/kit/os_icons.dart (see that file's header for the
+  # full per-concept rationale). Mixed deliberately — each pack is used only
+  # for the concepts it's genuinely best at, normalized to one consistent
+  # size/weight by OsAppIcon:
+  #   - phosphor_flutter   — Duotone weight; the primary "hero" biometric/
+  #     domain glyphs (closest replacement for the old illustrations).
+  #   - solar_icons        — Bold weight; literal sport + sleep-stage glyphs.
+  #   - iconsax_flutter    — battery/bluetooth variants + the heartbeat-zigzag
+  #     "activity" glyph (cardio/resting-HR family).
+  #   - fluentui_system_icons — Regular weight; plain monochrome UI chrome
+  #     (arrows, check, settings, calendar…) — reads crisper flat than duotone
+  #     at small utility sizes.
+  #   - hugeicons          — used for exactly the 2 concepts it wins outright
+  #     (a literal ECG waveform + a literal blood-drop); nothing else uses it.
   hugeicons: ^0.0.11
+  solar_icons: ^0.1.0
+  iconsax_flutter: ^1.0.1
+  fluentui_system_icons: ^1.1.273
+  phosphor_flutter: ^2.1.0
 
   # Declarative motion language for the design system (entrance stagger, press
   # pops, count-ups, shimmer) — one consistent vocabulary instead of hand-rolled
@@ -185,3 +195,17 @@ flutter:
   assets:
     - assets/images/
     - assets/splash/
+  # Barlow Condensed is bundled here (not left to google_fonts' runtime
+  # HTTP fetch) — this app is local-first/offline by design, and the hero
+  # readiness numerals are the LAST thing that should be able to flicker or
+  # fall back on a cold offline launch. SIL Open Font License (OFL.txt
+  # alongside the .ttf files, from https://github.com/google/fonts). Manrope
+  # stays on google_fonts' runtime fetch for now (pre-existing, out of scope
+  # for this change) — see AppText's doc comment in theme.dart.
+  fonts:
+    - family: Barlow Condensed
+      fonts:
+        - asset: assets/fonts/BarlowCondensed/BarlowCondensed-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/BarlowCondensed/BarlowCondensed-ExtraBold.ttf
+          weight: 800

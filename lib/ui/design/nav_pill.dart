@@ -134,12 +134,9 @@ class FloatingNavPill extends StatelessWidget {
 /// feedback + haptic + semantics come free. Kept public for custom shells;
 /// the app shell itself no longer renders a center action.
 class NavPillAction extends StatelessWidget {
-  /// Material/HugeIcons glyph, rendered on the ember circle. Ignored when
-  /// [osIcon] is set.
+  /// Glyph shown on the ember circle (e.g. [OsIcon.add]).
   final OsIcon? icon;
 
-  /// Illustrated action (e.g. [OsIcon.add]). The art is itself a soft-3D
-  /// button coin, so it renders as-is — no ember circle behind it.
   final VoidCallback onTap;
   final String semanticLabel;
 
@@ -159,8 +156,20 @@ class NavPillAction extends StatelessWidget {
         // Pressable fires the selection haptic itself.
         pressedScale: 0.9,
         onTap: onTap,
-        // The illustrated coin IS the button — same 46px footprint.
-        child: SizedBox(width: 46, height: 46, child: OsAppIcon(icon!, size: 46)),
+        // The old illustrated art was itself a rendered "soft-3D button
+        // coin" and needed no circle behind it. Plain vector glyphs do —
+        // draw the ember circle explicitly, same 46px footprint as before.
+        child: Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: AppColors.accent,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: OsAppIcon(icon!, size: 22, color: Colors.white),
+          ),
+        ),
       ),
     );
   }

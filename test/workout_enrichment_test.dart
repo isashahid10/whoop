@@ -306,6 +306,37 @@ void main() {
       },
     );
 
+    // getRecords gates the resting-HR PR on the resting_hr baseline actually
+    // being "trusted" (never celebrate a personal best built on a baseline
+    // the app itself still calls calibrating) — upsert today's bundle with a
+    // trusted status so this test exercises the normal (celebrated) path.
+    // See the "provisional resting_hr baseline hides the PR" test below for
+    // the honesty-gate itself.
+    await LocalDb.putDayResult(
+      dayId: todayLabel(),
+      algoVersion: 1,
+      payloadJson: jsonEncode({
+        'date': todayLabel(),
+        'scalars': {'rhr': 55.0},
+        'baselines': {
+          'resting_hr': {'status': 'trusted', 'baseline': 55.0, 'z': 0.0},
+        },
+        'sleep': {
+          'accounting': {'value': {'tst_sec': 24000}},
+        },
+      }),
+      windowJson: '{}',
+      finalized: false,
+      series: const {
+        'rhr': 55.0,
+        'strain': 12.1,
+        'tst_min': 400.0,
+        'efficiency': 0.88,
+        'steps': 8000.0,
+        'readiness': 80.0,
+      },
+    );
+
     final r = await repo.getRecords();
     expect(r['days_tracked'], greaterThanOrEqualTo(3));
     expect(r['nights_tracked'], greaterThanOrEqualTo(3));
@@ -328,6 +359,82 @@ void main() {
     final streaks = (r['streaks'] as Map).cast<String, dynamic>();
     expect((streaks['wear'] as Map)['current'], greaterThanOrEqualTo(3));
     expect((streaks['sleep'] as Map)['current'], greaterThanOrEqualTo(3));
+  });
+
+  test(
+      "getRecords hides the resting-HR PR while its baseline is only "
+      "'calibrating' — never celebrate an unreliable number", () async {
+    // Downgrade today's resting_hr baseline status (still the latest bundle
+    // from the previous test) to calibrating.
+    await LocalDb.putDayResult(
+      dayId: todayLabel(),
+      algoVersion: 1,
+      payloadJson: jsonEncode({
+        'date': todayLabel(),
+        'scalars': {'rhr': 55.0},
+        'baselines': {
+          'resting_hr': {'status': 'calibrating', 'baseline': 55.0, 'z': 0.0},
+        },
+        'sleep': {
+          'accounting': {'value': {'tst_sec': 24000}},
+        },
+      }),
+      windowJson: '{}',
+      finalized: false,
+      series: const {
+        'rhr': 55.0,
+        'strain': 12.1,
+        'tst_min': 400.0,
+        'efficiency': 0.88,
+        'steps': 8000.0,
+        'readiness': 80.0,
+      },
+    );
+
+    final r = await repo.getRecords();
+    final records = (r['records'] as Map).cast<String, dynamic>();
+    // The resting-HR PR is gone — a calibrating baseline is not a trust the
+    // app can vouch for, so nothing celebrates it.
+    expect(records.containsKey('lowest_rhr'), isFalse);
+    // Every other record type is untouched by the gate (no equivalent trust
+    // concept exists for them in this codebase — see local_repository_impl
+    // comment at the gate).
+    expect((records['top_strain'] as Map)['value'], 15.4);
+    expect((records['top_readiness'] as Map)['value'], 91.0);
+  });
+
+  test(
+      "getRecords doesn't throw when baselines.resting_hr is malformed — "
+      "falls into the honest 'not trusted' branch instead of "
+      'NoSuchMethodError (the dotted-_sub-path fix)', () async {
+    // resting_hr is a String here, not a Map — the old chained
+    // `?['resting_hr']?['status']` indexing would throw on this shape.
+    await LocalDb.putDayResult(
+      dayId: todayLabel(),
+      algoVersion: 1,
+      payloadJson: jsonEncode({
+        'date': todayLabel(),
+        'scalars': {'rhr': 55.0},
+        'baselines': {'resting_hr': 'not-a-map'},
+        'sleep': {
+          'accounting': {'value': {'tst_sec': 24000}},
+        },
+      }),
+      windowJson: '{}',
+      finalized: false,
+      series: const {
+        'rhr': 55.0,
+        'strain': 12.1,
+        'tst_min': 400.0,
+        'efficiency': 0.88,
+        'steps': 8000.0,
+        'readiness': 80.0,
+      },
+    );
+
+    final r = await repo.getRecords();
+    final records = (r['records'] as Map).cast<String, dynamic>();
+    expect(records.containsKey('lowest_rhr'), isFalse);
   });
 
   // ── zone_min accumulation shape (#15) ─────────────────────────────────────

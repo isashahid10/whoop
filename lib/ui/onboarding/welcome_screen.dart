@@ -354,7 +354,7 @@ class WelcomeHero extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.accent,
                 shape: BoxShape.circle,
-                boxShadow: AppColors.isDark ? const [] : Shadows.coral,
+                boxShadow: AppColors.isDark ? const [] : Shadows.brand,
               ),
               child: const Center(
                 child: AppIcon(OsIcon.wear, size: 24, color: Colors.white),

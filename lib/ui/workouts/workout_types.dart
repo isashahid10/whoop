@@ -13,16 +13,21 @@ import '../design/design.dart';
 /// (key, label, glyph fallback, illustrated OsIcon). The type string is
 /// whatever `sport`/`type`/`detected_type` carries from the repo — manual
 /// start keys AND the auto-detector's output share this one vocabulary.
+// The glyph (3rd element) used to fall back to a generic icon (activity/
+// heartRate) for cycle/swim/hiit/cardio/yoga instead of the type's own icon
+// — now that every OsIcon here is a real, distinct vector glyph (not an
+// expensive illustration), there's no reason for the compact glyph and the
+// "full" icon to ever differ, so every row just uses the same icon twice.
 const kWorkoutTypes = <(String, String, OsIcon, OsIcon?)>[
   ('run', 'Run', OsIcon.run, OsIcon.run),
-  ('cycle', 'Cycle', OsIcon.activity, OsIcon.cycling),
+  ('cycle', 'Cycle', OsIcon.cycling, OsIcon.cycling),
   ('strength', 'Strength', OsIcon.strength, OsIcon.strength),
-  ('walk', 'Walk', OsIcon.run, OsIcon.walk),
-  ('swim', 'Swim', OsIcon.activity, OsIcon.swim),
-  ('cardio', 'Cardio', OsIcon.heartRate, OsIcon.cardio),
-  ('yoga', 'Yoga', OsIcon.heart, OsIcon.yoga),
-  ('hiit', 'HIIT', OsIcon.heartRate, OsIcon.hiit),
-  ('other', 'Other', OsIcon.activity, OsIcon.workoutOther),
+  ('walk', 'Walk', OsIcon.walk, OsIcon.walk),
+  ('swim', 'Swim', OsIcon.swim, OsIcon.swim),
+  ('cardio', 'Cardio', OsIcon.cardio, OsIcon.cardio),
+  ('yoga', 'Yoga', OsIcon.yoga, OsIcon.yoga),
+  ('hiit', 'HIIT', OsIcon.hiit, OsIcon.hiit),
+  ('other', 'Other', OsIcon.workoutOther, OsIcon.workoutOther),
 ];
 
 /// Glyph fallback for a workout type — always returns something renderable,

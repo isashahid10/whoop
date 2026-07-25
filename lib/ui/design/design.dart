@@ -17,6 +17,7 @@ export 'arc_gauge.dart';
 export 'bento.dart';
 export 'big_stat.dart';
 export 'controls.dart';
+export 'disclosure.dart';
 export 'domains.dart';
 export 'hypnogram.dart';
 export 'info_sheet.dart';
