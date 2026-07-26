@@ -333,7 +333,23 @@ import 'substrate.dart';
 // made here with `git show <pinned-sha>:<file>` before trusting it; a changelog
 // citing a change the pinned SHA never contained is how v43 documented a
 // readiness fix that stayed broken for three releases.
-const int kAlgoVersion = 49;
+
+// v50: the sibling PRs merged; pubspec.yaml now pins the resulting `main`
+// commits (analytics f5ccae6, protocol a98cd70) instead of the PR-branch heads
+// v49 briefly pointed at.
+//
+// A version bump is required even though no edge SOURCE line changed with it.
+// kAlgoVersion identifies the code that PRODUCED a day_result, and that code
+// includes the pinned siblings: a device holding v49 rows built against the
+// PR-branch SHAs must re-derive against the merged ones rather than serve them
+// as equivalent. Treating "same content, different commit" as not worth a bump
+// is the assumption that lets a stale bundle survive a dependency change.
+//
+// Verified at the merge commits themselves, not inferred from the PRs being
+// green: steps.dart carries the new step API, rr_correction.dart has the
+// signed-dRR `seg.add(x[k])`, advanced_stager.dart has maxAccelCarryForwardSec,
+// live.dart has kKnownRecordVersions.
+const int kAlgoVersion = 50;
 
 /// Raw is kept this many days past derivation, then pruned (derived stays).
 const int rawRetentionDays = 3;
