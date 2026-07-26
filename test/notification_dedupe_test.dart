@@ -4,11 +4,20 @@
 // persisted across restarts, while a fresh (e.g. next-day) key still fires and
 // the existing category/quiet-hours gating is untouched. We inject a fake
 // present sink (counts calls, no device) and a mocked SharedPreferences.
+//
+// NOTE — this suite runs with NO sqlite factory registered, so FiredKeyStore's
+// atomic SQLite claim is unavailable and every test here exercises its DEGRADED
+// SharedPreferences fallback. That's deliberate: the fallback is what runs when
+// the DB is torn down mid-background-pass, and it must still dedupe. The atomic
+// claim itself (and the legacy-list migration) is covered against a real DB in
+// notification_claim_atomic_test.dart.
 
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:openstrap_edge/data/day_label.dart';
 
 import 'package:openstrap_edge/notify/fired_keys.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
@@ -228,12 +237,10 @@ void main() {
       await Future.wait([f1, f2]);
 
       expect(sink.calls, 2);
-      // Serialised read-modify-write: neither key clobbered the other.
-      final p = await SharedPreferences.getInstance();
-      expect(
-        p.getStringList('notif_fired_keys'),
-        containsAll(['2026-07-23:a', '2026-07-23:b']),
-      );
+      // Independent per-key flags: neither key clobbered the other.
+      const store = FiredKeyStore();
+      expect(await store.hasFired('2026-07-23:a'), isTrue);
+      expect(await store.hasFired('2026-07-23:b'), isTrue);
     });
   });
 
@@ -273,7 +280,13 @@ void main() {
     });
   });
 
-  group('FiredKeyStore bounding', () {
+  group('FiredKeyStore per-key + retention (degraded mode)', () {
+    // A local YYYY-MM-DD offset from today, for retention-window assertions.
+    // dayLabelOf, not raw toIso8601String: day labels are LOCAL everywhere, and
+    // the store's own cutoff is computed the same way.
+    String dayOffset(int days) =>
+        dayLabelOf(DateTime.now().add(Duration(days: days)));
+
     test('hasFired reflects recordFired', () async {
       SharedPreferences.setMockInitialValues({});
       const store = FiredKeyStore();
@@ -282,31 +295,42 @@ void main() {
       expect(await store.hasFired('a'), isTrue);
     });
 
-    test('a repeated record neither duplicates nor refreshes recency', () async {
+    test('independent per-key flags — a record never clobbers another key',
+        () async {
       SharedPreferences.setMockInitialValues({});
       const store = FiredKeyStore();
-      await store.recordFired('a');
-      await store.recordFired('b');
-      await store.recordFired('a'); // hit — must be a no-op
-      final p = await SharedPreferences.getInstance();
-      // 'a' stays in its original (oldest) slot; no duplicate appended.
-      expect(p.getStringList('notif_fired_keys'), ['a', 'b']);
+      await store.recordFired('${dayOffset(0)}:a');
+      await store.recordFired('${dayOffset(0)}:b');
+      await store.recordFired('${dayOffset(0)}:a'); // repeat — idempotent no-op
+      expect(await store.hasFired('${dayOffset(0)}:a'), isTrue);
+      expect(await store.hasFired('${dayOffset(0)}:b'), isTrue);
     });
 
-    test('caps at maxKeys, evicting oldest first', () async {
-      SharedPreferences.setMockInitialValues({});
+    test('prune drops date-prefixed flags older than the retention window',
+        () async {
+      // Seed a clearly-stale dated flag directly (bypassing recordFired, whose
+      // own prune would eat it immediately), plus a within-window one.
+      final stale = '${dayOffset(-(FiredKeyStore.retentionDays + 5))}:low_read';
+      final fresh = '${dayOffset(-1)}:low_read';
+      SharedPreferences.setMockInitialValues({
+        'notif_fired:$stale': true,
+        'notif_fired:$fresh': true,
+      });
       const store = FiredKeyStore();
-      for (var i = 0; i < FiredKeyStore.maxKeys + 5; i++) {
-        await store.recordFired('k$i');
-      }
-      final p = await SharedPreferences.getInstance();
-      final keys = p.getStringList('notif_fired_keys')!;
-      expect(keys.length, FiredKeyStore.maxKeys);
-      // Oldest five evicted; newest retained.
-      expect(await store.hasFired('k0'), isFalse);
-      expect(await store.hasFired('k4'), isFalse);
-      expect(await store.hasFired('k5'), isTrue);
-      expect(await store.hasFired('k${FiredKeyStore.maxKeys + 4}'), isTrue);
+      // Any record triggers a prune pass.
+      await store.recordFired('${dayOffset(0)}:trigger');
+      expect(await store.hasFired(stale), isFalse); // pruned
+      expect(await store.hasFired(fresh), isTrue); // retained
+    });
+
+    test('prune leaves undated keys (e.g. alarm_fired:<epoch>) untouched',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'notif_fired:alarm_fired:12345': true,
+      });
+      const store = FiredKeyStore();
+      await store.recordFired('${dayOffset(0)}:trigger');
+      expect(await store.hasFired('alarm_fired:12345'), isTrue);
     });
   });
 }

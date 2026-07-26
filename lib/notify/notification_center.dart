@@ -26,13 +26,15 @@ class NotificationCenter {
   /// The persistent "already fired this dedupeKey" guard. See [FiredKeyStore].
   final FiredKeyStore _fired = const FiredKeyStore();
 
-  /// Tail of a chained-Future lock that serialises the check-present-record
-  /// critical section in [emit]. Without it two overlapping emits could both
-  /// pass [FiredKeyStore.hasFired] before either records (→ both present), and
-  /// their read-modify-write of the fired-key list could clobber each other
-  /// (losing a key). More likely now the UI-thread stress alert can race the
-  /// background derive loop. Dart is single-isolate, so this in-memory lock
-  /// fully orders the awaits within emit.
+  /// Tail of a chained-Future lock that serialises the claim-present-release
+  /// critical section in [emit]. It keeps two overlapping emits in THIS isolate
+  /// from interleaving their presents — more likely now the UI-thread stress
+  /// alert can race the background derive loop.
+  ///
+  /// It is not what enforces fire-once. This lock can only order emits WITHIN
+  /// this isolate; derivation also runs in the WorkManager isolate, which it
+  /// cannot see. Fire-once across both is enforced by the atomic
+  /// [FiredKeyStore.claim] below — one SQLite INSERT OR IGNORE, one winner.
   Future<void> _lock = Future<void>.value();
 
   /// Run [action] after any in-flight critical section completes, exclusively.
@@ -77,21 +79,30 @@ class NotificationCenter {
       // Enforce the dedupeKey's "fires at most once" contract (issue #136).
       // The OS id only REPLACES a prior post of the same key — it still
       // re-alerts — and derivation re-runs on every BLE sync, so an insight
-      // whose condition holds all day would otherwise buzz over and over.
-      // Skip a key that has already fired; record it only after a real present
-      // (a permission-denied no-op must not consume the key). The guard resets
-      // itself per new day via the date-prefixed keys.
+      // whose condition holds all day would otherwise buzz over and over. The
+      // guard resets itself per new day via the date-prefixed keys.
       //
-      // Serialised: hasFired → present → recordFired runs one emit at a time,
-      // so overlapping emits can't both present the same key nor clobber the
-      // fired-key list (recordFired re-reads the latest list inside the lock).
+      // CLAIM, don't check. A check-then-record pair is not atomic: the two
+      // derivation isolates can both read "not fired" before either records and
+      // both alert. [FiredKeyStore.claim] decides ownership in ONE atomic
+      // operation, so exactly one caller — in either isolate — ever proceeds.
+      //
+      // A claim we don't spend is given straight back: a permission-denied
+      // no-op or a throwing present must NOT consume the key, or that insight
+      // stays silent for the rest of the day. Release on every non-present path
+      // (hence the finally), which restores the pre-existing
+      // "record only after a real present" semantics.
       await _synchronized(() async {
-        if (await _fired.hasFired(e.dedupeKey)) return;
-        final shown = await presentSink(
-          e,
-          allowPermissionPrompt: allowPermissionPrompt,
-        );
-        if (shown) await _fired.recordFired(e.dedupeKey);
+        if (!await _fired.claim(e.dedupeKey)) return;
+        var shown = false;
+        try {
+          shown = await presentSink(
+            e,
+            allowPermissionPrompt: allowPermissionPrompt,
+          );
+        } finally {
+          if (!shown) await _fired.release(e.dedupeKey);
+        }
       });
     } catch (_) {/* OS present best-effort */}
   }
