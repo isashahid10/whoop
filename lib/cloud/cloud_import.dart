@@ -17,6 +17,8 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../data/db.dart';
 import 'backend_client.dart';
@@ -79,8 +81,7 @@ class CloudImporter {
     var sessCount = 0;
     for (final w in sessions) {
       if (w is! Map) continue;
-      await _writeSession(w.cast<String, dynamic>());
-      sessCount++;
+      if (await _writeSession(w.cast<String, dynamic>())) sessCount++;
     }
 
     return CloudImportResult(dayCount, sessCount, _mapProfile(profileRaw));
@@ -250,14 +251,26 @@ class CloudImporter {
     );
   }
 
-  static Future<void> _writeSession(Map<String, dynamic> w) async {
+  /// Test seam for [_writeSession] — the malformed-row skip is a data-integrity
+  /// invariant, and `run()` needs a whole authenticated BackendClient to reach.
+  @visibleForTesting
+  static Future<bool> debugWriteSession(Map<String, dynamic> w) =>
+      _writeSession(w);
+
+  /// Returns true when a session row was actually written.
+  static Future<bool> _writeSession(Map<String, dynamic> w) async {
     num? n(Object? v) => v is num ? v : null;
     final start = n(w['start_ts'])?.toInt();
     final end = n(w['end_ts'])?.toInt();
+    // A session with no usable start is not a workout — writing it as epoch 0
+    // filed a phantom workout on 1970-01-01 that then showed up in every query
+    // keyed on start_ts. Skip the row (same contract as WhoopImporter's
+    // _writeWorkout).
+    if (start == null) return false;
     final zones = w['zones'];
     await LocalDb.putSession({
       'id': (w['id'] ?? 'cloud_$start').toString(),
-      'start_ts': start ?? 0,
+      'start_ts': start,
       'end_ts': end,
       'type': (w['type'] ?? w['detected_type'] ?? 'other').toString(),
       'status': (w['status'] ?? 'done').toString(),
@@ -266,10 +279,11 @@ class CloudImporter {
       'strain': n(w['strain'])?.toDouble(),
       'max_hr': n(w['max_hr'])?.toInt(),
       'duration_min':
-          (start != null && end != null) ? ((end - start) / 60).round() : null,
+          end != null ? ((end - start) / 60).round() : null,
       'zone_min_json': zones == null ? null : jsonEncode(zones),
       'created_at': DateTime.now().millisecondsSinceEpoch,
     });
+    return true;
   }
 
   static String _ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'

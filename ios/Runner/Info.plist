@@ -4,6 +4,31 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!-- ── ZERO-COLLECTION BY DEFAULT (privacy tier 1) ──
+	     Every Firebase SDK auto-starts collecting the moment
+	     Firebase.initializeApp runs: Analytics logs first_open/session_start,
+	     Performance opens app-start + network traces, Crashlytics uploads any
+	     startup crash. That is long before Dart has read the user's stored
+	     telemetry consent (an async SharedPreferences load off the startup
+	     critical path), so the runtime setters alone meant a fresh install
+	     collected before consent existed.
+
+	     These are the "Enabled = false" variants (NOT the permanent
+	     ...Deactivated ones), so TelemetryService can still switch collection
+	     ON at runtime once — and only once — affirmative consent has loaded.
+	     Do NOT flip any of these to true: consent is the only thing allowed
+	     to. Keep in sync with android/app/src/main/AndroidManifest.xml. -->
+	<key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
+	<false/>
+	<key>FirebaseCrashlyticsCollectionEnabled</key>
+	<false/>
+	<key>firebase_performance_collection_enabled</key>
+	<false/>
+	<!-- No ad/measurement signals, ever — never consent-gated back on. -->
+	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS</key>
+	<false/>
+	<key>GOOGLE_ANALYTICS_IDFV_COLLECTION_ENABLED</key>
+	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

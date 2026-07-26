@@ -58,7 +58,7 @@ struct OpenStrapEntry: TimelineEntry {
   let readiness: Int      // -1 = none (composite 0..100) — the headline
   let strain: Double      // -1 = none
   let sleepMin: Int       // -1 = none
-  let needMin: Int
+  let needMin: Int    // -1 = none (sleep need, min) — never fabricate 8h
   let hrv: Int            // -1 = none (RMSSD, ms)
   let hrvBaseline: Int    // -1 = none (personal RMSSD baseline, ms)
   let rhr: Int            // -1 = none
@@ -106,7 +106,7 @@ private enum Store {
       readiness: d?.object(forKey: "readiness") as? Int ?? -1,
       strain: d?.object(forKey: "strain") as? Double ?? -1,
       sleepMin: d?.object(forKey: "sleep_min") as? Int ?? -1,
-      needMin: (d?.object(forKey: "sleep_need_min") as? Int) ?? 480,
+      needMin: (d?.object(forKey: "sleep_need_min") as? Int) ?? -1,
       hrv: d?.object(forKey: "hrv") as? Int ?? -1,
       hrvBaseline: d?.object(forKey: "hrv_baseline") as? Int ?? -1,
       rhr: d?.object(forKey: "rhr") as? Int ?? -1,
@@ -171,7 +171,7 @@ private enum TodayAPI {
     let strain = val(daily, "strain") ?? -1
     let rhr = val(daily, "resting_hr").map { Int($0.rounded()) } ?? -1
     let sleepMin = val(sleep, "duration_min").map { Int($0.rounded()) } ?? -1
-    let needMin = val(sleep, "need_min").map { Int($0.rounded()) } ?? 480
+    let needMin = val(sleep, "need_min").map { Int($0.rounded()) } ?? -1
     let hrv = (hrvObj?["rmssd"] as? NSNumber).map { Int($0.doubleValue.rounded()) } ?? -1
     let hrvBase = (hrvObj?["baseline"] as? NSNumber).map { Int($0.doubleValue.rounded()) } ?? -1
 

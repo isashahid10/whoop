@@ -203,10 +203,16 @@ List<Split> computeSplits(
   for (var i = 1; i < pts.length; i++) {
     final prev = pts[i - 1];
     final cur = pts[i];
-    var segLen =
-        haversineMeters(prev.lat, prev.lng, cur.lat, cur.lng);
     final segStartTs = prev.tsMs;
     final segEndTs = cur.tsMs;
+    var segLen = haversineMeters(prev.lat, prev.lng, cur.lat, cur.lng);
+    // SAME filter as [totalDistanceMeters]: a teleport across a recording gap
+    // (tunnel, screen-off, signal loss) is a SEGMENT BREAK, not distance.
+    // Without this, a 55 km jump made the headline `distanceMeters` read ~5 km
+    // while `splitsKm` emitted ~60 mostly-phantom splits on the same screen.
+    // Time still elapses across the break, so the split it lands in keeps its
+    // real duration — only the bogus distance is dropped.
+    if (isImplausibleSegment(segLen, segEndTs - segStartTs)) segLen = 0.0;
 
     // A single segment may cross one or more split boundaries. Walk the
     // boundaries, interpolating the crossing time linearly along the segment.

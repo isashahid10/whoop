@@ -14,6 +14,8 @@
 // which is a deterministic function of the input string. Safe for Isolate.run
 // and directly unit-testable.
 
+import 'dart:math' as math;
+
 import 'package:openstrap_analytics/onehz.dart' as ana;
 
 /// Build the cross-day analytics bundle from a time-ordered (OLDEST FIRST) list
@@ -64,14 +66,18 @@ Map<String, dynamic> buildCrossDayBundle(
   final anomaly = ana.multivariateAnomaly(dates, feats);
 
   // ── CTL/ATL/TSB training load from the daily-TRIMP series ──────────────────
-  // Only days that actually carry a TRIMP (time-ordered) contribute; a missing
-  // TRIMP is NOT a 0-load impulse here — we simply omit it (the user may not
-  // have worn / trained that day, and the EWMA in the package treats the gaps
-  // it does see as decay over the series it receives).
-  final dailyTrimp = <double>[
-    for (final d in days)
-      if (d['trimp'] != null) (_numOrNull(d['trimp']) ?? 0.0),
-  ];
+  // `ctlAtlTsb` is an EWMA that treats its input as ONE SAMPLE PER CALENDAR DAY
+  // (λ = 1 − e^(−1/τ) per element) and documents "a missing day contributes a
+  // 0-load impulse (rest day) — the EWMA decays". Filtering to only the days
+  // that carry a TRIMP handed it a COMPRESSED calendar instead: a user who
+  // trains sporadically (say 10 loaded days across 90) got 10 consecutive
+  // "days" of load with no decay between them, so fitness/fatigue never fell
+  // across the gaps and TSB was systematically wrong. Build a DENSE per-day
+  // series over the observed date span instead — a day with no TRIMP, and a
+  // calendar day with no derived row at all, are both 0-load impulses.
+  final dailyTrimp = _denseDailyTrimp(dates, [
+    for (final d in days) _numOrNull(d['trimp']),
+  ]);
   final load = ana.ctlAtlTsb(dailyTrimp);
 
   // ── skin-temp illness flag (Smarr, cycle-aware) ────────────────────────────
@@ -275,11 +281,19 @@ Map<String, dynamic> buildCrossDayBundle(
   final latestAnomaly = anomaly.isEmpty ? null : anomaly.last;
   final latestTemp = tempIllness.isEmpty ? null : tempIllness.last;
 
-  // per-day flags (for notifications / trends): asleep/illness/anomaly/temp.
+  // per-day flags (for notifications / trends): asleep/illness/anomaly/temp,
+  // plus the nightly RESTING HR the "your resting HR trend shifted" CUSUM
+  // notification reads back off these rows. That consumer
+  // (`DerivationEngine._runNotifications`) needed `r['rhr']` and this builder
+  // never emitted it, so its series was always empty, its `length >= 10` gate
+  // never passed, and the notification was dead code. The value is already
+  // computed right here (`rhrList`, parallel to `dates`) — emit it rather than
+  // delete a wanted feature. Null stays null (the consumer filters on `is num`).
   final recent = <Map<String, dynamic>>[];
   for (var i = 0; i < n; i++) {
     recent.add({
       'date': dates[i],
+      'rhr': rhrList[i],
       'illness': i < illness.length && illness[i].state == ana.IllnessState.red,
       'anomaly': i < anomaly.length && anomaly[i].flagged,
       'temp':
@@ -364,6 +378,52 @@ bool _isFreeDay(String? date) {
   return dt.weekday == DateTime.saturday || dt.weekday == DateTime.sunday;
 }
 
+/// Guard on how far [_denseDailyTrimp] will densify. Past this the input is not
+/// a plausible recent-history window (a corrupt/absurd date), so we fall back to
+/// the raw per-row series rather than allocating an unbounded list.
+const int _maxDenseTrimpDays = 400;
+
+/// A DENSE per-calendar-day TRIMP series (oldest→newest) over the span covered
+/// by [dates], with every unloaded or unobserved day contributing a 0 impulse.
+///
+/// [dates] and [trimps] are parallel (one entry per derived day, oldest first);
+/// [dates] may skip calendar days entirely (an underived day has no row).
+/// PURE: `DateTime.parse` / `DateTime(y, m, d + 1)` are deterministic functions
+/// of the input strings, and the day-step normalizes DST-length days correctly.
+List<double> _denseDailyTrimp(List<String> dates, List<double?> trimps) {
+  final byDate = <String, double>{};
+  String? first, last;
+  for (var i = 0; i < dates.length && i < trimps.length; i++) {
+    final date = dates[i];
+    if (date.isEmpty || DateTime.tryParse(date) == null) continue;
+    byDate[date] = trimps[i] ?? 0.0;
+    first ??= date;
+    if (last == null || date.compareTo(last) > 0) last = date;
+    if (date.compareTo(first) < 0) first = date;
+  }
+  if (first == null || last == null) return const <double>[];
+  final start = DateTime.parse(first);
+  final end = DateTime.parse(last);
+  final out = <double>[];
+  var cursor = DateTime(start.year, start.month, start.day);
+  final stop = DateTime(end.year, end.month, end.day);
+  while (!cursor.isAfter(stop)) {
+    if (out.length >= _maxDenseTrimpDays) {
+      // Implausible span — don't densify; the honest per-row series is better
+      // than an arbitrarily long zero-padded one.
+      return [for (final v in trimps) v ?? 0.0];
+    }
+    out.add(byDate[_dateKey(cursor)] ?? 0.0);
+    cursor = DateTime(cursor.year, cursor.month, cursor.day + 1);
+  }
+  return out;
+}
+
+String _dateKey(DateTime d) {
+  String two(int x) => x.toString().padLeft(2, '0');
+  return '${d.year.toString().padLeft(4, '0')}-${two(d.month)}-${two(d.day)}';
+}
+
 /// Absolute value of each present element (used to orient skin-temp by |z|).
 List<double?> _absList(List<double?> xs) => [for (final v in xs) v?.abs()];
 
@@ -436,11 +496,21 @@ ana.Metric<ana.SriResult> _crossDaySri(List<Map<String, dynamic>> days) {
         // line ~100) already exists to avoid.
         final startMin = _localTodMin(start.round()).floor();
         // end is exclusive of the segment's trailing edge; cover [start,end).
-        final endMin = _localTodMin(end.round()).ceil();
+        final endMinRaw = _localTodMin(end.round()).ceil();
+        // WRAP, don't clamp. Both bounds are clock-minutes-of-day in [0,1440),
+        // so a segment crossing local midnight reads e.g. start=1430,
+        // end=20 — and the old `for (m = startMin; m < endMin; m++)` simply
+        // never executed, silently DROPPING that segment (the comment claimed
+        // it "clamps into grid"; it didn't). Every night has exactly one such
+        // segment, so sleep-regularity was always computed with a hole at the
+        // boundary. Unwrap the end past 1440 and write back modulo the grid.
+        // `endMinRaw == startMin` stays a genuinely empty (sub-minute) segment.
+        final endMin =
+            endMinRaw < startMin ? endMinRaw + epochsPerDay : endMinRaw;
+        final span = math.min(endMin - startMin, epochsPerDay);
         final asleepSeg = stage != null && stage != 'wake';
-        for (var m = startMin; m < endMin; m++) {
-          // Guard wrap: a segment that crosses midnight just clamps into grid.
-          if (m < 0 || m >= epochsPerDay) continue;
+        for (var k = 0; k < span; k++) {
+          final m = (startMin + k) % epochsPerDay;
           cov[m] = true;
           if (asleepSeg) asleep[m] = true;
         }

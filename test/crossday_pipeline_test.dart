@@ -178,5 +178,126 @@ void main() {
       expect((out['regularity'] as Map)['value'], '—');
       expect((out['social_jetlag'] as Map)['value'], '—');
     });
+
+    // ── the SRI grid must WRAP around midnight, not drop the segment ─────────
+    //
+    // Segment bounds are mapped to clock-minute-of-day in [0,1440). A segment
+    // crossing local midnight therefore reads start > end (e.g. 1430 → 20), and
+    // the old `for (m = startMin; m < endMin; m++)` never executed — silently
+    // dropping it, despite a comment claiming it "clamps into grid". EVERY
+    // night has exactly one such segment, so sleep-regularity was always
+    // computed with a hole right at the boundary.
+    test('a hypnogram segment crossing local midnight is not dropped from the '
+        'SRI grid', () {
+      // Local 23:30 → 00:30 the next day, expressed as epoch seconds.
+      final onset = DateTime(2024, 3, 4, 23, 30).millisecondsSinceEpoch ~/ 1000;
+      final wake = DateTime(2024, 3, 5, 0, 30).millisecondsSinceEpoch ~/ 1000;
+
+      List<Map<String, dynamic>> nights({required bool crossMidnight}) => [
+            for (var i = 0; i < 14; i++)
+              {
+                'date': '2024-03-${(4 + i).toString().padLeft(2, '0')}',
+                'onset_sec': onset + i * 86400,
+                'wake_sec': wake + i * 86400,
+                'tst_min': 60,
+                'hypnogram': [
+                  {
+                    'start': onset + i * 86400,
+                    'end': (crossMidnight ? wake : onset + 1800) + i * 86400,
+                    'stage': 'nrem',
+                  },
+                ],
+              },
+          ];
+
+      // A midnight-crossing segment must produce REAL coverage — under the old
+      // clamp the grid stayed entirely uncovered and SRI came back absent.
+      final crossing = buildCrossDayBundle(
+        nights(crossMidnight: true),
+        const {},
+      );
+      final reg = (crossing['regularity'] as Map).cast<String, dynamic>();
+      expect(reg['value'], isNot('—'),
+          reason: 'the only segment of each night crosses midnight; dropping '
+              'it leaves the SRI with zero valid epochs');
+
+      // Sanity: a same-day segment (no wrap) was always handled, and still is.
+      final sameDay = buildCrossDayBundle(
+        nights(crossMidnight: false),
+        const {},
+      );
+      expect((sameDay['regularity'] as Map)['value'], isNot('—'));
+    });
+
+    // ── the resting-HR CUSUM notification's input must actually be emitted ───
+    test('recent rows carry rhr so the resting-HR trend notification can fire',
+        () {
+      final out = buildCrossDayBundle(_synthDays(30), const {});
+      final recent = (out['recent'] as List).cast<Map>();
+      // DerivationEngine._runNotifications collects `r['rhr'] is num` off these
+      // rows and needs >= 10 of them; the builder never emitted the field, so
+      // the series was always empty and the branch was dead code.
+      final rhrSeries = [
+        for (final r in recent)
+          if (r['rhr'] is num) (r['rhr'] as num).toDouble(),
+      ];
+      expect(rhrSeries.length, 30);
+      expect(rhrSeries.length, greaterThanOrEqualTo(10));
+    });
+
+    test('a day with no rhr keeps a null rhr (never a fabricated number)', () {
+      final days = _synthDays(3);
+      days[1]['rhr'] = null;
+      final recent = (buildCrossDayBundle(days, const {})['recent'] as List)
+          .cast<Map>();
+      expect(recent[1]['rhr'], isNull);
+      expect(recent[0]['rhr'], isA<num>());
+    });
+
+    // ── CTL/ATL/TSB needs a DENSE per-day series ─────────────────────────────
+    //
+    // ctlAtlTsb is an EWMA over ONE SAMPLE PER DAY. Filtering to only the days
+    // that carry a TRIMP handed it a compressed calendar, so load never decayed
+    // across rest gaps and TSB was systematically wrong for anyone who trains
+    // sporadically.
+    test('rest days are 0-load impulses, not omitted from the load EWMA', () {
+      // 90 days, but only every 9th day carries a TRIMP (10 loaded days).
+      final days = <Map<String, dynamic>>[];
+      var dt = DateTime(2024, 1, 1);
+      for (var i = 0; i < 90; i++) {
+        days.add({
+          'date': '${dt.year}-${dt.month.toString().padLeft(2, '0')}'
+              '-${dt.day.toString().padLeft(2, '0')}',
+          'rhr': 55.0,
+          'rmssd': 45.0,
+          if (i % 9 == 0) 'trimp': 150.0,
+        });
+        dt = DateTime(dt.year, dt.month, dt.day + 1);
+      }
+      final load = ((buildCrossDayBundle(days, const {})['load'] as Map)['value']
+              as Map)
+          .cast<String, dynamic>();
+      final ctl = (load['ctl'] as num).toDouble();
+      final atl = (load['atl'] as num).toDouble();
+
+      // Sparse (old) behaviour handed ctlAtlTsb ten CONSECUTIVE 150s, which
+      // converges both EWMAs to 150 with no decay between them. Dense (fixed)
+      // behaviour decays across the 8 rest days after each session, so the
+      // 7-day ATL in particular must sit far below the session load.
+      expect(atl, lessThan(100.0),
+          reason: 'fatigue must decay across 8 consecutive rest days');
+      expect(ctl, lessThan(150.0));
+      // TSB = ctl - atl must be a real (non-degenerate) form number.
+      expect((load['tsb'] as num).toDouble(), closeTo(ctl - atl, 1e-6));
+    });
+
+    test('an every-day-trained series is unchanged by densification', () {
+      // No calendar gaps and a TRIMP on every day → the dense series IS the
+      // per-row series, so this pins that the fix is a no-op for that case.
+      final out = buildCrossDayBundle(_synthDays(30), const {});
+      final load = ((out['load'] as Map)['value'] as Map).cast<String, dynamic>();
+      expect(load['ctl'], isA<num>());
+      expect((load['atl'] as num).toDouble(), greaterThan(50.0));
+    });
   });
 }

@@ -235,10 +235,13 @@ void main() {
       expect(t.takeException(), isNull);
     });
 
-    test('trendBarLabel maps scales to weekday / week-index / month', () {
+    test('trendBarLabel maps scales to weekday / window-end / month', () {
       final ts = DateTime.utc(2026, 7, 6).millisecondsSinceEpoch ~/ 1000; // Mon
       expect(trendBarLabel('week', 0, {'t_start': ts}), 'Mon');
-      expect(trendBarLabel('month', 2, {'t_start': ts}), 'W3');
+      // 'month' buckets are ROLLING 7-day windows ending at the anchor, not
+      // calendar weeks — 'W1…W4' claimed a calendar structure they don't have.
+      // See absent_not_zero_test.dart.
+      expect(trendBarLabel('month', 2, {'t_start': ts}), 'Jul 12');
       expect(trendBarLabel('quarter', 0, {'t_start': ts}), 'Jul');
     });
   });

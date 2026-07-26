@@ -264,7 +264,38 @@ import 'substrate.dart';
 // the real Baevsky SI was absent, violating the never-impute rule; the UI
 // already correctly renders "—" when `score` is null. Bump so affected days
 // re-derive without a same-day, no-sleep readiness/stress score.
-const int kAlgoVersion = 47;
+// v48: audit sweep across compute + the sibling analytics package.
+//
+// EDGE-LOCAL changes, which ship the moment this constant lands:
+//   - The per-sweep baseline snapshot is genuinely frozen. `appendScalars` is
+//     gone; the history is dated and loaded once, and `valuesBefore(key, date)`
+//     excludes the target day from its own baseline. A re-derive sweep could
+//     previously append each finished day back into the shared window and evict
+//     a real old day, collapsing median/MAD toward duplicated recent values —
+//     the same pollution shape edge#108 fixed on the load path.
+//   - A day is no longer allowed to sit inside its own readiness baseline, and
+//     lnRMSSD no longer double-appends today.
+//   - `nocturnalRhr` is now fed the positionally-dense day series instead of a
+//     compacted one, so its 30-minute window is real wall-clock again.
+//   - Profile imputation (age 30 / 70 kg / sex m / RHR 60) no longer persists
+//     strain, calories and zones as if they were measured.
+//   - SRI no longer drops the one hypnogram segment per night that crosses
+//     local midnight; CTL/ATL/TSB now sees a calendar-dense series so fitness
+//     and fatigue decay across rest days.
+//   - Historical days resolve their timezone offset at their own timestamp
+//     rather than through today's offset.
+//
+// ⚠️ SIBLING-PACKAGE changes are NOT in this bump yet. The analytics fixes from
+// the same sweep (sleep no longer reporting a no-data window as light sleep,
+// the Lipponen-Tarvainen threshold on the signed dRR series, abstention on
+// degenerate dispersion, the reconciled TRIMP stack, circular social jetlag)
+// live in an analytics commit that `pubspec.yaml` does NOT yet point at — the
+// pin is still the previous SHA. Do NOT extend this changelog to claim them
+// until that pin is updated to a merged analytics commit and verified with
+// `git show <sha>:<file>`. Citing an analytics change that the pinned SHA never
+// contained is exactly how the v43 changelog documented a readiness fix that
+// stayed broken for three releases; when the pin moves, bump again.
+const int kAlgoVersion = 48;
 
 /// Raw is kept this many days past derivation, then pruned (derived stays).
 const int rawRetentionDays = 3;
@@ -326,6 +357,21 @@ const int _headlineFreezeMarginSec = 60 * 60;
 Future<List<double>> debugBaselineWindow(String key) async =>
     (await _BaselineHistoryCache.load()).values(key);
 
+/// Test seam: the EXACT per-day baseline windows one derivation sweep would feed
+/// the readiness pass, in dispatch order (`orderedDays` is newest-first).
+///
+/// Pins the two properties the sweep path must have — the snapshot is loaded
+/// ONCE and never mutated as days complete, and each day's window self-excludes
+/// that day's own date. Both were violated by the old `appendScalars` sweep.
+@visibleForTesting
+Future<List<List<double>>> debugSweepBaselineWindows(
+  String key,
+  List<String> orderedDays,
+) async {
+  final history = await _BaselineHistoryCache.load();
+  return [for (final day in orderedDays) history.valuesBefore(key, day)];
+}
+
 @visibleForTesting
 ({List<String> days, String reason}) selectLightDeriveDays({
   required Set<String> rawDays,
@@ -350,10 +396,37 @@ class _DeriveScope {
   });
 }
 
+/// One (date, value) sample of a baseline series.
+typedef _DatedValue = ({String date, double value});
+
 class _BaselineHistoryCache {
   _BaselineHistoryCache(this._series);
 
-  final Map<String, List<double>> _series;
+  /// The baseline series this cache carries, keyed by `metric_series.key`.
+  static const List<String> keys = [
+    'ln_rmssd',
+    'rmssd',
+    'rhr',
+    'resp_rate',
+    'skin_temp_adc',
+    'readiness',
+  ];
+
+  /// DATED baseline samples, ascending by date, one entry per day (metric_series
+  /// is keyed `(date, key)` with REPLACE, so it is structurally de-duplicated).
+  ///
+  /// IMMUTABLE for the lifetime of one derivation sweep. There is deliberately
+  /// no mutator: the previous `appendScalars` mutated this shared snapshot as
+  /// each day of a sweep finished, which re-introduced exactly the duplicate-day
+  /// pollution the load path was rewritten to prevent — `load()` had ALREADY
+  /// read the persisted values of the days about to be re-derived, so appending
+  /// each finished day again (and evicting a real old day to stay at 28) left
+  /// later days in the sweep reading a window with up to 21 duplicated recent
+  /// values in descending date order. Median/MAD then collapsed toward the
+  /// repeated value and readiness went blank/wrong — the load-path bug, moved
+  /// into the sweep path. A sweep now reads ONE frozen snapshot, and each day
+  /// derives its own window from it by date.
+  final Map<String, List<_DatedValue>> _series;
 
   /// Load the rolling baseline window that feeds the readiness/illness
   /// computations. This ALWAYS rebuilds from `metric_series` — the canonical
@@ -361,57 +434,73 @@ class _BaselineHistoryCache {
   /// value per day.
   ///
   /// We deliberately do NOT trust the persisted `rolling_artifact` for history.
-  /// That artifact is written from an in-memory cache that [appendScalars] only
-  /// appends to (no day identity), so repeated same-day re-derives could stack
-  /// duplicate copies of today into the window; once enough slots matched, the
-  /// readiness composite's robust z-score hit MAD=0 and went absent — the blank
-  /// readiness ring. A polluted artifact is still valid JSON, so trusting it on
-  /// read would let that pollution reach the computation on the first
-  /// post-upgrade derive (and, when every day is finalized and `run()` does no
-  /// work, forever). Rebuilding from the de-duplicated store on every load makes
-  /// the read path immune and self-heals any already-polluted install.
+  /// That artifact was written from an in-memory cache with no day identity, so
+  /// repeated same-day re-derives could stack duplicate copies of today into the
+  /// window; once enough slots matched, the readiness composite's robust z-score
+  /// hit MAD=0 and went absent — the blank readiness ring. A polluted artifact
+  /// is still valid JSON, so trusting it on read would let that pollution reach
+  /// the computation on the first post-upgrade derive (and, when every day is
+  /// finalized and `run()` does no work, forever). Rebuilding from the
+  /// de-duplicated store on every load makes the read path immune and self-heals
+  /// any already-polluted install.
+  ///
+  /// NOTE ON THE QUERY: `LocalDb.metricSeries(key)` with NO `limit` is the whole
+  /// series, `date ASC` — the dates are what make a per-day `date < target`
+  /// window possible at all. It must NOT be given a `limit` (that is `date ASC
+  /// LIMIT n`, i.e. the OLDEST n — the opposite of a trailing window); the
+  /// trailing window is taken here, in Dart, per target day.
   static Future<_BaselineHistoryCache> load() async {
-    Future<List<double>> hist(String key) =>
-        LocalDb.trailingSeriesValues(key, _baselineWindowDays);
+    Future<List<_DatedValue>> hist(String key) async {
+      final rows = await LocalDb.metricSeries(key);
+      final out = <_DatedValue>[];
+      for (final row in rows) {
+        final date = row['date'];
+        final value = row['value'];
+        if (date is! String || date.isEmpty || value is! num) continue;
+        out.add((date: date, value: value.toDouble()));
+      }
+      return out;
+    }
 
-    final loaded = await Future.wait([
-      hist('ln_rmssd'),
-      hist('rmssd'),
-      hist('rhr'),
-      hist('resp_rate'),
-      hist('skin_temp_adc'),
-      hist('readiness'),
-    ]);
+    final loaded = await Future.wait([for (final k in keys) hist(k)]);
     return _BaselineHistoryCache({
-      'ln_rmssd': loaded[0],
-      'rmssd': loaded[1],
-      'rhr': loaded[2],
-      'resp_rate': loaded[3],
-      'skin_temp_adc': loaded[4],
-      'readiness': loaded[5],
+      for (var i = 0; i < keys.length; i++) keys[i]: loaded[i],
     });
   }
 
-  List<double> values(String key) =>
-      List<double>.from(_series[key] ?? const []);
+  /// The trailing [_baselineWindowDays] values for [key], oldest→newest.
+  ///
+  /// This is the WHOLE window including the newest day; it backs the persisted
+  /// rolling artifact + the rescan signature, which describe "the baseline as it
+  /// currently stands". Per-day derivation must use [valuesBefore] instead.
+  List<double> values(String key) => _trailing(_series[key] ?? const []);
 
-  void appendScalars(Map<String, dynamic> scalars) {
-    void add(String seriesKey, String scalarKey) {
-      final v = (scalars[scalarKey] as num?)?.toDouble();
-      if (v == null) return;
-      final list = _series.putIfAbsent(seriesKey, () => <double>[]);
-      list.add(v);
-      while (list.length > _baselineWindowDays) {
-        list.removeAt(0);
-      }
-    }
+  /// The trailing [_baselineWindowDays] values for [key] STRICTLY BEFORE
+  /// [beforeDate] (`date < ?`), oldest→newest — the baseline for deriving the
+  /// day labelled [beforeDate].
+  ///
+  /// SELF-EXCLUSION IS THE POINT. The previous derive of the same day has
+  /// already written its own row to `metric_series`, so an unfiltered trailing
+  /// window contained TODAY: every light pass after the first z-scored today's
+  /// RHR/HRV/temp against a baseline that already contained today (pulling the
+  /// baseline toward the value under test and understating a genuinely
+  /// off day), and the lnRMSSD stack — which is contractually handed
+  /// `[...history, today]` and takes all-but-last as its baseline — counted it
+  /// a second time. v38 fixed precisely this self-inclusion inside analytics;
+  /// this is the same defect at the edge layer that feeds it. Dates strictly
+  /// AFTER the target are excluded too: a baseline is prior days, and a backfill
+  /// sweep must not let later days leak into an older day's baseline (which
+  /// would also make the result depend on sweep order).
+  List<double> valuesBefore(String key, String beforeDate) => _trailing([
+        for (final s in _series[key] ?? const <_DatedValue>[])
+          if (s.date.compareTo(beforeDate) < 0) s,
+      ]);
 
-    add('ln_rmssd', 'ln_rmssd');
-    add('rmssd', 'rmssd');
-    add('rhr', 'rhr');
-    add('resp_rate', 'resp_rate');
-    add('skin_temp_adc', 'skin_temp_adc');
-    add('readiness', 'readiness');
+  static List<double> _trailing(List<_DatedValue> samples) {
+    final from = samples.length <= _baselineWindowDays
+        ? 0
+        : samples.length - _baselineWindowDays;
+    return [for (var i = from; i < samples.length; i++) samples[i].value];
   }
 
   Map<String, dynamic> toArtifactJson() {
@@ -935,7 +1024,12 @@ class DerivationEngine {
     // The worker isolate dies after `Isolate.run`, so the recording flag can't
     // leak into the next day's derivation — no try/finally reset needed.
     final profileJson = await _loadSleepUserProfileJson();
-    final (candidateJson, updatedProfileJson) = await Isolate.run(() {
+    // Cancellable + TIMED OUT. This site previously used a bare `Isolate.run`
+    // with no timeout at all, so a hung staging pass never completed its future
+    // — `_running` stayed true and `DeriveScheduler._drain` never returned, i.e.
+    // all derivation was dead until app restart.
+    final (candidateJson, updatedProfileJson) =
+        await _runIsolateCancellable(() {
       try {
         ana.cardioUserProfile = profileJson == null
             ? null
@@ -972,7 +1066,7 @@ class DerivationEngine {
         }
       }
       return (jsonEncode(candidate.toJson()), foldedJson);
-    });
+    }, _perDayTimeout, label: 'sleep-staging $dayId');
     final candidate = SleepSessionCandidate.fromJson(
         (jsonDecode(candidateJson) as Map).cast<String, dynamic>());
     if (override == null) {
@@ -1015,13 +1109,35 @@ class DerivationEngine {
   }) async {
     if (toRecTs < fromRecTs) return Substrate.empty;
     final port = ReceivePort();
-    final isolate = await Isolate.spawn(derivationPrepareWorker, port.sendPort);
+    // onError/onExit are LOAD-BEARING. Without them, an uncaught throw inside
+    // the worker (a malformed SQLite row reaching one of the numeric reads in
+    // its 'page' handler — the worker only ever reported errors from its
+    // 'finish' branch) killed the isolate silently, and this side awaited
+    // `result.future` FOREVER with `_running == true`: DeriveScheduler._drain
+    // never returned and ALL derivation was dead until app restart. Now a
+    // worker death fails the future, and the timeout below bounds the wait
+    // even if no signal arrives at all.
+    final isolate = await Isolate.spawn(
+      derivationPrepareWorker,
+      port.sendPort,
+      onError: port.sendPort,
+      onExit: port.sendPort,
+    );
     final ready = Completer<SendPort>();
     final result = Completer<Substrate>();
+    // A failure completes BOTH completers, but we may bail out via `ready` and
+    // never await `result` — register a listener so that error is never an
+    // unobserved async error. (The real error still propagates via `ready`.)
+    unawaited(result.future.catchError((_) => Substrate.empty));
     late final StreamSubscription<dynamic> sub;
-    sub = port.listen((message) async {
+    void fail(Object error) {
+      if (!ready.isCompleted) ready.completeError(error);
+      if (!result.isCompleted) result.completeError(error);
+    }
+
+    sub = port.listen((message) {
       if (message is SendPort) {
-        ready.complete(message);
+        if (!ready.isCompleted) ready.complete(message);
         return;
       }
       if (message is Map && message['type'] == 'result') {
@@ -1029,23 +1145,28 @@ class DerivationEngine {
         if (kind == 'substrate') {
           final payload = ((message['payload'] as Map?) ?? const {})
               .cast<String, dynamic>();
-          await sub.cancel();
-          port.close();
-          isolate.kill(priority: Isolate.immediate);
-          result.complete(Substrate.fromJson(payload));
+          if (!result.isCompleted) result.complete(Substrate.fromJson(payload));
         }
         return;
       }
       if (message is Map && message['type'] == 'error') {
-        await sub.cancel();
-        port.close();
-        isolate.kill(priority: Isolate.immediate);
-        result.completeError(Exception(message['error']));
+        fail(Exception('prepare worker error: ${message['error']}'));
+        return;
+      }
+      if (message is List) {
+        // `onError` wire format ([error, stackTrace]) — an uncaught throw.
+        fail(Exception('prepare worker crashed: '
+            '${message.isNotEmpty ? message.first : "no detail"}'));
+        return;
+      }
+      if (message == null) {
+        // `onExit` — the isolate ended without ever sending a result.
+        fail(StateError('prepare worker exited without a result'));
       }
     });
-    final worker = await ready.future;
-    worker.send(const {'type': 'config', 'mode': 'substrate'});
     try {
+      final worker = await ready.future;
+      worker.send(const {'type': 'config', 'mode': 'substrate'});
       int? afterRecTs;
       int? afterCursor;
       var rangePages = 0;
@@ -1091,12 +1212,22 @@ class DerivationEngine {
         break;
       }
       worker.send(const {'type': 'finish'});
-      return result.future;
-    } catch (_) {
+      // BOUNDED. `result.future` had no timeout at all, so any path that left
+      // the worker unable to answer hung this call — and with it the whole
+      // engine — permanently.
+      return await result.future.timeout(
+        _perDayTimeout,
+        onTimeout: () => throw TimeoutException(
+          'substrate prepare for $dayId timed out after $_perDayTimeout',
+        ),
+      );
+    } finally {
+      // ALWAYS tear down: on success, on error, and on timeout. The isolate is
+      // killed rather than abandoned so a wedged worker can never outlive the
+      // call that spawned it.
       await sub.cancel();
       port.close();
       isolate.kill(priority: Isolate.immediate);
-      rethrow;
     }
   }
 
@@ -1467,9 +1598,13 @@ class DerivationEngine {
     );
     final withHistory = _attachHistory(input, history);
 
-    final bundle = await Isolate.run(
+    // Cancellable: on timeout the isolate is KILLED, not merely abandoned to
+    // keep burning a core behind the worker pool's back.
+    final bundle = await _runIsolateCancellable(
       () => deriveDayBundle(withHistory),
-    ).timeout(_perDayTimeout);
+      _perDayTimeout,
+      label: 'day-bundle ${day.date}',
+    );
     _logSpo2Diagnostics(day, input, bundle);
     // Readiness came back absent for TODAY specifically (not a historical
     // backfill day, which would just be noise) — log why. This ran inside
@@ -1546,6 +1681,33 @@ class DerivationEngine {
     bundle['sleep_source'] = day.sleepSource;
 
     final scMap = (bundle['scalars'] as Map?)?.cast<String, dynamic>();
+
+    // ── NEVER WRITE NOTHING OVER SOMETHING ───────────────────────────────────
+    // Raw retention is 3 days, but derived history is forever — so a day older
+    // than retention has a good `day_result` and NO raw. Re-deriving it (which
+    // "Advanced data → Select all → Re-analyze" does for EVERY listed day, via
+    // runDays(force: true) → _prepareTargetDay, whose empty substrate yields an
+    // all-absent bundle) used to overwrite that good row: `putDayResult` is
+    // ConflictAlgorithm.replace on BOTH `day_result` and `metric_series`, so
+    // every scalar for the date was NULLed — and, because an empty bundle's
+    // endSec was 0, the blank was written FINALIZED and could never re-derive.
+    // Only `run()` had a pruned-raw guard, and only for user-override days.
+    //
+    // Detect it BEFORE the offloaded second half so its own writes
+    // (wake_day_features) can't clobber the early-read path either. With no day
+    // substrate and no sleep substrate the second half has nothing to add — its
+    // scalars are all derived from those two.
+    final producedNothing = daySub.isEmpty &&
+        sleepSub.isEmpty &&
+        (scMap == null || !scMap.values.any((v) => v != null));
+    if (producedNothing) {
+      final existing = await LocalDb.dayResult(day.date);
+      if (_isRealDayResult(existing)) {
+        _log('derive ${day.date}: no substrate (raw pruned) — kept the '
+            'existing result rather than blanking it');
+        return;
+      }
+    }
 
     // ── SECOND HALF — OFFLOADED to a background isolate ──────────────────────
     // Everything that turns the isolate-1 bundle into the full day result (wake
@@ -1659,7 +1821,12 @@ class DerivationEngine {
     // workouts/HRR/wear/curves would never get a chance to be filled in by a
     // later retry.
     final ageFinalized = (day.endSec + _finalizationSec) < dataNowSec;
-    final finalized = forceFinalize || (ageFinalized && secondHalfOk);
+    // A result with NOTHING in it is never finalized — not even by
+    // forceFinalize. Locking an all-absent row is what made the destructive
+    // re-analyze permanent; leaving it unlocked means a later pass (or a
+    // restored/backfilled substrate) can still fill the day in.
+    final finalized =
+        !producedNothing && (forceFinalize || (ageFinalized && secondHalfOk));
 
     final scalars =
         (bundle['scalars'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -1722,7 +1889,10 @@ class DerivationEngine {
         'hrr_bpm': sc('hrr_bpm'),
       },
     );
-    history.appendScalars(scalars);
+    // NOTE: the sweep's `history` snapshot is deliberately NOT updated here.
+    // See _BaselineHistoryCache — mutating the shared snapshot mid-sweep is the
+    // duplicate-day pollution bug, and each day already derives its own
+    // date-bounded window from the frozen snapshot.
     _log(
       'derived ${day.date} v$kAlgoVersion '
       '(sleep=${day.sleepOffsetSec > day.sleepOnsetSec}, final=$finalized)',
@@ -1844,7 +2014,48 @@ class DerivationEngine {
     _log('[spo2-detect] ${jsonEncode(payload)}');
   }
 
+  /// Skip reasons that describe a TRANSIENT failure of this particular pass
+  /// rather than a permanently pathological day. These must never finalize:
+  /// finalizing locks the day out of every future pass at this algo version.
+  static const Set<String> _transientSkipReasons = {'timeout', 'error'};
+
+  /// Whether [row] is a REAL derived day result worth protecting — i.e. not a
+  /// skip marker and not an all-absent shell.
+  static bool _isRealDayResult(Map<String, dynamic>? row) {
+    if (row == null) return false;
+    if ((row['skipped'] as num?)?.toInt() == 1) return false;
+    final payload = _decodeBundle(row['payload_json']);
+    if (payload == null) return false;
+    if (payload['skipped'] == true) return false;
+    final scalars = payload['scalars'];
+    if (scalars is Map && scalars.values.any((v) => v != null)) return true;
+    return row['rhr'] != null || row['rmssd'] != null || row['readiness'] != null;
+  }
+
+  /// Test seam for [_markDaySkipped] — the "a skip marker must never destroy a
+  /// real result" guarantee is the whole point of the method, so it is pinned
+  /// directly rather than through a full derive pass.
+  @visibleForTesting
+  Future<void> debugMarkDaySkipped(
+    String dayId,
+    int dayEndSec,
+    int dataNowSec, {
+    required String reason,
+  }) =>
+      _markDaySkipped(dayId, dayEndSec, dataNowSec, reason: reason);
+
   /// Persist a minimal skip marker so a pathological day isn't retried forever.
+  ///
+  /// A SKIP MARKER MUST NEVER OVERWRITE A REAL RESULT. `putDayResult` is
+  /// ConflictAlgorithm.replace on both `day_result` AND `metric_series`, so this
+  /// used to blank a good day's every scalar on a single [_perDayTimeout]
+  /// overrun — and, once the day sat >48 h behind the data edge, wrote the blank
+  /// FINALIZED, making it permanent (raw is pruned 3 days later, so there is
+  /// nothing left to re-derive from). It hit TODAY too: a good 08:00 result
+  /// replaced by a skip marker after one transient 09:00 timeout on a loaded
+  /// phone. `rescanRecent` explicitly refuses to do this for exactly this
+  /// reason; `run()` did it anyway. Now: write the marker only when there is no
+  /// good row to lose, and never lock a transient failure.
   Future<void> _markDaySkipped(
     String dayId,
     int dayEndSec,
@@ -1852,12 +2063,23 @@ class DerivationEngine {
     required String reason,
   }) async {
     try {
+      final existing = await LocalDb.dayResult(dayId);
+      if (_isRealDayResult(existing)) {
+        _log('derive $dayId $reason — existing result kept (not overwritten '
+            'with a skip marker)');
+        return;
+      }
       await LocalDb.putDayResult(
         dayId: dayId,
         algoVersion: kAlgoVersion,
         payloadJson: jsonEncode({'skipped': true, 'reason': reason}),
         windowJson: '{}',
-        finalized: (dayEndSec + _finalizationSec) < dataNowSec,
+        // Structural failures (a day that can never be prepared / blows the
+        // prepare budget) still finalize once aged out, so they aren't retried
+        // forever. A timeout or a one-off error does not — that day gets
+        // another chance while it still has raw.
+        finalized: !_transientSkipReasons.contains(reason) &&
+            (dayEndSec + _finalizationSec) < dataNowSec,
         skipped: true,
       );
     } catch (_) {
@@ -1865,23 +2087,30 @@ class DerivationEngine {
     }
   }
 
-  /// Attach trailing personal history (from metric_series) for the readiness pass.
+  /// Attach trailing personal history (from metric_series) for the readiness
+  /// pass — the trailing window of days STRICTLY BEFORE the day being derived.
+  ///
+  /// The self-exclusion (`date < input.date`) is load-bearing, not cosmetic: see
+  /// [_BaselineHistoryCache.valuesBefore]. Every one of these series is a
+  /// BASELINE the day's own value is scored against, so the day's own row (which
+  /// a previous derive of the same day already persisted) must not be in it.
   Map<String, dynamic> _attachHistory(
     DayBundleInput input,
     _BaselineHistoryCache history,
   ) {
     final m = input.toJson();
-    m['ln_rmssd_history'] = history.values('ln_rmssd');
-    m['rhr_history'] = history.values('rhr');
-    m['resp_history'] = history.values('resp_rate');
+    final date = input.date;
+    m['ln_rmssd_history'] = history.valuesBefore('ln_rmssd', date);
+    m['rhr_history'] = history.valuesBefore('rhr', date);
+    m['resp_history'] = history.valuesBefore('resp_rate', date);
     // Robust nocturnal RMSSD history (the `rmssd` series) — feeds the EWMA hrv
     // baseline so its center matches today's headline RMSSD (same metric).
-    m['rmssd_history'] = history.values('rmssd');
+    m['rmssd_history'] = history.valuesBefore('rmssd', date);
     // BASELINE for skin_temp_z is the RAW nightly ADC-mean series (`skin_temp_adc`),
     // NOT the z-score series. Feeding z-scores back as the baseline was a unit
     // mismatch that left z permanently null. The raw mean is stored every day so
     // this series fills and z starts computing once ≥3 days exist.
-    m['skin_temp_adc_history'] = history.values('skin_temp_adc');
+    m['skin_temp_adc_history'] = history.valuesBefore('skin_temp_adc', date);
     return m;
   }
 
@@ -1904,9 +2133,11 @@ class DerivationEngine {
       // main isolate after Isolate.run returned it. Returning the already-
       // encoded string avoids both the main-isolate encode cost AND transfers
       // a flat string across the isolate boundary instead of a large nested Map.
-      final bundleJson = await Isolate.run(
+      final bundleJson = await _runIsolateCancellable(
         () => jsonEncode(buildCrossDayBundle(days, profileMap)),
-      ).timeout(_crossDayTimeout);
+        _crossDayTimeout,
+        label: 'crossday',
+      );
       await LocalDb.putBaseline('crossday', bundleJson);
       _log('crossday: stored over ${days.length} day(s)');
     } catch (e) {
@@ -1945,7 +2176,7 @@ class DerivationEngine {
     // unconditionally on every heavy pass. _decodeBundle/_crossDayRecord are
     // both static, so this whole transform+encode step is isolate-safe.
     final rows = await LocalDb.recentDayResults(_crossDayWindow);
-    final (days, json) = await Isolate.run(() {
+    final (days, json) = await _runIsolateCancellable(() {
       final days = <Map<String, dynamic>>[];
       for (final row in rows.reversed) {
         final payload = _decodeBundle(row['payload_json']);
@@ -1955,7 +2186,7 @@ class DerivationEngine {
         if (rec != null) days.add(rec);
       }
       return (days, jsonEncode({'algo_version': kAlgoVersion, 'days': days}));
-    });
+    }, _crossDayTimeout, label: 'crossday-input');
     await LocalDb.putBaseline('crossday_input', json);
     return days;
   }
@@ -2406,19 +2637,29 @@ class DerivationEngine {
       for (final h in daySub.hr)
         if (h > 0) h.toDouble(),
     ];
-    final age = profile.ageYears?.toDouble() ?? 30.0; // fallback age
-    final weightKg = profile.weightKg ?? 70.0; // fallback weight
-    final sex = profile.sex?.toLowerCase() ?? 'm'; // fallback sex
-    final hrMax = 208 - 0.7 * age;
-    // Fallback to 60.0 so new users (no baseline yet, no manual RHR) still get Strain
-    final rhrForTrimp = restingHr ?? profile.restingHrManual?.toDouble() ?? 60.0;
+    // NEVER IMPUTE A PROFILE. These used to default to age 30 / 70 kg / sex 'm'
+    // / RHR 60 "so new users still get Strain" — and the results were then
+    // persisted as REAL scalars (strain, calories, calories_total, steps) into
+    // day_result AND metric_series for someone who never entered a profile.
+    // That is a fabricated number wearing a real number's clothes, and it
+    // contradicts the never-impute contract the rest of this layer (and
+    // `Profile`'s own doc, and the pure `onehz_pipeline` which already gates on
+    // exactly these fields) enforces. A missing input now makes the DEPENDENT
+    // metric absent — the UI already renders "—" correctly.
+    final age = profile.ageYears?.toDouble();
+    final weightKg = profile.weightKg;
+    final sex = profile.sex?.toLowerCase();
+    final hrMax = profile.hrMaxTanaka; // null when age is unknown
+    final rhrForTrimp = restingHr ?? profile.restingHrManual?.toDouble();
     double? strain;
     double? calories;
     double? steps;
     double? caloriesTotal;
     Map<String, int> zones = const {};
-    if (perMin.isNotEmpty) {
-      if (dayHrValid.isNotEmpty) {
+    if (perMin.isNotEmpty && hrMax != null) {
+      // TRIMP needs a real resting HR (nightly or user-supplied) and a real sex
+      // constant — both are in the Banister formula itself.
+      if (dayHrValid.isNotEmpty && rhrForTrimp != null && sex != null) {
         final trimp = ana.banisterTrimp(
           perMin,
           restingHr: rhrForTrimp,
@@ -2430,19 +2671,17 @@ class DerivationEngine {
           if (score.present) strain = score.value;
         }
       }
+      // Zones are pure %HRmax bands — real as soon as HRmax is real.
       zones = _wakeZoneMinutes(daySub, sleepOnsetSec, sleepOffsetSec, hrMax);
-      // age/weightKg always have a value by this point (defaulted above), so
-      // this used to be a dead "if (age != null && weightKg != null && ...)"
-      // that flutter analyze flagged - there was never actually a gate here.
-      calories = _keytelCaloriesWake(
-        perMin,
-        age,
-        weightKg,
-        hrMax,
-        sex == 'f',
-      );
+      // Keytel takes age, weight and sex directly.
+      if (age != null && weightKg != null && sex != null) {
+        calories = _keytelCaloriesWake(perMin, age, weightKg, hrMax, sex == 'f');
+      }
     }
     if (motion.isNotEmpty) {
+      // Steps do NOT need a profile: `dailyStepEstimate` falls back to the day's
+      // own 10th-percentile HR when `restingHr` is null, which is data-derived,
+      // not imputed. Pass the real value or nothing — never the old 60.0.
       final stepMetric = ana.dailyStepEstimate(
         motion,
         hrPerMin: hrPerMinAll,
@@ -2451,9 +2690,11 @@ class DerivationEngine {
       if (stepMetric.present && stepMetric.value != null) {
         steps = stepMetric.value!.steps.toDouble();
       }
-      // same story - age/weightKg can't be null here, heightCm is the only
-      // field that actually still needs a null check.
-      if (profile.heightCm != null) {
+      // TDEE needs the full anthropometric set (Mifflin BMR + Keytel surplus).
+      if (age != null &&
+          weightKg != null &&
+          sex != null &&
+          profile.heightCm != null) {
         final energy = ana.Calories.dailyEnergy(
           hrPerMinAll,
           profile: ana.WorkoutUserProfile(
@@ -3068,6 +3309,85 @@ class DerivationEngine {
     }
   }
 
+  /// Run [compute] in an explicitly spawned isolate and enforce [timeout] ON THE
+  /// ISOLATE — the general-purpose form of [_runDayBlocksCancellable].
+  ///
+  /// `Isolate.run(...).timeout(...)` only stops the CALLER awaiting; the spawned
+  /// isolate keeps burning CPU to completion in the background. With a bounded
+  /// per-day worker pool that silently blows the concurrency budget during a
+  /// backlog sweep — which is exactly why [_runDayBlocksCancellable] exists, and
+  /// it had been applied to only one of the file's isolate sites. Worse, some
+  /// sites (the sleep-staging pass) had NO timeout at all, so a hung isolate
+  /// wedged the engine with `_running == true` forever.
+  ///
+  /// Also wires `onError`/`onExit` so an uncaught throw or a silent death
+  /// FAILS the future instead of hanging it.
+  static Future<R> _runIsolateCancellable<R>(
+    FutureOr<R> Function() compute,
+    Duration timeout, {
+    required String label,
+  }) async {
+    final port = ReceivePort();
+    final (SendPort, FutureOr<Object?> Function()) message =
+        (port.sendPort, compute);
+    final isolate = await Isolate.spawn(
+      _cancellableIsolateEntry,
+      message,
+      onError: port.sendPort,
+      onExit: port.sendPort,
+    );
+    final completer = Completer<R>();
+    late final StreamSubscription<dynamic> sub;
+    sub = port.listen((msg) {
+      if (completer.isCompleted) return;
+      if (msg is _IsolateValue) {
+        completer.complete(msg.value as R);
+      } else if (msg is List) {
+        // Our caught-exception report or the `onError` port's uncaught-error
+        // format — both 2-element lists of strings.
+        completer.completeError(
+          StateError(
+            msg.isNotEmpty
+                ? '$label isolate failed: ${msg.first}'
+                : '$label isolate failed with no error detail',
+          ),
+        );
+      } else if (msg == null) {
+        // `onExit` — the isolate ended without ever sending a result.
+        completer.completeError(
+          StateError('$label isolate exited without a result'),
+        );
+      }
+    });
+    try {
+      return await completer.future.timeout(
+        timeout,
+        onTimeout: () {
+          isolate.kill(priority: Isolate.immediate);
+          throw TimeoutException('$label timed out after $timeout');
+        },
+      );
+    } finally {
+      await sub.cancel();
+      port.close();
+      // No-op if it already exited; guarantees a hung isolate never outlives
+      // this call.
+      isolate.kill(priority: Isolate.immediate);
+    }
+  }
+
+  /// `Isolate.spawn` entry point for [_runIsolateCancellable].
+  static Future<void> _cancellableIsolateEntry(
+    (SendPort, FutureOr<Object?> Function()) args,
+  ) async {
+    final (sendPort, compute) = args;
+    try {
+      sendPort.send(_IsolateValue(await compute()));
+    } catch (e, st) {
+      sendPort.send([e.toString(), st.toString()]);
+    }
+  }
+
   /// `Isolate.spawn` entry point for [_runDayBlocksCancellable]. Must be a
   /// static/top-level function taking exactly one (sendable) argument.
   static void _dayBlocksIsolateEntry((SendPort, _DayBlocksInput) args) {
@@ -3451,17 +3771,54 @@ class DerivationEngine {
     return 'error';
   }
 
+  /// The substrate range to LOAD so [calendarDays] can actually run its
+  /// documented nocturnal search for [dayId].
+  ///
+  /// `calendarDays` searches from the previous local NOON
+  /// (`dayStart − kNocturnalSearchLookbackSec`), and its comment records that
+  /// widening from the old prev-18:00 window as deliberate — "the old
+  /// prev-18:00 → noon window missed late wakes and forced the detector to act
+  /// like there was only one candidate sleep". But this loader only fetched
+  /// `dayStart − 6 h` (= 18:00), and `searchStart = math.max(dataStart, …)`
+  /// clipped the search right back to the slice start, so the widening was a
+  /// no-op and any sleep onset before 18:00 was truncated. Load the whole
+  /// window the day model asks for, from the one shared constant.
   (int, int) _targetDayWindow(String dayId) {
     final startSec = _localDayLabelToSec(dayId);
     final endSec = _localNextDayLabelToSec(dayId);
-    return (math.max(0, startSec - 6 * 3600), endSec - 1);
+    return (math.max(0, startSec - kNocturnalSearchLookbackSec), endSec - 1);
   }
+
+  /// Test seam for [_targetDayWindow] — the bug was that this loader and
+  /// [calendarDays]' search window silently disagreed, so the agreement is
+  /// pinned directly.
+  @visibleForTesting
+  (int, int) debugTargetDayWindow(String dayId) => _targetDayWindow(dayId);
 
   void _log(String m) {
     if (kDebugMode) debugPrint('[derive] $m');
     log?.call('[derive] $m');
   }
 }
+
+/// Wrapper for a cancellable-isolate result, so a computation whose OWN result
+/// happens to be a `List` (the uncaught-error wire format) or `null` (the
+/// `onExit` signal) can never be misread as a failure.
+class _IsolateValue {
+  final Object? value;
+  const _IsolateValue(this.value);
+}
+
+/// Test seam for [DerivationEngine._runIsolateCancellable] — the isolate
+/// lifecycle guarantees (value / error / killed-on-timeout) are what the engine
+/// depends on to never hang, so they're pinned directly.
+@visibleForTesting
+Future<R> runCancellableIsolate<R>(
+  FutureOr<R> Function() compute,
+  Duration timeout, {
+  String label = 'test',
+}) =>
+    DerivationEngine._runIsolateCancellable(compute, timeout, label: label);
 
 /// Sendable input for [DerivationEngine._computeDayBlocks] — crosses the
 /// `Isolate.run` boundary, so every field is plain data (Substrate is int/double

@@ -45,6 +45,38 @@ class TelemetryService {
   bool get enabled => _enabled;
   set enabled(bool value) {
     _enabled = value;
+    _consentResolved = true;
+    _applyFirebaseCollection(value);
+  }
+
+  // ── consent-gated Firebase collection ──────────────────────────────────────
+  //
+  // The Firebase SDKs auto-collect from process start unless told otherwise at
+  // the PLATFORM level, which is why ios/Runner/Info.plist and
+  // android/app/src/main/AndroidManifest.xml both ship
+  // <analytics|crashlytics|performance>_collection_enabled = false. Those flags
+  // are the real guarantee (they land before any Dart runs); everything here is
+  // the seam that turns collection back ON, and only after the user's stored
+  // consent has actually been read.
+
+  /// False until the user's persisted telemetry consent has been LOADED — not
+  /// merely defaulted. Nothing is transmitted and no Firebase SDK is enabled
+  /// while this is false, no matter what else happens during startup.
+  bool _consentResolved = false;
+  bool get consentResolved => _consentResolved;
+
+  /// Test seam: replaces the real `set*CollectionEnabled` fan-out (the Firebase
+  /// SDKs can't be initialized in a unit test). Receives the value that would
+  /// have been pushed to Crashlytics/Performance/Analytics.
+  @visibleForTesting
+  static void Function(bool enabled)? debugCollectionSink;
+
+  void _applyFirebaseCollection(bool value) {
+    final sink = debugCollectionSink;
+    if (sink != null) {
+      sink(value);
+      return;
+    }
     try {
       if (Firebase.apps.isNotEmpty) {
         FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(value);
@@ -52,6 +84,34 @@ class TelemetryService {
         FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(value);
       }
     } catch (_) {}
+  }
+
+  /// Apply the user's AFFIRMATIVELY LOADED telemetry consent. Preferred over
+  /// assigning [enabled] directly because it reads as what it is: the single
+  /// point where collection may be switched on.
+  void applyConsent(bool consent) => enabled = consent;
+
+  /// Belt-and-braces: force every Firebase SDK's collection OFF at startup,
+  /// before consent is known. The platform flags already do this, but a build
+  /// with a stale plist/manifest (or a future SDK that defaults differently)
+  /// must still not collect. No-op once consent has been resolved, so a hot
+  /// restart / re-entry can't silently revoke an opt-in.
+  ///
+  /// Called from main() right after Firebase.initializeApp. Safe when Firebase
+  /// is absent entirely (no google-services.json / GoogleService-Info.plist) —
+  /// Firebase is OPTIONAL and the app must run without it.
+  void enforceCollectionOffUntilConsent() {
+    if (_consentResolved) return;
+    _enabled = false;
+    _applyFirebaseCollection(false);
+  }
+
+  /// Test seam: return the singleton to its fresh-install state (no consent
+  /// read yet, nothing transmitted).
+  @visibleForTesting
+  void debugResetConsent() {
+    _consentResolved = false;
+    _enabled = false;
   }
 
   /// Anchors + version stamped onto each batch (AppState sets these on load).

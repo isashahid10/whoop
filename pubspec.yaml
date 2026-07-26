@@ -181,6 +181,14 @@ dev_dependencies:
   # RouteTracker's stall-watchdog tests drive virtual time (was a transitive
   # dep via flutter_test; declared directly since test/ now imports it).
   fake_async: ^1.3.1
+  # day_window_dst_test moves the PROCESS timezone via libc setenv/tzset so the
+  # DST day-length regressions are real on a non-DST host (transitive via
+  # sqflite_common_ffi; declared directly since test/ now imports it).
+  ffi: ^2.1.0
+  # db_p0_fixes_test swaps PathProviderPlatform.instance for a temp-dir fake so
+  # exportDaysDb can run without a platform plugin (transitive via
+  # path_provider; declared directly since test/ now imports it).
+  path_provider_platform_interface: ^2.1.0
 
 flutter_launcher_icons:
   android: "launcher_icon"

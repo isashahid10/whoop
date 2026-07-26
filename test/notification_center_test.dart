@@ -3,7 +3,10 @@
 // we construct NotificationPrefs/NotificationEvent directly.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:openstrap_edge/notify/notification_event.dart';
+import 'package:openstrap_edge/notify/notification_ids.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
 
 NotificationEvent _ev(NotifCategory c, NotifPriority p) => NotificationEvent(
@@ -67,15 +70,24 @@ void main() {
   });
 
   group('osId partitioning', () {
-    test('categories land in disjoint bands', () {
-      final health = _ev(NotifCategory.health, NotifPriority.critical).osId;
-      final recovery = _ev(NotifCategory.recovery, NotifPriority.normal).osId;
-      final reminders = _ev(NotifCategory.reminders, NotifPriority.low).osId;
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      NotificationIds.instance.resetForTest();
+    });
+
+    test('categories land in disjoint bands', () async {
+      final ids = NotificationIds.instance;
+      final health =
+          await ids.idFor(_ev(NotifCategory.health, NotifPriority.critical));
+      final recovery =
+          await ids.idFor(_ev(NotifCategory.recovery, NotifPriority.normal));
+      final reminders =
+          await ids.idFor(_ev(NotifCategory.reminders, NotifPriority.low));
       expect(health ~/ 100000, equals(3));
       expect(recovery ~/ 100000, equals(2));
       expect(reminders ~/ 100000, equals(4));
     });
-    test('same logical event yields a stable id (replace, not stack)', () {
+    test('same logical event yields a stable id (replace, not stack)', () async {
       final a = NotificationEvent(
           dedupeKey: '2026-06-27:illness',
           category: NotifCategory.health,
@@ -88,7 +100,8 @@ void main() {
           title: 'different title',
           body: 'different body',
           date: '2026-06-27');
-      expect(a.osId, equals(b.osId));
+      expect(await NotificationIds.instance.idFor(a),
+          equals(await NotificationIds.instance.idFor(b)));
     });
   });
 }

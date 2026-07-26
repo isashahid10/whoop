@@ -388,6 +388,17 @@ class PhysioDay {
   bool get hasSleep => sleep.present;
 }
 
+/// How far BEFORE a calendar day's local midnight [calendarDays] searches for
+/// the main sleep that ends in that day — the previous local NOON.
+///
+/// Exported because the coordinator has to LOAD at least this much substrate
+/// before the day start, or `searchStart = math.max(dataStart, …)` silently
+/// clips the window back to wherever the loaded slice happens to begin and any
+/// sleep onset before that instant is truncated (see
+/// `DerivationEngine._targetDayWindow`). One constant, two call sites — they
+/// cannot drift apart again.
+const int kNocturnalSearchLookbackSec = 12 * 3600;
+
 /// A user-asserted sleep window for one day — manual entry (Approach 1) or a
 /// confirmation of the HR-led fallback (Approach 2). Passed into [calendarDays]
 /// so it overrides auto detection for the matching [dayId].
@@ -426,7 +437,18 @@ String localDateLabel(int epochSec) {
 /// A sleep that crosses midnight is attributed to the day it ENDS; its window
 /// indices (sleepLoIdx/Hi) point into the full substrate, so the coordinator
 /// still slices the whole window for HRV/RHR/recovery regardless of the boundary.
-List<PhysioDay> calendarDays(Substrate sub, {SleepWindowOverride? override}) {
+///
+/// [tzOffsetAt] resolves the local UTC offset in effect at an epoch second;
+/// it defaults to [tzOffsetSecondsAt] and exists so tests can pin that the
+/// habitual-midsleep prior is resolved AT THE DAY BEING SEGMENTED rather than
+/// at "now" (a zone-independent way to test the DST/travel fix, since the
+/// machine running the test may sit in a zone that never changes offset).
+List<PhysioDay> calendarDays(
+  Substrate sub, {
+  SleepWindowOverride? override,
+  int Function(int epochSec)? tzOffsetAt,
+}) {
+  final tzOffset = tzOffsetAt ?? tzOffsetSecondsAt;
   if (sub.isEmpty) return const [];
   final accel = sub.accelSamples();
   final hr = sub.hr1hz();
@@ -452,7 +474,7 @@ List<PhysioDay> calendarDays(Substrate sub, {SleepWindowOverride? override}) {
     // prev-18:00 → noon window missed late wakes and forced the detector to act
     // like there was only one candidate sleep. The richer selector needs the
     // full set of sessions that can legitimately end today.
-    final searchStart = math.max(dataStart, dayStart - 12 * 3600);
+    final searchStart = math.max(dataStart, dayStart - kNocturnalSearchLookbackSec);
     final searchEnd = math.min(dataEnd, dayEnd);
     final loS = _lowerBound(sub.tsSec, searchStart);
     final hiS = _lowerBound(sub.tsSec, searchEnd);
@@ -465,9 +487,17 @@ List<PhysioDay> calendarDays(Substrate sub, {SleepWindowOverride? override}) {
     final ov =
         (override != null && override.dayId == dayLabel) ? override : null;
     if (hiS - loS >= 600 || ov != null) {
+      // The habitual-midsleep prior converts each HISTORICAL sleep block's epoch
+      // seconds to a local time-of-day. Using `DateTime.now()`'s offset applied
+      // the CURRENT UTC offset to those historical instants, so re-deriving days
+      // from the other side of a DST transition (or a trip) shifted every
+      // historical midsleep by an hour — which can change which candidate sleep
+      // the selector's alignment bonus picks. Resolve the offset AT THE DAY
+      // BEING SEGMENTED instead of "whenever this code happens to run", so a
+      // re-derive of an old day is reproducible regardless of today's zone.
       final habitualMidsleepSec = ana.habitualMidsleepSecFromHistory(
         sleepHistory,
-        tzOffsetSeconds: DateTime.now().timeZoneOffset.inSeconds,
+        tzOffsetSeconds: tzOffset(dayStart),
       );
       // Daytime HR baseline = valid HR before the nocturnal search window.
       final base = <double>[for (var i = 0; i < loS; i++) if (hr[i] > 0) hr[i]];
@@ -580,6 +610,19 @@ List<PhysioDay> calendarDays(Substrate sub, {SleepWindowOverride? override}) {
   }
   return days;
 }
+
+/// The LOCAL UTC offset in effect AT [epochSec] — not the offset in effect now.
+///
+/// `DateTime.now().timeZoneOffset` answers "what is the offset today", which is
+/// the wrong question for any historical instant: a day derived from the other
+/// side of a DST transition (or from before a trip) sits at a different offset,
+/// and using today's would shift that day's local clock-times by up to an hour.
+/// `DateTime.fromMillisecondsSinceEpoch(..., isUtc: false).timeZoneOffset` asks
+/// the platform zone database for the offset that actually applied then.
+int tzOffsetSecondsAt(int epochSec) =>
+    DateTime.fromMillisecondsSinceEpoch(epochSec * 1000, isUtc: false)
+        .timeZoneOffset
+        .inSeconds;
 
 /// Local midnight (epoch sec) at/before [epochSec].
 int _localMidnight(int epochSec) {

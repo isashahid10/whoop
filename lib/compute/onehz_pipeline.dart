@@ -294,8 +294,19 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
           tier: Tier.high,
           inputs_used: ['rr_cleaned'],
         );
-  // Nocturnal RHR over the SLEEP HR (fallback to day-valid only if no sleep HR).
-  final rhr = nocturnalRhr(sleepHr.isNotEmpty ? sleepHr : dayHrValid);
+  // Nocturnal RHR over the SLEEP HR (fallback to the DAY series only if there
+  // is no sleep HR at all).
+  //
+  // Both arguments must be POSITIONALLY DENSE 1 Hz series where 0 means
+  // off-skin — `nocturnalRhr` slides its 30-minute window over wall-clock
+  // POSITIONS and enforces a minimum on-skin coverage per window. Passing the
+  // compacted `dayHrValid` here defeated that: with gaps squeezed out, 1800
+  // consecutive entries could span many hours, so "lowest 30-minute mean"
+  // silently became "lowest mean over whatever 1800 samples happened to
+  // survive". `dayHr` keeps its zeros, so a day too sparse to contain a real
+  // contiguous window now abstains instead of reporting a stitched-together
+  // trough.
+  final rhr = nocturnalRhr(sleepHr.isNotEmpty ? sleepHr : dayHr);
   // HR dip: day-side = waking HR outside the sleep window; night-side = sleep HR.
   final dayOnly = _dayHrOutsideSleep(d);
   final dip = hrDip(dayOnly, sleepHr);
@@ -384,7 +395,7 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
       ? math.log(sleepSessionRmssd)
       : null;
   // Readiness's RHR input must come from an ACTUAL detected sleep session.
-  // `rhr` above intentionally falls back to daytime HR (`dayHrValid`) for the
+  // `rhr` above intentionally falls back to daytime HR (`dayHr`) for the
   // general-purpose "resting HR" display card, but feeding that fallback into
   // readiness let a handful of minutes of live daytime HR masquerade as an
   // overnight resting rate — the sole reason a same-day score of 100 could
@@ -444,7 +455,16 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
       'note': composite.note,
     };
   }
-  // Plews lnRMSSD readiness over the trailing history INCLUDING today.
+  // Plews lnRMSSD readiness. `readinessLnRmssd` is contractually handed the
+  // trailing history with TONIGHT AS THE LAST ELEMENT and takes strictly the
+  // prior elements as its baseline (analytics v38). So appending `lnToday`
+  // exactly once is right — PROVIDED `d.lnRmssdHistory` holds only days BEFORE
+  // this one. It didn't: the engine filled it from an unfiltered trailing
+  // `metric_series` window that already contained the row a previous derive of
+  // THIS day wrote, so today was in its own baseline AND counted a second time
+  // by this append. The engine now self-excludes the target date
+  // (`_attachHistory` → `_BaselineHistoryCache.valuesBefore`), which is what
+  // makes this single append the correct, non-duplicating one.
   final lnHist = [...d.lnRmssdHistory, ?lnToday];
   final lnReadiness = lnHist.length >= 4
       ? readinessLnRmssd(lnHist)

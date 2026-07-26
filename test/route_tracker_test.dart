@@ -486,4 +486,82 @@ void main() {
       unawaited(ctrl.close());
     });
   });
+
+  // REGRESSION: dispose() cancelled only the watchdog. The GPS StreamSubscription
+  // stayed live and `_stopped` stayed false, so a dispose() without a stop()
+  // left the location stream (and the platform GPS session behind it) running
+  // for the life of the process — and nothing ever called dispose() at all, so
+  // the six ValueNotifiers and their listeners leaked once per route workout.
+  group('lifecycle: dispose', () {
+    test('dispose() cancels the GPS subscription', () async {
+      var cancels = 0;
+      final ctrl = StreamController<GpsSample>(onCancel: () => cancels++);
+      final t = RouteTracker(sink: (_) async {}, batchSize: 100);
+      t.start(ctrl.stream);
+      ctrl.add(_fix(0));
+      await pumpEventQueue();
+      expect(t.isRunning, isTrue);
+
+      t.dispose();
+      await pumpEventQueue();
+
+      expect(cancels, 1, reason: 'the location stream stayed subscribed');
+      expect(t.isRunning, isFalse);
+      await ctrl.close();
+    });
+
+    test('dispose() without stop() ignores any in-flight sample', () async {
+      final ctrl = StreamController<GpsSample>();
+      final seen = <List<RoutePoint>>[];
+      final t = RouteTracker(sink: (b) async => seen.add(b), batchSize: 1);
+      t.start(ctrl.stream);
+      t.dispose();
+      ctrl.add(_fix(0));
+      ctrl.addError(StateError('location service died'));
+      await pumpEventQueue(); // must not touch a disposed ValueNotifier
+      expect(seen, isEmpty);
+      await ctrl.close();
+    });
+
+    test('stop() disposes, so a tracker is fully released after one workout',
+        () async {
+      var cancels = 0;
+      final ctrl = StreamController<GpsSample>(onCancel: () => cancels++);
+      final flushed = <RoutePoint>[];
+      final t = RouteTracker(
+        sink: (b) async => flushed.addAll(b),
+        batchSize: 100, // nothing flushes until stop()
+      );
+      t.start(ctrl.stream);
+      ctrl.add(_fix(0));
+      ctrl.add(_fix(1));
+      await pumpEventQueue();
+
+      await t.stop();
+
+      expect(cancels, 1);
+      expect(flushed.length, 2, reason: 'the tail must still be persisted');
+      // The notifiers are gone: writing to a disposed ValueNotifier throws.
+      expect(() => t.path.value = const [], throwsA(isA<Error>()));
+      await ctrl.close();
+    });
+
+    test('dispose() and stop() are both idempotent, in either order', () async {
+      final ctrl = StreamController<GpsSample>();
+      final t = RouteTracker(sink: (_) async {}, batchSize: 100);
+      t.start(ctrl.stream);
+      await t.stop();
+      await t.stop(); // no double-dispose crash
+      t.dispose();
+      t.dispose();
+
+      final ctrl2 = StreamController<GpsSample>();
+      final t2 = RouteTracker(sink: (_) async {}, batchSize: 100);
+      t2.start(ctrl2.stream);
+      t2.dispose();
+      await t2.stop(); // stop after dispose must not throw
+      await ctrl.close();
+      await ctrl2.close();
+    });
+  });
 }

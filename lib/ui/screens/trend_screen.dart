@@ -114,7 +114,11 @@ class _TrendTodayCardState extends State<_TrendTodayCard> {
           child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)))));
     }
     final buckets = (_d?['buckets'] as List?) ?? const [];
-    final unit = _d?['unit']?.toString() ?? '';
+    final unit = trendDisplay(
+      widget.metric,
+      _d?['label']?.toString() ?? '',
+      _d?['unit']?.toString() ?? '',
+    ).unit;
     final summary = (_d?['summary'] as Map?)?.cast<String, dynamic>();
     final isDay = widget.date != null;
 
@@ -128,15 +132,16 @@ class _TrendTodayCardState extends State<_TrendTodayCard> {
         final dstr = DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true)
             .toIso8601String().substring(0, 10);
         if (dstr == widget.date) {
-          if (bm['has'] == true && bm['value'] is num) value = (bm['value'] as num).toDouble();
+          value = trendBucketValue(bm);
           break;
         }
       }
     } else {
-      // Today leaf: latest day with a value.
+      // Today leaf: latest day that actually CARRIES a measurement. `value` is
+      // padded to 0.0 on absent buckets, so `v is num` matched every day.
       for (final b in buckets.reversed) {
-        final v = (b as Map)['value'];
-        if (v is num) { value = v.toDouble(); break; }
+        final v = trendBucketValue(b as Map);
+        if (v != null) { value = v; break; }
       }
     }
 
@@ -165,10 +170,24 @@ class _TrendTodayCardState extends State<_TrendTodayCard> {
               const SizedBox(width: Sp.x2),
               Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(unit, style: AppText.bodySoft)),
             ],
-            // Week-over-week delta only makes sense on the latest (non-day) leaf.
+            // Week-over-week delta only makes sense on the latest (non-day)
+            // leaf. It is an ABSOLUTE difference in the metric's own unit
+            // (`avg - prevAvg`), so it goes in a BaselineDeltaChip — DeltaChip
+            // would stamp a '%' on it and turn "20 min more sleep" into "20%".
             if (!isDay && delta is num && delta != 0) ...[
               const SizedBox(width: Sp.x3),
-              Padding(padding: const EdgeInsets.only(bottom: 8), child: DeltaChip(delta)),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: BaselineDeltaChip(
+                  delta,
+                  unit: (widget.metric == 'sleep' || widget.metric == 'wear')
+                      ? 'min'
+                      : unit,
+                  goodIsUp: trendGoodIsUp(widget.metric),
+                  showVsNormal: false,
+                  vsLabel: 'vs prev',
+                ),
+              ),
             ],
           ]),
         if (info != null) ...[

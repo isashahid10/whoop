@@ -73,7 +73,10 @@ class OpenStrapWidgetProvider : HomeWidgetProvider() {
         val readiness = w.readInt(prefs, "readiness", -1)
         val strain = w.readDouble(prefs, "strain", -1.0)
         val sleepMin = w.readInt(prefs, "sleep_min", -1)
-        val needMin = w.readInt(prefs, "sleep_need_min", 480)
+        // -1 = none. The Dart writer uses the same sentinel; the ring below
+        // already gates on needMin > 0, so an unknown need leaves it empty
+        // instead of filling against a fabricated 8h denominator.
+        val needMin = w.readInt(prefs, "sleep_need_min", -1)
         val hrv = w.readInt(prefs, "hrv", -1)
         val hrvBaseline = w.readInt(prefs, "hrv_baseline", -1)
 

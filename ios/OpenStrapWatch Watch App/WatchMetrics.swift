@@ -19,7 +19,7 @@ struct WatchMetrics {
   var readiness: Int      // 0–100, -1 = none
   var strain: Double      // 0–21, -1 = none
   var sleepMin: Int       // minutes asleep, -1 = none
-  var needMin: Int        // sleep need (min)
+  var needMin: Int        // sleep need (min); -1 = none — never fabricate 8h
   var hrv: Int            // RMSSD ms, -1 = none
   var hrvBaseline: Int    // baseline RMSSD ms, -1 = none
   var rhr: Int            // bpm, -1 = none
@@ -29,7 +29,7 @@ struct WatchMetrics {
   var themeDark: Bool     // mirror the app's Ember-on-Paper (false) / Char (true)
 
   static let empty = WatchMetrics(
-    hasData: false, readiness: -1, strain: -1, sleepMin: -1, needMin: 480,
+    hasData: false, readiness: -1, strain: -1, sleepMin: -1, needMin: -1,
     hrv: -1, hrvBaseline: -1, rhr: -1, coachLine: "", battPct: -1, updatedAt: 0,
     themeDark: true)
 
@@ -40,7 +40,7 @@ struct WatchMetrics {
       readiness: d?.object(forKey: "readiness") as? Int ?? -1,
       strain: d?.object(forKey: "strain") as? Double ?? -1,
       sleepMin: d?.object(forKey: "sleep_min") as? Int ?? -1,
-      needMin: d?.object(forKey: "sleep_need_min") as? Int ?? 480,
+      needMin: d?.object(forKey: "sleep_need_min") as? Int ?? -1,
       hrv: d?.object(forKey: "hrv") as? Int ?? -1,
       hrvBaseline: d?.object(forKey: "hrv_baseline") as? Int ?? -1,
       rhr: d?.object(forKey: "rhr") as? Int ?? -1,

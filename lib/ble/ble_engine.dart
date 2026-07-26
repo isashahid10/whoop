@@ -130,17 +130,6 @@ int countBurstTrafficPackets({
 }
 
 @visibleForTesting
-int nextBurstStablePollStreak({
-  required bool queueEmpty,
-  required int currentCount,
-  required int previousCount,
-  required int stableStreak,
-}) {
-  if (!queueEmpty) return 0;
-  return currentCount == previousCount ? (stableStreak + 1) : 0;
-}
-
-@visibleForTesting
 bool shouldPauseMaintenanceTraffic({required bool offloadActive}) =>
     offloadActive;
 
@@ -427,29 +416,63 @@ class BleEngine {
   /// harmless once we own the band).
   Future<bool> _claimBand() async {
     final other = _bandOwner;
-    if (other != null && !identical(other, this)) {
-      if (isBackgroundDrainer) {
+    final incumbentPresent = other != null && !identical(other, this);
+    final decision = BandClaimPolicy.decide(
+      incumbentPresent: incumbentPresent,
+      // LIVENESS, not just non-nullness: a claim held by an engine that has no
+      // session (its connect threw, or its link went down) is a STALE claim,
+      // and honouring it wedged every later background drain for the whole
+      // process lifetime ("strap not reachable this cycle", forever).
+      incumbentLive: incumbentPresent && other.holdsBandLink,
+      isBackgroundDrainer: isBackgroundDrainer,
+    );
+    switch (decision) {
+      case BandClaimDecision.yieldToOwner:
         _log(
-          'band already owned by the foreground session — background drain '
+          'band already owned by a live foreground session — background drain '
           'yielding (avoids duplicate ACKs on the same offload).',
         );
         return false;
-      }
-      _log('preempting a background drain to take the foreground session.');
-      try {
-        await other
-            .disconnect()
-            .timeout(const Duration(seconds: 10));
-      } on TimeoutException {
-        _log('preempted engine teardown timed out after 10s — proceeding '
-            'with the foreground connect anyway.');
-      } catch (e) {
-        _log('preempted engine teardown failed ($e) — proceeding.');
-      }
+      case BandClaimDecision.preemptThenClaim:
+        _log('preempting a background drain to take the foreground session.');
+        try {
+          await other!.disconnect().timeout(const Duration(seconds: 10));
+        } on TimeoutException {
+          _log('preempted engine teardown timed out after 10s — proceeding '
+              'with the foreground connect anyway.');
+        } catch (e) {
+          _log('preempted engine teardown failed ($e) — proceeding.');
+        }
+        break;
+      case BandClaimDecision.claim:
+        if (incumbentPresent) {
+          _log('taking over a STALE band claim (the previous owner has no '
+              'live link).');
+        }
+        break;
     }
     _bandOwner = this;
     return true;
   }
+
+  /// Whether this engine actually holds (or is actively bringing up) a BLE
+  /// link — the liveness test [BandClaimPolicy] uses on the incumbent owner.
+  /// A session object exists from the moment `_doConnect` starts, so a connect
+  /// still in flight correctly counts as live; every failure path nulls the
+  /// session and drops the phase to idle/error before returning.
+  bool get holdsBandLink =>
+      _session != null &&
+      _phase != BleConnState.idle &&
+      _phase != BleConnState.error;
+
+  /// Test-only view of the process-wide single-owner claim.
+  @visibleForTesting
+  static bool get bandClaimed => _bandOwner != null;
+
+  /// Test-only reset of the process-wide claim (static state otherwise leaks
+  /// across test cases).
+  @visibleForTesting
+  static void resetBandClaimForTest() => _bandOwner = null;
 
   void _releaseBand() {
     if (identical(_bandOwner, this)) _bandOwner = null;
@@ -567,7 +590,7 @@ class BleEngine {
   // Historical-offload bookkeeping. A controller is live for the whole connection
   // (we keep ACKing HISTORY_END markers as they arrive, even after the first
   // HISTORY_COMPLETE — a later strap-triggered offload reuses it).
-  _DrainController? _drain;
+  DrainController? _drain;
   bool _liveEnabled = false;
   // Background live downgrade: only the compact realtime-HR stream is armed
   // (no high-rate R10/R11 + IMU + optical flood). Set by [enableHrOnlyLive].
@@ -639,6 +662,9 @@ class BleEngine {
   // Lifetime count of GET_DATA_RANGE reads rejected by isCorruptFutureRtc —
   // see the range_oldest/range_newest handler below.
   int _corruptDataRangeCount = 0;
+  // Lifetime count of GET_CLOCK `clock_epoch` reads rejected by the same gate
+  // (ClockPolicy.acceptsClockRead) — see the clock_epoch handler below.
+  int _corruptClockReadCount = 0;
   DateTime? _bondTime; // when the handshake completed (bond confirmed)
   DateTime? _armTime; // when live (R10/R11) streams were last armed
   int _autoContinueCount = 0; // consecutive auto-continues this connection
@@ -814,6 +840,10 @@ class BleEngine {
     // recovery already happens automatically at the DB layer.
     'counter_regressions_total': _counterRegression.regressions,
     'corrupt_data_ranges_total': _corruptDataRangeCount,
+    'corrupt_clock_reads_total': _corruptClockReadCount,
+    // Bursts whose open chunk was discarded un-committed and whose HISTORY_END
+    // token was therefore refused (see BurstTrimGuard).
+    'poisoned_bursts_total': _drain?.poisonedBursts ?? 0,
     'history_requests': _historyRequests,
     'history_completions': _historyCompletions,
     'successful_bursts': _successfulBursts,
@@ -922,8 +952,34 @@ class BleEngine {
     if (!await _claimBand()) return false;
     // Any prior session is dead to us now — tear it down before a new one.
     await _teardownSession(intentional: true);
-    return _doConnect(device);
+    try {
+      return await _doConnect(device);
+    } catch (e) {
+      // _doConnect guards its own known failure modes, but anything thrown
+      // OUTSIDE those guards (e.g. the connectionState subscription setup, which
+      // runs before the first try block) used to escape with the band claim
+      // still held and a half-built session left in `connecting` — which
+      // [BandClaimPolicy] would then read as a LIVE incumbent, permanently
+      // starving every later background drain. Route every escape through the
+      // one failure exit.
+      _log('connect failed (unhandled): $e');
+      await _failConnect();
+      return false;
+    }
   });
+
+  /// Common exit for every failed-connect path: tear the half-built session
+  /// down, drop to `idle`, AND RELEASE THE BAND CLAIM.
+  ///
+  /// [_claimBand] runs BEFORE the link is up, so a connect that threw used to
+  /// leave `_bandOwner` pointing at an engine with no link — and only
+  /// `disconnect()` ever released it, which nothing calls on this path. Every
+  /// later background drain then saw a non-null owner and yielded forever.
+  Future<void> _failConnect() async {
+    await _teardownSession(intentional: true);
+    _releaseBand();
+    _setPhase(BleConnState.idle);
+  }
 
   Future<bool> _doConnect(BluetoothDevice device) async {
     state.address = device.remoteId.str;
@@ -958,8 +1014,7 @@ class BleEngine {
       );
     } catch (e) {
       _log('connect failed: $e');
-      await _teardownSession(intentional: true);
-      _setPhase(BleConnState.idle);
+      await _failConnect();
       return false;
     }
 
@@ -1026,6 +1081,7 @@ class BleEngine {
 
       if (!session.connected) {
         _log('connect: link dropped during setup.');
+        await _failConnect();
         return false;
       }
 
@@ -1039,8 +1095,7 @@ class BleEngine {
       }
       if (svc == null) {
         _log('Harvard service not found on device.');
-        await _teardownSession(intentional: true);
-        _setPhase(BleConnState.idle);
+        await _failConnect();
         return false;
       }
       BluetoothCharacteristic? find(String prefix) {
@@ -1059,8 +1114,7 @@ class BleEngine {
           events == null ||
           data == null) {
         _log('Missing one or more Harvard characteristics.');
-        await _teardownSession(intentional: true);
-        _setPhase(BleConnState.idle);
+        await _failConnect();
         return false;
       }
 
@@ -1144,7 +1198,7 @@ class BleEngine {
       // fire INIT — which triggers the historical flood. Historical + live records
       // then arrive on the same subscription; HISTORY_END markers are committed
       // (raw+samples+cursor, atomically) BEFORE we ACK, so the offload is resumable.
-      _drain = _DrainController(
+      _drain = DrainController(
         onRecord: _storeRecord,
         onRecordsBatch: onRecordsBatch == null ? null : _storeRecordsBatch,
         onCommit: onCommitBatch == null ? null : _commitBatch,
@@ -1159,8 +1213,7 @@ class BleEngine {
       return true;
     } catch (e) {
       _log('connect setup failed: $e');
-      await _teardownSession(intentional: true);
-      _setPhase(BleConnState.idle);
+      await _failConnect();
       return false;
     }
   }
@@ -1313,7 +1366,7 @@ class BleEngine {
         _lastRx = DateTime.now();
         for (final frame in session.asm[role]!.feed(chunk)) {
           if (frame.valid) {
-            _onFrame(role, frame);
+            _onFrame(role, frame, session);
           } else {
             // Previously silent: a degrading radio corrupting frames looked
             // identical to a healthy one everywhere. Now counted (surfaced in
@@ -1339,7 +1392,10 @@ class BleEngine {
 
   // ── link-down handling (drives reconnect via the caller's contract) ─────────────
   void _onLinkDown(_Session session) {
-    if (_session != session) return; // a stale session's stream
+    if (LinkDownPolicy.evaluate(sessionIsCurrent: _session == session) ==
+        LinkDownAction.ignoreStaleSession) {
+      return; // a stale session's stream
+    }
     final wasIntentional = session.intentionalClose;
     session.connected = false;
     // A drain in flight must complete (with linkDown) immediately, not run out
@@ -1359,6 +1415,26 @@ class BleEngine {
     // through the same single-flight connect, so there's still exactly one path.
     _setOffloadActive(false);
     _setPhase(BleConnState.idle);
+    // TEAR THE SESSION DOWN NOW. This used to happen ONLY on the next
+    // connect()/disconnect() — which never comes when BondRefusalGiveUp pauses
+    // auto-reconnect (`state.autoReconnectPaused`), so the dead session's five
+    // timers (heartbeat 10 s, keep-alive 30 s, periodic backfill 900 s, idle
+    // watchdog, historical retry) kept firing into a dead characteristic
+    // forever and its four onValueReceived subscriptions stayed registered —
+    // one more full set leaked on every drop. Deferred off this notification
+    // callback (we are inside one of the very subscriptions being cancelled)
+    // and non-intentional, so no redundant device.disconnect() is issued.
+    unawaited(
+      Future<void>(() async {
+        if (_session != session) return; // a connect already replaced us
+        await _teardownSession(intentional: false);
+        // A claim held with no link is a stale claim (see [BandClaimPolicy]);
+        // releasing it here is what stops a failed foreground link from
+        // wedging every later background drain. The caller's reconnect loop
+        // re-claims through connect(), where foreground still preempts.
+        _releaseBand();
+      }),
+    );
   }
 
   /// Feed an UNINTENTIONAL disconnect to the cross-reconnect detectors. A timeout
@@ -1416,7 +1492,12 @@ class BleEngine {
   static const Duration _serviceDiscoveryTimeout = Duration(seconds: 15);
   static const Duration _notifySetupTimeout = Duration(seconds: 15);
 
-  Future<bool> _write(Uint8List raw) {
+  /// [owner] pins the write to ONE session. Without it a write queued by a
+  /// long-parked drain (a big commit, then up to ~25 s of ACK retries) lands on
+  /// whatever session happens to be current when the write chain reaches it —
+  /// i.e. an OLD connection's batch-ACK, with a re-used sync seq, written onto
+  /// a BRAND NEW link. Every offload write passes its owning session.
+  Future<bool> _write(Uint8List raw, {_Session? owner}) {
     final session = _session;
     final completer = Completer<bool>();
     _writeChain = _writeChain.then((_) async {
@@ -1425,6 +1506,10 @@ class BleEngine {
         final cmd = session?.cmdTo;
         if (session == null || !session.connected || cmd == null) {
           _log('write skipped: link not ready.');
+          return;
+        }
+        if (owner != null && !identical(owner, session)) {
+          _log('write skipped: it belongs to a session that is no longer live.');
           return;
         }
         // allowLongWrite: the rich SET_ALARM_TIME frame is 32B — the only write
@@ -1454,16 +1539,17 @@ class BleEngine {
   /// false only after every attempt failed — the caller must then bounce the
   /// link (the chunk is already durably committed; the band re-delivers it next
   /// session and the decoded store dedups by REPLACE).
-  Future<bool> _writeAckVerified(Uint8List ack) async {
+  Future<bool> _writeAckVerified(Uint8List ack, _Session session) async {
     var failures = 0;
     while (true) {
-      if (await _write(ack)) return true;
+      if (_sessionIsStale(session)) return false;
+      if (await _write(ack, owner: session)) return true;
       failures++;
       if (!ackRetryPolicy.shouldRetry(failures)) return false;
       _log('[SYNC] batch-ACK write failed (attempt $failures/'
           '${ackRetryPolicy.maxAttempts}) — retrying.');
       await Future.delayed(ackRetryPolicy.delayFor(failures));
-      if (_session?.connected != true) return false;
+      if (_sessionIsStale(session)) return false;
     }
   }
 
@@ -1563,11 +1649,22 @@ class BleEngine {
   }
 
   // ── frame handling ─────────────────────────────────────────────────────────────
-  void _onFrame(String role, Frame frame) {
+  void _onFrame(String role, Frame frame, _Session session) {
     final pt = frame.packetType;
-    if (role == 'data' &&
-        (pt == PacketType.metadata || pt == PacketType.historicalData)) {
-      _enqueueOffloadFrame(frame);
+    // Metadata ALWAYS takes the serialized queue, whatever characteristic it
+    // was reassembled on. It used to take the queue only on the `data` role;
+    // metadata off `cmd_from`/`events` was fired unawaited on the immediate
+    // path — the one route that could run a HISTORY_END handler CONCURRENTLY
+    // with the queued drain, i.e. two handlers on the same DrainController,
+    // where one snapshots an empty buffer and writes its ACK before the
+    // other's commit is durable. See [FrameRoutePolicy].
+    final route = FrameRoutePolicy.route(
+      isMetadata: pt == PacketType.metadata,
+      isHistorical: pt == PacketType.historicalData,
+      isDataRole: role == 'data',
+    );
+    if (route == FrameRoute.serializedQueue) {
+      _enqueueOffloadFrame(frame, session);
       return;
     }
     _processImmediateFrame(frame);
@@ -1575,10 +1672,8 @@ class BleEngine {
 
   void _processImmediateFrame(Frame frame) {
     final pt = frame.packetType;
-    if (pt == PacketType.metadata) {
-      unawaited(_handleSyncMarker(frame));
-      return;
-    }
+    // NOTE: metadata never reaches here — [FrameRoutePolicy] routes every
+    // metadata frame to the serialized offload queue regardless of role.
     // LIVE streams: realtime HR/RR (0x28), realtime R10 (0x2B), IMU (0x33).
     // EPHEMERAL — these are the high-rate flood (~655 MB/day) and the daily
     // metrics need ONLY the 1 Hz historical substrate (0x2F / R24). We do NOT
@@ -1639,17 +1734,28 @@ class BleEngine {
     _absorbState(decoded);
   }
 
-  void _enqueueOffloadFrame(Frame frame) {
+  void _enqueueOffloadFrame(Frame frame, _Session session) {
+    if (_session != session || !session.connected) return; // stale session
     _offloadFrames.add(frame);
     if (_offloadActive || frame.packetType == PacketType.historicalData) {
       _setOffloadActive(true);
     }
     if (_drainingOffloadFrames) return;
     _drainingOffloadFrames = true;
-    unawaited(_drainOffloadFrames());
+    unawaited(_drainOffloadFrames(session));
   }
 
-  Future<void> _drainOffloadFrames() async {
+  /// The ONE serialized offload-frame processor. [session] is the connection
+  /// that started this loop; it is re-checked around every await because a
+  /// drain can be parked for a long time (a multi-second large-batch commit,
+  /// then up to ~25 s of ACK retries) and `_teardownSession` clears
+  /// `_drainingOffloadFrames` underneath it. Without the guard a SECOND
+  /// drainer starts on the new session while this one is still alive — two
+  /// loops on the same DrainController, so one commit() snapshots an empty
+  /// buffer and its ACK can be written before the other's commit is durable —
+  /// and this stale loop would go on to write the OLD connection's token onto
+  /// the NEW link, tearing down a healthy session when that write failed.
+  Future<void> _drainOffloadFrames(_Session session) async {
     // this used to have no try/finally, so if anything inside the loop threw
     // (a couple of the ledger writes in _handleSyncMarker weren't guarded),
     // _drainingOffloadFrames never got reset back to false and every future
@@ -1657,6 +1763,7 @@ class BleEngine {
     // sync progress until a full disconnect/reconnect.
     try {
       while (_offloadFrames.isNotEmpty) {
+        if (_sessionIsStale(session)) return;
         final count = _offloadFrames.length > 64 ? 64 : _offloadFrames.length;
         final batch = _offloadFrames.sublist(0, count);
         _offloadFrames.removeRange(0, count);
@@ -1665,8 +1772,9 @@ class BleEngine {
         // no Timer churn at flood rates. Markers re-arm it in _handleSyncMarker.
         _armIdleWatchdog();
         for (final frame in batch) {
+          if (_sessionIsStale(session)) return;
           if (frame.packetType == PacketType.metadata) {
-            await _handleSyncMarker(frame);
+            await _handleSyncMarker(frame, session);
           } else {
             _ingestHistoricalFrame(frame);
           }
@@ -1676,9 +1784,17 @@ class BleEngine {
         }
       }
     } finally {
-      _drainingOffloadFrames = false;
+      // Only the CURRENT session's loop may clear the flag. A stale loop
+      // unwinding after the new session's drainer already started would
+      // otherwise re-open the door to a second concurrent drainer.
+      if (_session == session) _drainingOffloadFrames = false;
     }
   }
+
+  /// True once [session] is no longer the engine's live session — the guard
+  /// every long-parked offload callback shares.
+  bool _sessionIsStale(_Session session) =>
+      _session != session || !session.connected;
 
   /// THE single historical-record processing path — used by BOTH the queued
   /// offload drain (real traffic) and the immediate fallback. Decode → gate
@@ -1846,29 +1962,48 @@ class BleEngine {
     if (f.containsKey('clock_epoch')) {
       final dev = f['clock_epoch'] as int;
       final wall = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      _clockRef = ClockRef(device: dev, wall: wall);
-      _log('Clock correlated: device=$dev wall=$wall (drift=${wall - dev}s).');
-      // Re-issue SET_CLOCK if the strap RTC has drifted > 1 day or is unset —
-      // but BOUND the retries: setClock() reads the clock back, so an unbounded
-      // re-issue on a firmware that never latches either payload form would spin
-      // SET_CLOCK/GET_CLOCK forever. Historical records carry their own embedded
-      // unix time regardless, so giving up after a few tries is safe.
-      if (ClockPolicy.shouldSetClock(dev, wall)) {
-        if (_clockCorrectTries < 3) {
-          _clockCorrectTries++;
-          _log(
-            'Clock drift over policy — re-issuing SET_CLOCK '
-            '(attempt $_clockCorrectTries/3).',
-          );
-          unawaited(setClock());
-        } else {
-          _log(
-            'Clock still off after 3 SET_CLOCK attempts — giving up; '
-            'firmware may not accept our payload length.',
-          );
-        }
+      // SANITY GATE, mirroring the one `range_newest` gets below. An
+      // implausibly far-future `clock_epoch` yields a large NEGATIVE driftSec,
+      // and setAlarm arms at `when - driftSec` — years out, where the alarm
+      // silently never fires — while the bounded SET_CLOCK retry budget is
+      // spent chasing a value that was never real. Reject the read: with no
+      // correlation the alarm falls back to the raw wall epoch. connect()
+      // already issues an unconditional SET_CLOCK, and the periodic re-verify
+      // re-reads, so a genuinely-wrong RTC still gets corrected.
+      if (!ClockPolicy.acceptsClockRead(dev, wall)) {
+        _corruptClockReadCount++;
+        _log(
+          '[SYNC] GET_CLOCK clock_epoch=$dev is implausibly far in the future '
+          '— treating as a corrupt strap RTC read; NOT correlating the strap '
+          'clock (alarms fall back to the raw wall epoch) '
+          '(corrupt_clock_reads_total=$_corruptClockReadCount).',
+        );
       } else {
-        _clockCorrectTries = 0; // latched — reset for the next drift episode
+        _clockRef = ClockRef(device: dev, wall: wall);
+        _log('Clock correlated: device=$dev wall=$wall (drift=${wall - dev}s).');
+        // Re-issue SET_CLOCK if the strap RTC has drifted > 1 day or is unset —
+        // but BOUND the retries: setClock() reads the clock back, so an
+        // unbounded re-issue on a firmware that never latches either payload
+        // form would spin SET_CLOCK/GET_CLOCK forever. Historical records carry
+        // their own embedded unix time regardless, so giving up after a few
+        // tries is safe.
+        if (ClockPolicy.shouldSetClock(dev, wall)) {
+          if (_clockCorrectTries < 3) {
+            _clockCorrectTries++;
+            _log(
+              'Clock drift over policy — re-issuing SET_CLOCK '
+              '(attempt $_clockCorrectTries/3).',
+            );
+            unawaited(setClock());
+          } else {
+            _log(
+              'Clock still off after 3 SET_CLOCK attempts — giving up; '
+              'firmware may not accept our payload length.',
+            );
+          }
+        } else {
+          _clockCorrectTries = 0; // latched — reset for the next drift episode
+        }
       }
     }
     if (f.containsKey('range_oldest') && f.containsKey('range_newest')) {
@@ -2007,7 +2142,84 @@ class BleEngine {
     }
   }
 
-  Future<void> _handleSyncMarker(Frame frame) async {
+  /// Refuse to echo a HISTORY_END token, for one of the [TrimAckVerdict]
+  /// blocked reasons. The band keeps the chunk and re-delivers it on the next
+  /// offload; re-delivery is dedup-safe (decoded rows REPLACE by rec_ts, raw
+  /// rows key on the record hex).
+  Future<void> _refuseHistoryEndTrim(
+    TrimAckVerdict verdict, {
+    required DrainController d,
+    required _Session session,
+    required String tokenHex,
+    required int? batchId,
+  }) async {
+    switch (verdict) {
+      case TrimAckVerdict.send:
+        return;
+      case TrimAckVerdict.blockedStaleSession:
+        // Deliberately no ledger write and no teardown: we may be mid-teardown
+        // already, and every side effect here would land on a session that is
+        // not ours.
+        _log(
+          '[SYNC] HISTORY_END token=$tokenHex belongs to a session that is no '
+          'longer live — NOT ACKing. Writing it would put an old connection\'s '
+          'token (with a re-used sync seq) onto the new link. The band '
+          're-delivers this chunk next offload.',
+        );
+        return;
+      case TrimAckVerdict.blockedDiscardedBurst:
+        // The idle watchdog abandoned this burst's buffered records. Persist
+        // anything that arrived since (dedup-safe) but WITHOUT the token, so
+        // the trim cursor never claims a chunk we threw away.
+        await d.commit(null);
+        _log(
+          '[SYNC] HISTORY_END token=$tokenHex terminates a DISCARDED burst '
+          '(its open chunk was abandoned un-committed) — NOT ACKing, so the '
+          'band cannot trim the records we dropped. It re-delivers them next '
+          'offload.',
+        );
+        await _bestEffortLedgerWrite(() => LocalDb.upsertSyncLedgerEntry(
+          chunkId: 'batch:$tokenHex',
+          kind: 'historical_batch',
+          status: 'trim_refused',
+          lastError: 'discarded_burst',
+          metaPatch: {'batch_id': batchId, 'records': d.records},
+        ));
+        return;
+      case TrimAckVerdict.blockedCommitFailed:
+        // THE safe-trim invariant. The transaction rolled back, so the cursor
+        // did not advance and the rows are not durable — commit() re-buffered
+        // them rather than losing them. Never ACK here: that is exactly the
+        // path where records existed nowhere, permanently and silently.
+        _log(
+          '[SYNC] DURABLE COMMIT FAILED for token=$tokenHex — NOT ACKing (the '
+          'band must keep this chunk). Records were re-buffered; bouncing the '
+          'link so the next session retries the commit from a clean batch.',
+        );
+        await _bestEffortLedgerWrite(() => LocalDb.upsertSyncLedgerEntry(
+          chunkId: 'batch:$tokenHex',
+          kind: 'historical_batch',
+          status: 'commit_failed',
+          lastError: 'durable_commit_failed',
+          metaPatch: {'batch_id': batchId, 'records': d.records},
+        ));
+        // Bounce rather than retry in place: a commit that failed on a large
+        // batch (the observed production OOM inside commitSyncBatch) only gets
+        // bigger if we keep appending to the same buffer. A reconnect drops
+        // the buffer, and the band re-delivers from its un-advanced cursor.
+        if (!_sessionIsStale(session)) {
+          unawaited(
+            _teardownSession(intentional: false).then((_) {
+              _setPhase(BleConnState.idle); // caller's reconnect loop takes over
+            }),
+          );
+        }
+        return;
+    }
+  }
+
+  Future<void> _handleSyncMarker(Frame frame, _Session session) async {
+    if (_sessionIsStale(session)) return;
     final m = parseMetadata(frame.inner);
     if (m == null) return;
     _armIdleWatchdog();
@@ -2033,6 +2245,9 @@ class BleEngine {
     if (m.sub == SyncMeta.historyEnd && m.token != null) {
       final d = _drain;
       if (d == null) return;
+      final tokenHex = m.token!
+          .map((b) => b.toRadixString(16).padLeft(2, '0'))
+          .join();
       if (!_offloadActive) {
         _setHpsTerminal(
           _HpsTerminalKind.metadataWhileNotSyncing,
@@ -2040,7 +2255,25 @@ class BleEngine {
           drain: d,
         );
       }
-      await _awaitBurstTrafficSettle(d);
+      // PRE-COMMIT GATE. Refuse the trim before anything else touches the link
+      // or the durable cursor: a stale session must not be written to at all,
+      // and a poisoned burst's records are already gone — there is nothing
+      // this token may legitimately trim.
+      final preVerdict = TrimAckPolicy.evaluate(
+        sessionCurrent: !_sessionIsStale(session),
+        burstDiscarded: d.burstDiscarded,
+        commitDurable: true,
+      );
+      if (preVerdict != TrimAckVerdict.send) {
+        await _refuseHistoryEndTrim(
+          preVerdict,
+          d: d,
+          session: session,
+          tokenHex: tokenHex,
+          batchId: m.batchId,
+        );
+        return;
+      }
       final expected = m.expectedPacketCount;
       // Records the plausibility gate silently rejected THIS burst (stale/
       // wandering-clock block — by design, "neither stored nor counted",
@@ -2098,9 +2331,6 @@ class BleEngine {
       }
       _successfulBursts++;
       _mergeValidatedBurst(d);
-      final tokenHex = m.token!
-          .map((b) => b.toRadixString(16).padLeft(2, '0'))
-          .join();
       final r = d.bufferedRecTsRange;
       _log(
         '[SYNC] HistoryEnd batch=${m.batchId} records=${d.records} '
@@ -2114,18 +2344,40 @@ class BleEngine {
       // once the ACK is link-layer confirmed, so a crash before the ACK
       // re-delivers the chunk. Echo the 8-byte slice the band acks verbatim —
       // a mangled echo is the "Groundhog Day" re-flood bug.
-      await d.commit(m.token); // raw + samples + strap_trim cursor, atomic
+      final durable = await d.commit(m.token); // raw+samples+cursor, atomic
+      // RE-GATE after the await. commit() can take seconds on a large batch —
+      // long enough for the link to die under us — and it now reports whether
+      // the transaction actually became durable instead of swallowing the
+      // exception. Either way the ACK is refused, which is the whole point:
+      // the ACK is what makes the band trim its flash.
+      final verdict = TrimAckPolicy.evaluate(
+        sessionCurrent: !_sessionIsStale(session),
+        burstDiscarded: d.burstDiscarded,
+        commitDurable: durable,
+      );
+      if (verdict != TrimAckVerdict.send) {
+        await _refuseHistoryEndTrim(
+          verdict,
+          d: d,
+          session: session,
+          tokenHex: tokenHex,
+          batchId: m.batchId,
+        );
+        return;
+      }
       final ack = buildHistoryResultOk(_seq.nextSync(), m.token!);
       _log(
         '[SYNC] ACK frame='
         '${ack.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}',
       );
-      // VERIFIED ACK (retried): the cursor above is already durably committed,
-      // so a silently-failed ACK write would leave the band never trimming and
-      // re-flooding the same chunk forever. On persistent failure bounce the
-      // link — the committed data is safe, and the next session's re-delivery
-      // is dedup-safe (decoded rows REPLACE by rec_ts).
-      if (!await _writeAckVerified(ack)) {
+      // VERIFIED ACK (retried). We only reach here when [TrimAckPolicy]
+      // returned `send` — i.e. the commit above REPORTED durable (it no longer
+      // swallows its exception) and the session is still ours — so the cursor
+      // genuinely is committed. A silently-failed ACK write would leave the
+      // band never trimming and re-flooding the same chunk forever. On
+      // persistent failure bounce the link — the committed data is safe, and
+      // the next session's re-delivery is dedup-safe (rows REPLACE by rec_ts).
+      if (!await _writeAckVerified(ack, session)) {
         // Real per-chunk ledger row, keyed by the token itself — previously
         // every ledger write here collapsed onto one shared 'capture' row,
         // so a token that kept failing ACROSS reconnects (the "Groundhog
@@ -2168,11 +2420,16 @@ class BleEngine {
             '${ackRetryPolicy.maxAttempts} attempts (token=$tokenHex, '
             'failures_for_this_token=$failCount) — bouncing the link; data '
             'is committed and the band will re-send.');
-        unawaited(
-          _teardownSession(intentional: false).then((_) {
-            _setPhase(BleConnState.idle); // caller's reconnect loop takes over
-          }),
-        );
+        // ONLY bounce a session that is still OURS. _writeAckVerified also
+        // returns false when the session died under it, and tearing down then
+        // would kill the healthy session that replaced it.
+        if (!_sessionIsStale(session)) {
+          unawaited(
+            _teardownSession(intentional: false).then((_) {
+              _setPhase(BleConnState.idle); // caller's reconnect loop takes over
+            }),
+          );
+        }
         return;
       }
       _chunkFailures.recordSuccess(tokenHex);
@@ -2215,7 +2472,24 @@ class BleEngine {
       // Backlog fully handed over (cursor is now at the live edge). Commit the tail
       // and KEEP LISTENING — live records continue on the same subscription. We do
       // NOT ACK a HISTORY_COMPLETE and we do NOT switch modes.
-      await d.commit(null); // tail (no new token) — persist anything buffered
+      final tailDurable = await d.commit(null); // tail — no new trim token
+      if (_sessionIsStale(session)) return; // link died under the tail commit
+      if (!tailDurable) {
+        // No ACK is written for a HISTORY_COMPLETE, so nothing was trimmed and
+        // no data is at risk — but the tail is NOT durable yet. commit() left
+        // the records buffered, so the next commit (the next burst's
+        // HISTORY_END, or the flush on teardown) re-attempts them.
+        _log(
+          '[SYNC] HistoryComplete tail commit FAILED — ${d.bufferedRecords} '
+          'records stay buffered for the next commit. Nothing was trimmed '
+          '(HISTORY_COMPLETE is never ACKed), so no data is at risk.',
+        );
+        await _bestEffortLedgerWrite(() => LocalDb.upsertSyncLedgerEntry(
+          status: 'tail_commit_failed',
+          lastError: 'durable_commit_failed',
+          metaPatch: {'records_seen': d.records},
+        ));
+      }
       d.onComplete();
       _historyCompletions++;
       _session?.idleWatchdog?.cancel();
@@ -2239,51 +2513,6 @@ class BleEngine {
       _noteStored();
       await _onOffloadFinished(complete: true);
     }
-  }
-
-  Future<void> _awaitBurstTrafficSettle(_DrainController d) async {
-    const poll = Duration(milliseconds: 60);
-    const budget = Duration(milliseconds: 720);
-    const requiredStablePolls = 3;
-    final deadline = DateTime.now().add(budget);
-    var previousCount = d.currentBurstPacketCount;
-    var waitedMs = 0;
-    var stablePolls = 0;
-    while (DateTime.now().isBefore(deadline)) {
-      if (_offloadFrames.isNotEmpty) {
-        await Future<void>.delayed(poll);
-        waitedMs += poll.inMilliseconds;
-        previousCount = d.currentBurstPacketCount;
-        stablePolls = 0;
-        continue;
-      }
-      await Future<void>.delayed(poll);
-      waitedMs += poll.inMilliseconds;
-      final currentCount = d.currentBurstPacketCount;
-      stablePolls = nextBurstStablePollStreak(
-        queueEmpty: _offloadFrames.isEmpty,
-        currentCount: currentCount,
-        previousCount: previousCount,
-        stableStreak: stablePolls,
-      );
-      if (_offloadFrames.isEmpty && stablePolls >= requiredStablePolls) {
-        if (waitedMs > 0) {
-          _log(
-            '[SYNC] history-end settle: waited=${waitedMs}ms '
-            'traffic=$currentCount historical=${d.currentBurstHistoricalPacketCount} '
-            'stable_polls=$stablePolls',
-          );
-        }
-        return;
-      }
-      previousCount = currentCount;
-    }
-    _log(
-      '[SYNC] history-end settle timed out at ${waitedMs}ms '
-      'traffic=${d.currentBurstPacketCount} '
-      'historical=${d.currentBurstHistoricalPacketCount} '
-      'stable_polls=$stablePolls',
-    );
   }
 
   // ── post-offload policy: empty-sync, stuck-strap, auto-continue ──────────────
@@ -2735,7 +2964,7 @@ class BleEngine {
   void _setHpsTerminal(
     _HpsTerminalKind kind, {
     String? reason,
-    _DrainController? drain,
+    DrainController? drain,
   }) {
     final d = drain ?? _drain;
     _lastHpsTerminal = _HpsTerminal(
@@ -2748,7 +2977,7 @@ class BleEngine {
     );
   }
 
-  void _mergeValidatedBurst(_DrainController d) {
+  void _mergeValidatedBurst(DrainController d) {
     final burstCounts = d.burstStats.dataPacketCountsByRevision;
     final mergedCounts = <int, int>{
       ..._sessionPacketCounts.dataPacketCountsByRevision,
@@ -2846,14 +3075,19 @@ class BleEngine {
 /// [awaitComplete] future that resolves when the band signals HISTORY_COMPLETE (or
 /// the link drops / a safety timeout elapses), so a caller can block until the
 /// backlog is fully handed over without disturbing the continuous listen.
-class _DrainController {
+///
+/// ENGINE-INTERNAL. Public only so the safe-trim invariant it enforces (a
+/// commit that fails must re-buffer and must NOT let the caller ACK) can be
+/// regression-tested directly without a real band.
+@visibleForTesting
+class DrainController {
   final SampleSink onRecord;
   final BatchSink? onRecordsBatch;
   final CommitSyncBatchSink? onCommit;
   final ArchiveSink? onArchive;
   final void Function(String) log;
 
-  _DrainController({
+  DrainController({
     required this.onRecord,
     required this.onRecordsBatch,
     required this.onCommit,
@@ -2869,7 +3103,7 @@ class _DrainController {
   final List<ArchiveRecord> _archives = [];
   // Per-burst packet accounting (per-revision counts + sequence gap detection),
   // merged into the session totals when a burst validates.
-  final _BurstStats burstStats = _BurstStats();
+  final BurstStats burstStats = BurstStats();
 
   int records = 0; // total this connection
   int recordsThisOffload = 0; // since the last HISTORY_COMPLETE / rearm
@@ -2907,6 +3141,17 @@ class _DrainController {
   String? _lastAckedToken;
   bool lastTrimAdvanced = false;
   int consecutiveValidationFailures = 0;
+
+  // Poison latch for the burst currently open (see BurstTrimGuard): once its
+  // records have been discarded un-committed, its straggler HISTORY_END must
+  // never be echoed.
+  final BurstTrimGuard _trimGuard = BurstTrimGuard();
+
+  /// True while the open burst's terminal may NOT be ACKed.
+  bool get burstDiscarded => _trimGuard.discarded;
+
+  /// Bursts poisoned this connection (diagnostics).
+  int get poisonedBursts => _trimGuard.poisonedBursts;
 
   bool get _buffering => onCommit != null || onRecordsBatch != null;
   int get currentBurstPacketCount => burstStats.totalTrafficPacketCount;
@@ -2987,6 +3232,9 @@ class _DrainController {
     _linkDown = false;
     _lastProgressAt = DateTime.now();
     burstStats.reset();
+    // A fresh burst starts un-poisoned: whatever was discarded belonged to the
+    // burst that just ended, and the band will re-deliver it.
+    _trimGuard.beginBurst();
   }
 
   void onLinkDown() => _linkDown = true;
@@ -2997,10 +3245,19 @@ class _DrainController {
   /// Abandon the buffered-but-not-yet-committed chunk WITHOUT persisting (idle
   /// watchdog). These records were never ACKed, so the band re-delivers them on the
   /// next offload — dropping them here just avoids ACKing a partial.
+  ///
+  /// POISONS THE OPEN BURST. Discarding alone was not enough: the band had
+  /// already put that burst's HISTORY_END on the wire, and the terminal handler
+  /// went on to commit the (now empty) buffer and echo the token verbatim —
+  /// trimming exactly the records that were just dropped. The poison is
+  /// unconditional (even with an empty buffer, this burst was abandoned) and
+  /// is cleared only by [rearm] / a fresh HISTORY_START.
   void discardOpenChunk() {
+    _trimGuard.discardOpenChunk();
     if (_raws.isEmpty && _archives.isEmpty) return;
     log('discarding ${_raws.length} un-ACKed buffered records + '
-        '${_archives.length} archived (idle).');
+        '${_archives.length} archived (idle). This burst\'s HISTORY_END token '
+        'is now un-ACKable — the band keeps the chunk.');
     _raws.clear();
     _samples.clear();
     _archives.clear();
@@ -3010,10 +3267,24 @@ class _DrainController {
   /// ATOMICALLY (via onCommit) and return only once durable — the caller writes
   /// the ACK afterwards. Snapshots the buffer so records arriving during the await
   /// land in the next commit. Updates [lastTrimAdvanced].
-  Future<void> commit(List<int>? token) async {
+  ///
+  /// RETURNS WHETHER THE CHUNK IS ACTUALLY DURABLE. This used to be
+  /// `Future<void>` with the exception swallowed into a log line, while the
+  /// buffer had ALREADY been snapshotted and cleared — so a failed transaction
+  /// left the rows nowhere (buffer cleared, transaction rolled back, cursor
+  /// unadvanced) and the caller went straight on to echo the HISTORY_END trim
+  /// token, telling the band to delete them from its flash. Those records
+  /// existed nowhere, permanently and silently. On failure the buffer is now
+  /// RESTORED (at the front, so arrival order is preserved) and the trim
+  /// bookkeeping rolled back, and the caller MUST NOT ACK — the band keeps the
+  /// chunk and re-delivers it, which is dedup-safe (decoded rows REPLACE by
+  /// rec_ts).
+  Future<bool> commit(List<int>? token) async {
     final tokenHex = token
         ?.map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join();
+    final previousAckedToken = _lastAckedToken;
+    final previousTrimAdvanced = lastTrimAdvanced;
     lastTrimAdvanced = tokenHex != null && tokenHex != _lastAckedToken;
     if (tokenHex != null) _lastAckedToken = tokenHex;
     final raws = List<RawRecord>.from(_raws);
@@ -3028,12 +3299,24 @@ class _DrainController {
       } else if (onRecordsBatch != null && raws.isNotEmpty) {
         await onRecordsBatch!(raws, samples);
       }
+      return true;
     } catch (e) {
-      log('offload commit error: $e');
+      // Put the snapshot back at the FRONT: records that arrived during the
+      // await are already appended behind it, so this preserves arrival order.
+      _raws.insertAll(0, raws);
+      _samples.insertAll(0, samples);
+      _archives.insertAll(0, archives);
+      // Roll back the trim bookkeeping too — nothing advanced.
+      _lastAckedToken = previousAckedToken;
+      lastTrimAdvanced = previousTrimAdvanced;
+      log('offload commit FAILED ($e) — ${raws.length} records + '
+          '${archives.length} archived re-buffered; the caller MUST NOT ACK '
+          'this chunk (the band still holds it).');
+      return false;
     }
   }
 
-  Future<void> flush() => commit(null);
+  Future<bool> flush() => commit(null);
 
   /// Resolve once the current offload reaches HISTORY_COMPLETE, the link drops, or
   /// [timeout] elapses. Pure waiting — NO abort is ever sent (cutting the offload
@@ -3077,7 +3360,8 @@ class _DrainController {
   }
 }
 
-class _BurstStats {
+@visibleForTesting
+class BurstStats {
   static const Set<int> _ordinaryHistoricalRevisions = <int>{
     7,
     9,
@@ -3091,7 +3375,7 @@ class _BurstStats {
   };
 
   final Map<int, int> _dataPacketCountsByRevision = <int, int>{};
-  final Map<int, _SequenceState> _sequenceByRevision = <int, _SequenceState>{};
+  final Map<int, SequenceState> _sequenceByRevision = <int, SequenceState>{};
   int _eventCount = 0;
   int _consoleCount = 0;
   int _unknownCount = 0;
@@ -3103,8 +3387,8 @@ class _BurstStats {
 
   Map<int, int> get dataPacketCountsByRevision =>
       Map<int, int>.unmodifiable(_dataPacketCountsByRevision);
-  Map<int, _SequenceState> get sequenceByRevision =>
-      Map<int, _SequenceState>.unmodifiable(_sequenceByRevision);
+  Map<int, SequenceState> get sequenceByRevision =>
+      Map<int, SequenceState>.unmodifiable(_sequenceByRevision);
   int get eventCount => _eventCount;
   int get consoleCount => _consoleCount;
   int get unknownCount => _unknownCount;
@@ -3194,7 +3478,7 @@ class _BurstStats {
           (_dataPacketCountsByRevision[revision] ?? 0) + 1;
       final seq = _sequenceByRevision.putIfAbsent(
         revision,
-        () => _SequenceState(firstSequence: counter),
+        () => SequenceState(firstSequence: counter),
       );
       seq.observe(counter);
       return;
@@ -3241,8 +3525,9 @@ class _BurstStats {
   }
 }
 
-class _SequenceState {
-  _SequenceState({required this.firstSequence});
+@visibleForTesting
+class SequenceState {
+  SequenceState({required this.firstSequence});
 
   final int firstSequence;
   int? lastSequence;

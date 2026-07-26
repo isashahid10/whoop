@@ -36,8 +36,10 @@ class SleepScreen extends StatelessWidget {
     title: 'Sleep',
     metric: 'sleep',
     accent: DomainAccent.sleep,
-    valueFmt: (v) =>
-        v == 0 ? '' : (v / 60).toStringAsFixed(1), // minutes → hours on bars
+    // minutes → hours on bars. A MEASURED zero prints '0.0'; an absent night
+    // never reaches here (LabeledBars renders nulls as an em-dash gap). The
+    // old `v == 0 ? ''` blanked both cases identically.
+    valueFmt: (v) => (v / 60).toStringAsFixed(1),
     // Sleep Coach now renders INSIDE SleepDetailScreen/SleepNightContent
     // (below Cycles, above Nocturnal heart) rather than as a separate
     // leading card here — same scroll, just reordered so the night's own
@@ -83,7 +85,11 @@ class OxygenScreen extends StatelessWidget {
     title: 'Overnight oxygen',
     metric: 'spo2',
     accent: DomainAccent.oxygen,
-    valueFmt: (v) => v == 0 ? '0' : v.toStringAsFixed(1),
+    // Was `v == 0 ? '0' : …` — it PRINTED a literal "0" above the bar for a
+    // night with no measurement at all, i.e. an SpO₂ of zero. Absent buckets
+    // no longer reach a formatter (they render as a gap); what does reach it
+    // is the imported vendor oxygen index, formatted plainly.
+    valueFmt: (v) => v.toStringAsFixed(1),
     todayDetail: (ctx) => OxygenDayCard(date: todayLabel()),
     dayDetail: (ctx, date) => OxygenDayCard(date: date),
   );
@@ -99,8 +105,8 @@ class WearScreen extends StatelessWidget {
     title: 'Wear time',
     metric: 'wear',
     accent: AppColors.coralDeep,
-    valueFmt: (v) =>
-        v == 0 ? '' : (v / 60).toStringAsFixed(1), // minutes → hours on bars
+    // minutes → hours on bars; a measured zero is a real (bad) day, not a gap.
+    valueFmt: (v) => (v / 60).toStringAsFixed(1),
     todayDetail: (ctx) => WearDayCard(date: todayLabel()),
     dayDetail: (ctx, date) => WearDayCard(date: date),
   );

@@ -163,7 +163,16 @@ class SleepSessionCandidate {
     required Substrate sleepSub,
   }) => PreparedDerivationDay(
     date: dayId,
-    endSec: daySub.lastTs == null ? 0 : daySub.lastTs! + 1,
+    // `endSec` is what the engine anchors FINALIZATION on
+    // (`endSec + 48 h < dataNowSec` ⇒ lock). An empty substrate used to yield
+    // endSec = 0, which makes that comparison unconditionally true — so a day
+    // whose raw has been pruned (retention is 3 days) derived an all-absent
+    // bundle and wrote it FINALIZED over the good historical row, permanently.
+    // With no data, fall back to the day's real calendar end so an empty
+    // result is aged exactly like a real one.
+    endSec: daySub.lastTs != null
+        ? daySub.lastTs! + 1
+        : localNextMidnightSecForDayLabel(dayId),
     confidence: confidence,
     flags: flags,
     sleepJson: sleepJson,
@@ -176,13 +185,25 @@ class SleepSessionCandidate {
   );
 }
 
+/// Local midnight at the START OF THE NEXT day for a `YYYY-MM-DD` day label.
+///
+/// `DateTime(y, m, d + 1)` normalizes the overflow itself and
+/// `millisecondsSinceEpoch` respects local DST rules, so this is correct on the
+/// two 23 h/25 h days a year — unlike `startOfDay + 86400`.
+int localNextMidnightSecForDayLabel(String dayId) {
+  final d = DateTime.tryParse(dayId);
+  if (d == null) return 0;
+  return DateTime(d.year, d.month, d.day + 1).millisecondsSinceEpoch ~/ 1000;
+}
+
 void derivationPrepareWorker(SendPort mainSendPort) {
   final port = ReceivePort();
   final state = _PrepareAccumulator();
   String? targetDay;
   var mode = 'prepared_day';
   mainSendPort.send(port.sendPort);
-  port.listen((message) {
+
+  void handle(Object? message) {
     if (message is! Map) return;
     final type = message['type'];
     if (type == 'page') {
@@ -230,11 +251,25 @@ void derivationPrepareWorker(SendPort mainSendPort) {
             'payload': payload.toJson(),
           });
         }
-      } catch (e, st) {
-        mainSendPort.send({'type': 'error', 'error': '$e\n$st'});
       } finally {
         port.close();
       }
+    }
+  }
+
+  // EVERY branch is guarded, not just 'finish'. A throw inside the 'page'
+  // handler (a malformed SQLite row reaching one of the numeric reads) used to
+  // kill this worker silently: the only error report lived in the 'finish'
+  // branch, so the main side awaited a Completer that could never complete —
+  // `_running` stayed true and DerivationEngine's scheduler never drained
+  // again, i.e. ALL derivation was dead until app restart. Now any failure is
+  // reported back and the port is closed so the isolate exits.
+  port.listen((message) {
+    try {
+      handle(message);
+    } catch (e, st) {
+      mainSendPort.send({'type': 'error', 'error': '$e\n$st'});
+      port.close();
     }
   });
 }
@@ -325,6 +360,14 @@ class _PrepareAccumulator {
   final List<int> spo2Red = [];
   final List<int> spo2Ir = [];
   final List<int> skinTemp = [];
+  final List<int> skinContact = [];
+
+  /// Defensive numeric read. The decoded-page rows come straight out of SQLite,
+  /// where a column's storage class is per-VALUE, not per-column — a row written
+  /// by an older/importing path can hand back a String or null where an INTEGER
+  /// is declared. A bare `row['hr'] as num?` throws on that, and a throw in this
+  /// worker used to hang the whole engine (see [derivationPrepareWorker]).
+  static num? _num(Object? v) => v is num ? v : null;
 
   void addRawPage(List<String> hexes) {
     if (hexes.isEmpty) return;
@@ -340,6 +383,7 @@ class _PrepareAccumulator {
     spo2Red.addAll(sub.spo2Red);
     spo2Ir.addAll(sub.spo2Ir);
     skinTemp.addAll(sub.skinTemp);
+    skinContact.addAll(sub.skinContact);
   }
 
   void addDecodedPage(
@@ -349,29 +393,35 @@ class _PrepareAccumulator {
     if (frames.isEmpty) return;
     final rrByCounter = <int, List<Map<String, dynamic>>>{};
     for (final row in rrRows) {
-      final counter = (row['counter'] as num?)?.toInt();
+      final counter = _num(row['counter'])?.toInt();
       if (counter == null) continue;
       rrByCounter.putIfAbsent(counter, () => <Map<String, dynamic>>[]).add(row);
     }
     for (final row in frames) {
-      final recTs = (row['rec_ts'] as num?)?.toInt();
+      final recTs = _num(row['rec_ts'])?.toInt();
       if (recTs == null || recTs <= 0) continue;
       tsSec.add(recTs);
-      hr.add((row['hr'] as num?)?.toInt() ?? 0);
-      ax.add((row['ax'] as num?)?.toDouble() ?? 0);
-      ay.add((row['ay'] as num?)?.toDouble() ?? 0);
-      az.add((row['az'] as num?)?.toDouble() ?? 0);
-      spo2Red.add((row['spo2_red_raw'] as num?)?.toInt() ?? 0);
-      spo2Ir.add((row['spo2_ir_raw'] as num?)?.toInt() ?? 0);
-      skinTemp.add((row['skin_temp_raw'] as num?)?.toInt() ?? 0);
-      final counter = (row['counter'] as num?)?.toInt();
+      hr.add(_num(row['hr'])?.toInt() ?? 0);
+      ax.add(_num(row['ax'])?.toDouble() ?? 0);
+      ay.add(_num(row['ay'])?.toDouble() ?? 0);
+      az.add(_num(row['az'])?.toDouble() ?? 0);
+      spo2Red.add(_num(row['spo2_red_raw'])?.toInt() ?? 0);
+      spo2Ir.add(_num(row['spo2_ir_raw'])?.toInt() ?? 0);
+      skinTemp.add(_num(row['skin_temp_raw'])?.toInt() ?? 0);
+      // `decoded_onehz` has no skin-contact column, so the live decoded path
+      // genuinely has no contact signal to offer; a page that DOES carry one
+      // (the raw-decode fallback) is honoured. Keeping the array 1:1 with
+      // tsSec is what lets `Substrate.fromJson` tell "absent" (empty ⇒
+      // zero-filled) from "present but zero".
+      skinContact.add(_num(row['skin_contact'])?.toInt() ?? 0);
+      final counter = _num(row['counter'])?.toInt();
       if (counter == null) continue;
       final beats = rrByCounter[counter];
       if (beats == null) continue;
       for (final beat in beats) {
-        final rr = (beat['rr_ms'] as num?)?.toDouble();
+        final rr = _num(beat['rr_ms'])?.toDouble();
         if (rr == null || rr <= 0) continue;
-        rrTsMs.add((beat['rr_ts_ms'] as num?)?.toDouble() ?? recTs * 1000.0);
+        rrTsMs.add(_num(beat['rr_ts_ms'])?.toDouble() ?? recTs * 1000.0);
         rrMs.add(rr);
       }
     }
@@ -388,6 +438,6 @@ class _PrepareAccumulator {
     spo2Red: spo2Red,
     spo2Ir: spo2Ir,
     skinTemp: skinTemp,
-    skinContact: const [],
+    skinContact: skinContact,
   );
 }

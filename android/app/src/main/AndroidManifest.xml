@@ -74,6 +74,37 @@
         android:label="Edge"
         android:name=".EdgeApplication"
         android:icon="@mipmap/launcher_icon">
+        <!-- ── ZERO-COLLECTION BY DEFAULT (privacy tier 1) ──
+             Every Firebase SDK auto-starts collecting the moment the app
+             process does: Analytics logs first_open/session_start, Performance
+             opens app-start + network traces, Crashlytics uploads any startup
+             crash. All of that happens BEFORE Dart has read the user's stored
+             telemetry consent (an async SharedPreferences load off the startup
+             critical path), so relying on the runtime setters alone meant a
+             fresh install collected before consent existed.
+
+             These three flags turn the SDKs' auto-collection OFF at process
+             start. They are the "enabled" (not "deactivated") variants, so
+             TelemetryService can still switch collection ON at runtime once —
+             and only once — affirmative consent has been loaded. Do NOT flip
+             any of these to true: consent is the only thing allowed to. -->
+        <meta-data
+            android:name="firebase_analytics_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="firebase_crashlytics_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="firebase_performance_collection_enabled"
+            android:value="false" />
+        <!-- No ad/measurement signals, ever — nothing here is consent-gated
+             back on. -->
+        <meta-data
+            android:name="google_analytics_default_allow_ad_personalization_signals"
+            android:value="false" />
+        <meta-data
+            android:name="google_analytics_adid_collection_enabled"
+            android:value="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

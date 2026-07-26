@@ -15,6 +15,7 @@ import '../../coach/coach_engine.dart';
 import '../../state/app_state.dart';
 import '../../theme/theme_switcher.dart';
 import '../design/design.dart';
+import '../widgets/async_guards.dart';
 import 'coach_chart.dart';
 import 'coach_render.dart';
 import 'coach_settings_screen.dart';
@@ -81,17 +82,21 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
     _input.clear();
     setState(() => _busy = true);
     try {
+      // engine.send can block for up to 120 s. Every callback below, and the
+      // catch, can therefore land after the user has popped the screen — the
+      // finally already knew this, the rest didn't.
       await engine.send(
         t,
         onItem: (it) {
-          setState(() => _items.add(it));
+          if (!mounted) return;
+          setStateIfMounted(() => _items.add(it));
           _scrollDown();
         },
-        onStatus: (s) => setState(() => _status = s),
+        onStatus: (s) => setStateIfMounted(() => _status = s),
         confirm: _confirm,
       );
     } catch (e) {
-      setState(() => _items.add(CoachItem.error(
+      setStateIfMounted(() => _items.add(CoachItem.error(
           e is CoachException ? e.message : 'Something went wrong: $e')));
     } finally {
       if (mounted) {
@@ -246,8 +251,9 @@ class _AiCoachScreenState extends State<AiCoachScreen> {
   }
 
   void _scrollDown() {
+    if (!mounted) return; // _scroll is disposed with the State
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
+      if (mounted && _scroll.hasClients) {
         _scroll.animateTo(_scroll.position.maxScrollExtent,
             duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
       }

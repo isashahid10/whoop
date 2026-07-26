@@ -191,6 +191,51 @@ class CoachEngine {
 
   CoachEngine({required this.config, required this.api, this.storageKey = 'anon'});
 
+  // ── prompt size ceilings ────────────────────────────────────────────────────
+  //
+  // The coach's tools read the on-device health database and every result is
+  // resent, verbatim, on EVERY subsequent turn. Without a ceiling a model that
+  // keeps widening its queries would eventually serialize the whole database
+  // into a request bound for a third-party endpoint. Three bounds, all
+  // independent of the provider's own context limit:
+  //   • per tool result  — one query can't dominate the window;
+  //   • rolling history  — the resent conversation is bounded in BYTES, not
+  //     just in message count (60 × 16 KB was ~1 MB);
+  //   • per request      — a hard fail-closed ceiling in [postChat].
+
+  /// Max characters of any single tool result kept in the resent history.
+  static const int kMaxToolResultChars = 16000;
+
+  /// Max characters of running history resent on each turn.
+  static const int kMaxHistoryChars = 120000;
+
+  /// Hard ceiling on one serialized provider request body.
+  static const int kMaxRequestBytes = 400 * 1024;
+
+  static String _clipToolResult(String s) => s.length <= kMaxToolResultChars
+      ? s
+      : '${s.substring(0, kMaxToolResultChars)}…(truncated — narrow the query)';
+
+  int _historyChars() {
+    var n = 0;
+    for (final m in _history) {
+      n += jsonEncode(m).length;
+    }
+    return n;
+  }
+
+  /// Bound the resent history in bytes, dropping WHOLE turns from the oldest
+  /// end so a `tool` message never outlives the assistant turn whose
+  /// `tool_calls` it answers (providers 400 on an orphaned tool message).
+  void _trimHistory() {
+    while (_historyChars() > kMaxHistoryChars && _history.length > 1) {
+      _history.removeAt(0);
+      while (_history.length > 1 && _history.first['role'] != 'user') {
+        _history.removeAt(0);
+      }
+    }
+  }
+
   void reset() { _history.clear(); transcript.clear(); }
   bool get hasHistory => _history.isNotEmpty;
 
@@ -392,6 +437,7 @@ class CoachEngine {
     const maxIters = 10;
     for (var i = 0; i < maxIters; i++) {
       onStatus(_shenanigans[_rand.nextInt(_shenanigans.length)]);
+      _trimHistory();
       final messages = <Map<String, dynamic>>[
         {'role': 'system', 'content': '$kCoachSystemPrompt\n\nToday is ${_today()} (device-local date; all day-keyed data uses these local dates).'},
         ..._history,
@@ -429,7 +475,12 @@ class CoachEngine {
 
         onStatus(_statusFor(name, args));
         final result = await _runTool(name, args, onItem: emit, confirm: confirm);
-        _history.add({'role': 'tool', 'tool_call_id': id, 'name': name, 'content': result});
+        _history.add({
+          'role': 'tool',
+          'tool_call_id': id,
+          'name': name,
+          'content': _clipToolResult(result),
+        });
       }
     }
     emit(CoachItem.assistant('I dug through several steps but couldn’t wrap that up — try narrowing the question.'));
@@ -533,6 +584,17 @@ class CoachEngine {
         ..remove('top_p')
         ..remove('top_k');
     }
+    // FAIL-CLOSED size ceiling. Nothing leaves the device until this passes —
+    // the request is never truncated and silently sent, it is refused, so a
+    // runaway tool loop cannot ship the health database to a third party.
+    final payload = jsonEncode(body);
+    if (payload.length > kMaxRequestBytes) {
+      throw CoachException(
+          'That request grew to ${payload.length ~/ 1024} KB, over the '
+          '${kMaxRequestBytes ~/ 1024} KB safety limit for data leaving this '
+          'device. Start a new chat or ask a narrower question (aggregate with '
+          'AVG/MIN/MAX/COUNT instead of selecting every row).');
+    }
     try {
       final resp = await c
           .post(
@@ -541,17 +603,41 @@ class CoachEngine {
               'Authorization': 'Bearer ${config.apiKey}',
               'content-type': 'application/json',
             },
-            body: jsonEncode(body),
+            body: payload,
           )
           .timeout(const Duration(seconds: 120));
       if (resp.statusCode != 200) {
         throw CoachException(
             'Provider error (${resp.statusCode}): ${_briefErr(resp.body)}');
       }
-      final j = jsonDecode(utf8.decode(resp.bodyBytes));
+      final Object? j;
+      try {
+        j = jsonDecode(utf8.decode(resp.bodyBytes));
+      } catch (_) {
+        throw CoachException(
+            'Provider returned a non-JSON response. Check the API base URL — '
+            'it must point at an OpenAI-compatible /chat/completions endpoint.');
+      }
+      if (j is! Map) throw CoachException('Unexpected response from provider.');
       final choices = (j['choices'] as List?) ?? const [];
       if (choices.isEmpty) throw CoachException('Empty response from provider.');
-      return (choices.first as Map)['message'] as Map<String, dynamic>;
+      // Every shape below is a REAL thing OpenAI-compatible proxies return:
+      // a streaming chunk (`delta` instead of `message`), the legacy
+      // completions shape (`text`), or a bare string. Reaching for
+      // `choices.first['message'] as Map<String,dynamic>` blind surfaced a raw
+      // TypeError ("type 'Null' is not a subtype of type 'Map<String,
+      // dynamic>'") instead of the documented CoachException, so the UI showed
+      // a Dart type name to the user rather than an actionable message.
+      final first = choices.first;
+      if (first is! Map) throw CoachException('Unexpected response from provider.');
+      final msg = first['message'] ?? first['delta'];
+      if (msg is Map) return msg.cast<String, dynamic>();
+      final text = first['text'];
+      if (text is String) return <String, dynamic>{'content': text};
+      throw CoachException(
+          'Provider returned an unsupported response shape (no message/delta). '
+          'Streaming-only endpoints are not supported — use a standard '
+          'OpenAI-compatible /chat/completions endpoint.');
     } finally {
       if (client == null) c.close();
     }

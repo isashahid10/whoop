@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import 'ai/briefing.dart';
 import 'coach/coach_config.dart';
+import 'notify/notification_service.dart';
 import 'notify/tap_router.dart';
 import 'state/app_state.dart';
 import 'state/prefs.dart';
@@ -67,6 +68,12 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final app = context.read<AppState>();
     if (state == AppLifecycleState.resumed) {
+      // The user may have flipped our notification switch either way in OS
+      // Settings while we were backgrounded. Drop the cached authorization
+      // decision so the next present/schedule re-reads reality — a denial used
+      // to latch for the whole process, silencing every notification and
+      // scheduled reminder until a full app restart.
+      NotificationService.instance.invalidatePermissionCache();
       app.maybeFinishFromLiveActivity();
       unawaited(app.maybeStopBreathingFromLiveActivity());
       app.refreshAppStatus(); // re-check OTA + admin banner on every foreground

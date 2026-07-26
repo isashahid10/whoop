@@ -41,6 +41,12 @@ class _AiBreakdownScreenState extends State<AiBreakdownScreen> {
   _Phase _phase = _Phase.busy;
   Briefing? _brief;
   String _error = '';
+  // Regenerate is a plain button on a screen whose generate can take many
+  // seconds. Two taps = two in-flight calls; whichever settles LAST wins, so a
+  // first call that errors after the second succeeds flips ready → error and
+  // throws away the briefing already on screen (and the reverse re-renders the
+  // older one as current).
+  bool _generating = false;
 
   @override
   void initState() {
@@ -71,11 +77,13 @@ class _AiBreakdownScreenState extends State<AiBreakdownScreen> {
   }
 
   Future<void> _generate() async {
+    if (_generating) return; // a generation is already in flight
     final engine = _engine();
     if (engine == null || !engine.configured) {
       setState(() => _phase = _Phase.noKey);
       return;
     }
+    _generating = true;
     setState(() => _phase = _Phase.busy);
     try {
       final b = await engine.generate(widget.period);
@@ -94,6 +102,8 @@ class _AiBreakdownScreenState extends State<AiBreakdownScreen> {
         _phase = _Phase.error;
         _error = e.toString().replaceFirst('CoachException: ', '');
       });
+    } finally {
+      _generating = false;
     }
   }
 

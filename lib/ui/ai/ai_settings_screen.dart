@@ -20,6 +20,10 @@ import '../design/design.dart';
 class AiSettingsScreen extends StatefulWidget {
   const AiSettingsScreen({super.key});
 
+  /// Test seam for the time picker — production uses [showTimePicker].
+  @visibleForTesting
+  static Future<TimeOfDay?> Function(BuildContext, TimeOfDay)? pickerOverride;
+
   @override
   State<AiSettingsScreen> createState() => _AiSettingsScreenState();
 }
@@ -44,6 +48,10 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   }
 
   Future<void> _update(AiPrefs next) async {
+    // Reached from _pickTime AFTER an awaited showTimePicker, so by the time
+    // this runs the screen may already be gone — the setState below was the
+    // only unguarded one on the path.
+    if (!mounted) return;
     setState(() => _p = next);
     await next.save();
     if (mounted) await context.read<AppState>().refreshAiReminders();
@@ -53,12 +61,16 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
       TimeOfDay(hour: (min ~/ 60) % 24, minute: min % 60).format(context);
 
   Future<void> _pickTime(int current, ValueChanged<int> apply) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime:
-          TimeOfDay(hour: (current ~/ 60) % 24, minute: current % 60),
-    );
-    if (picked == null) return;
+    final initial = TimeOfDay(hour: (current ~/ 60) % 24, minute: current % 60);
+    final override = AiSettingsScreen.pickerOverride;
+    // Build the future synchronously — no BuildContext across an async gap.
+    final Future<TimeOfDay?> pending = override != null
+        ? override(context, initial)
+        : showTimePicker(context: context, initialTime: initial);
+    final picked = await pending;
+    // The dialog's future resolves after its exit transition, which is long
+    // enough for the screen underneath to have been popped.
+    if (!mounted || picked == null) return;
     apply(picked.hour * 60 + picked.minute);
   }
 

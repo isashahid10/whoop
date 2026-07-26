@@ -41,7 +41,10 @@ class CoachChart extends StatelessWidget {
         const SizedBox(height: Sp.x4),
         if (spec.type == 'bar' && single)
           LabeledBars(
-            values: spec.series.first.values.map((v) => v ?? 0).toList(),
+            // Nulls stay null. `?? 0` here drew a real bar for every point the
+            // coach's own query returned no value for — the same absent-as-zero
+            // fabrication as the trend boards, in a chart the model narrates.
+            values: spec.series.first.values.toList(),
             labels: _fitLabels(spec.xLabels, spec.series.first.values.length),
             color: DomainAccent.heart,
             height: 160,
