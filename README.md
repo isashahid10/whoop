@@ -6,6 +6,9 @@ An app that makes a WHOOP 4.0 useful without a WHOOP subscription. Connects to t
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TestFlight](https://img.shields.io/badge/iOS-TestFlight-0D96F6?logo=apple&logoColor=white)](https://testflight.apple.com/join/2BVSwq65)
 [![APK](https://img.shields.io/github/v/release/OpenStrap/edge?label=Android%20APK&logo=android&logoColor=white)](https://github.com/OpenStrap/edge/releases/latest)
+[![downloads](https://img.shields.io/github/downloads/OpenStrap/edge/total?label=downloads&color=6aa9e0)](https://github.com/OpenStrap/edge/releases)
+[![stars](https://img.shields.io/github/stars/OpenStrap/edge?style=flat&color=e2825f)](https://github.com/OpenStrap/edge/stargazers)
+[![Donate](https://img.shields.io/badge/donate-BTC%20%2F%20ETH-f7931a)](DONATE.md)
 
 > Not affiliated with WHOOP. Not a clone of their app or their scores — see below.
 
@@ -23,6 +26,33 @@ band at a time.
 
 Prefer to sideload the unsigned IPA instead of using TestFlight? That still
 works — see [`guides/IOS_SIDELOAD.md`](guides/IOS_SIDELOAD.md).
+
+---
+
+<div align="center">
+
+### ☕ Like it? Help keep it going.
+
+**No subscription, no paywall, no company behind this.**<br>
+If OpenStrap gave your band a second life, a small tip genuinely helps.
+
+**Bitcoin**
+
+`bc1qvtcch38dcwp967ar764uu6eetw7tf907844wfq`
+
+**EVM** — Ethereum · Base · Arbitrum · Optimism · Polygon
+
+`0x8310C89393366b7eBCD47ABa82e1dfB5ECeFFbD9`
+
+[**What donations actually pay for →**](DONATE.md)
+
+*Nothing is gated behind paying, and nothing ever will be.<br>
+Bug reports from real bands are worth more than money — there's only one
+person's physiology in the test data otherwise.*
+
+</div>
+
+---
 
 ## What made me build this app 
 
@@ -197,9 +227,36 @@ implementing.
 Security problems shouldn't go in a public issue — see [SECURITY.md](SECURITY.md) for
 private reporting.
 
+## Contributors
+
+Every one of these people made the app better — mostly by using it on a real
+wrist and reporting what came out wrong.
+
+<a href="https://github.com/OpenStrap/edge/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=OpenStrap/edge" alt="Contributors to OpenStrap/edge" />
+</a>
+
+The most useful contribution isn't necessarily code. There's one person's
+physiology in the test data, so a bug report from a different body on a
+different band is worth a great deal — see
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Star history
+
+<img src="docs/star-history.svg" alt="Star history for edge, protocol and analytics" width="760">
+
+That cliff in mid-July is [Hackaday](https://hackaday.com/2026/07/15/making-a-locked-down-wearable-work-without-a-subscription/)
+and [Adafruit](https://blog.adafruit.com/2026/07/15/openstrap-edge-makes-a-whoop-4-0-band-useful-without-a-subscription)
+covering it on the same day.
+
+<sub>Generated from the GitHub API and refreshed weekly
+([workflow](.github/workflows/star-history.yml)) rather than embedded from
+star-history.com or starchart.cc — the first refuses these repos outright, the
+second rate-limits, and neither should be making a request from a page about
+keeping your data to yourself.</sub>
+
 ## Support the work
 
-Free, MIT, no company behind it. If it gave your band a second life:
-[**DONATE.md**](DONATE.md) has BTC and EVM addresses. Bug reports from real bands are
-worth more than money, though — there's only one person's physiology in the test data
-otherwise.
+Free, MIT, no company behind it. If it gave your band a second life,
+[**DONATE.md**](DONATE.md) has the BTC and EVM addresses and explains what they
+actually pay for. Bug reports from real bands are worth more than money, though.

@@ -405,3 +405,57 @@ strong {
   padding-top: 10px;
   border-top: 1px solid var(--border);
 }
+
+/* ── Star-history + donation block (landing page) ─────────────────────────── */
+
+.growth {
+  margin-top: 48px;
+}
+
+.growth img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 10px;
+}
+
+/* The donation block is deliberately the loudest thing on the page after the
+   install buttons — the addresses used to sit as plain text at the bottom and
+   nobody noticed them. */
+.donate {
+  margin-top: 48px;
+  padding: 26px 24px;
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.donate h2 {
+  margin: 0 0 8px;
+  font-size: 19px;
+}
+
+.donate-lede {
+  color: var(--fg-muted);
+  margin-bottom: 20px;
+}
+
+.donate .addr dt:first-of-type {
+  margin-top: 0;
+}
+
+.donate .fineprint {
+  margin-bottom: 0;
+}
+
+.donate .fineprint + .fineprint {
+  margin-top: 10px;
+}
+
+/* Long hex/bech32 strings must never widen the page on a phone. */
+.addr code {
+  word-break: break-all;
+  white-space: normal;
+}
