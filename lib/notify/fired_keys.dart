@@ -115,13 +115,19 @@ class FiredKeyStore {
     // We own the fire. Everything below is bookkeeping and must never revoke it.
     try {
       if (p != null) {
-        // The DB row is fresh, but a fallback claim taken while the DB was down
-        // lives only in the prefs mirror. Honour it: hand the claim back so a
-        // key that already fired in degraded mode can't fire a second time.
-        if (p.getBool('$_prefix$dedupeKey') ?? false) {
-          await release(dedupeKey);
-          return false;
-        }
+        // RECONCILE, don't undo. The DB row is fresh, but a fallback claim taken
+        // while the DB was down lives only in the prefs mirror — so a mirror
+        // that already reads true means this key HAS fired and the row we just
+        // inserted is simply the truth arriving late. Keep it and back off.
+        //
+        // Emphatically NOT release(): that clears the mirror too, and the mirror
+        // is the only evidence of the degraded-mode fire. Erasing it leaves both
+        // stores reading "not fired", so the NEXT pass would win cleanly and
+        // re-alert — reopening this PR's bug in the one path (DB recovered after
+        // an outage) these comments call out as expected. Undoing the insert
+        // instead of keeping it has the same flaw one pass later, and leaves the
+        // claim table permanently ignorant of a fire it should own.
+        if (p.getBool('$_prefix$dedupeKey') ?? false) return false;
         await p.setBool('$_prefix$dedupeKey', true);
       }
       await LocalDb.pruneNotifFired(_cutoffLabel());

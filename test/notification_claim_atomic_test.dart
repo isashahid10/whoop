@@ -100,6 +100,29 @@ void main() {
       expect(results, everyElement(isTrue));
     });
 
+    test('a key that fired in degraded mode never fires again once the DB is '
+        'back — however many passes run', () async {
+      const store = FiredKeyStore();
+      const key = '2026-07-25:low_read';
+
+      // The exact on-disk state left by a fallback claim taken while the DB was
+      // unusable: the prefs mirror remembers the fire, the claim table doesn't.
+      SharedPreferences.setMockInitialValues({'notif_fired:$key': true});
+
+      // Every subsequent pass (each background derive is one) must lose. The
+      // first reconciling pass is the easy case; the ones after it are where a
+      // reconciliation that ERASED the mirror would hand the key back out and
+      // re-alert.
+      for (var pass = 0; pass < 3; pass++) {
+        expect(await store.claim(key), isFalse, reason: 'pass $pass re-fired');
+      }
+
+      // Reconciled forward: the claim table now records the fire too, so the
+      // mirror is no longer the only thing standing between us and a repeat.
+      expect(await LocalDb.notifFiredExists(key), isTrue);
+      expect(await store.hasFired(key), isTrue);
+    });
+
     test('the claim survives a store instance being thrown away (restart)',
         () async {
       const key = '2026-07-25:sync_stale';
