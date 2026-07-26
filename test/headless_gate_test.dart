@@ -1,15 +1,21 @@
-// HeadlessSyncGate: mutual exclusion across the three iOS headless wake
-// sources (BLE-restore, BGProcessingTask, BGAppRefreshTask) + the skip-streak
-// telemetry that makes repeated wake-source collisions observable instead of
-// a single easy-to-miss debugPrint line.
+// HeadlessSyncGate: mutual exclusion across EVERY headless wake source — the
+// three iOS ones (BLE-restore, BGProcessingTask, BGAppRefreshTask) and the
+// Android post-boot wake — plus the skip-streak telemetry that makes repeated
+// wake-source collisions observable instead of a single easy-to-miss
+// debugPrint line.
 
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/sync/band_ownership.dart';
+import 'package:openstrap_edge/sync/headless_boot.dart';
 import 'package:openstrap_edge/sync/headless_gate.dart';
 
 void main() {
-  setUp(() => HeadlessSyncGate.resetForTest());
+  setUp(() {
+    HeadlessSyncGate.resetForTest();
+    BandOwnership.resetForTest();
+  });
 
   test('a solo run is never a skip and leaves no streak', () async {
     final result = await HeadlessSyncGate.tryRun<int>('owner_a', () async => 1);
@@ -93,5 +99,67 @@ void main() {
     releaseGate.complete();
     await run;
     expect(HeadlessSyncGate.busy, isFalse);
+  });
+
+  group('P2 — the Android boot wake goes through the gate too', () {
+    test('the gate is BUSY for the whole duration of a boot drain', () async {
+      final lease = BandOwnership.tryAcquireHeadless()!;
+      final started = Completer<void>();
+      final finish = Completer<void>();
+
+      final run = runBootSyncThroughGate(
+        lease,
+        runner: (l) async {
+          started.complete();
+          await finish.future;
+          return true;
+        },
+      );
+
+      await started.future;
+      // OLD BEHAVIOUR: the boot path called runHeadlessSync(lease: lease)
+      // directly and fire-and-forget, so `busy` read false for the entire
+      // boot drain and any other wake source would have run concurrently.
+      expect(HeadlessSyncGate.busy, isTrue);
+      expect(
+        await HeadlessSyncGate.tryRun<int>('ble_restore_wake', () async => 7),
+        isNull,
+        reason: 'another wake source must SKIP while the boot drain holds it',
+      );
+
+      finish.complete();
+      expect(await run, isTrue);
+      expect(HeadlessSyncGate.busy, isFalse);
+    });
+
+    test('a boot wake that loses the race skips AND releases its band lease',
+        () async {
+      final lease = BandOwnership.tryAcquireHeadless()!;
+      expect(BandOwnership.owner, BandOwnerKind.headless);
+
+      final finish = Completer<void>();
+      final holder = HeadlessSyncGate.tryRun<void>('ios_bg_task', () async {
+        await finish.future;
+      });
+
+      var ran = false;
+      final result = await runBootSyncThroughGate(
+        lease,
+        runner: (l) async {
+          ran = true;
+          return true;
+        },
+      );
+
+      expect(result, isNull);
+      expect(ran, isFalse);
+      // The lease was acquired before the gate was consulted; a skipped cycle
+      // must hand it back or the band stays owned by a run that never happened.
+      expect(BandOwnership.owner, isNull);
+      expect(HeadlessSyncGate.consecutiveSkipsFor(kBootWakeGateOwner), 1);
+
+      finish.complete();
+      await holder;
+    });
   });
 }

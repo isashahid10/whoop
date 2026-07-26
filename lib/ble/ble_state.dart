@@ -297,6 +297,199 @@ class AckRetryPolicy {
   }
 }
 
+/// Why an in-flight HISTORY_END token may (or may not) be echoed back to the
+/// band. See [TrimAckPolicy].
+enum TrimAckVerdict {
+  /// Every precondition holds — echo the verbatim 8-byte token.
+  send,
+
+  /// The session that received this HISTORY_END is no longer the engine's
+  /// current session (the link dropped / was replaced while the handler was
+  /// parked mid-await). Writing now would put an OLD connection's token, with
+  /// a re-used sync seq, onto a BRAND NEW link — and a failed write would tear
+  /// down the healthy new session.
+  blockedStaleSession,
+
+  /// The burst this token terminates had its buffered records DISCARDED
+  /// without ever being committed (idle watchdog / abort-and-retry). Its
+  /// straggler terminal is still in flight; echoing it would trim flash we
+  /// deliberately threw away.
+  blockedDiscardedBurst,
+
+  /// The durable commit did NOT complete. The records are not in the database,
+  /// so the band must keep them.
+  blockedCommitFailed,
+}
+
+/// THE gate on the one irreversible act in the whole offload protocol: echoing
+/// a HISTORY_END continuation token, which is what tells the band it may trim
+/// that chunk out of its flash.
+///
+/// The safe-trim invariant is "every row is durable BEFORE the caller echoes
+/// the HISTORY_END trim token, or none is". Historically only the HAPPY path
+/// honoured it: the commit's exception was swallowed and the caller ACKed
+/// regardless, so a failed transaction (a real production OOM inside
+/// `commitSyncBatch` — see `lib/data/db.dart`) meant the buffer had already
+/// been cleared, the transaction had rolled back, the cursor had not advanced,
+/// and the band was then told to trim — those records existed nowhere,
+/// permanently and silently.
+///
+/// Pure and total: the engine supplies three observations, this decides. The
+/// engine must call it AGAIN after the commit await (the commit can take
+/// seconds on a large batch — long enough for the session to die under it).
+class TrimAckPolicy {
+  const TrimAckPolicy._();
+
+  /// [sessionCurrent]  — the receiving session is still the engine's session
+  ///                     AND still connected.
+  /// [burstDiscarded]  — this burst's open chunk was discarded un-committed.
+  /// [commitDurable]   — the atomic commit completed (pass `true` when asking
+  ///                     the pre-commit question "should I even commit this
+  ///                     token?").
+  static TrimAckVerdict evaluate({
+    required bool sessionCurrent,
+    required bool burstDiscarded,
+    required bool commitDurable,
+  }) {
+    // Order is deliberate: a stale session must be refused before anything
+    // else touches the (new) link, and a poisoned burst must be refused before
+    // the commit result is even considered — its records are already gone.
+    if (!sessionCurrent) return TrimAckVerdict.blockedStaleSession;
+    if (burstDiscarded) return TrimAckVerdict.blockedDiscardedBurst;
+    if (!commitDurable) return TrimAckVerdict.blockedCommitFailed;
+    return TrimAckVerdict.send;
+  }
+}
+
+/// Per-burst poison latch for [TrimAckVerdict.blockedDiscardedBurst].
+///
+/// The idle watchdog abandons the open chunk (N buffered, never-committed
+/// records) on the contract "the band re-delivers them next offload", and the
+/// abort path then sends ABORT_HISTORICAL. But that burst's HISTORY_END is
+/// ALREADY in flight and arrives anyway — and nothing stopped the handler from
+/// committing an empty buffer and echoing the token verbatim, which trims
+/// exactly the records that were just thrown away. The token is unknown at
+/// discard time (it only arrives with the terminal), so the poison is keyed to
+/// the BURST, not the token: a discard poisons the open burst, and only a
+/// fresh HISTORY_START / re-arm clears it.
+class BurstTrimGuard {
+  bool _discarded = false;
+
+  /// Bursts poisoned since construction (diagnostics — a rising count means
+  /// the drain keeps stalling mid-burst).
+  int poisonedBursts = 0;
+
+  /// True while the open burst may NOT be trimmed.
+  bool get discarded => _discarded;
+
+  /// A fresh burst begins (HISTORY_START / re-arm) — nothing lost yet.
+  void beginBurst() => _discarded = false;
+
+  /// The open chunk was abandoned without a durable commit.
+  void discardOpenChunk() {
+    if (_discarded) return;
+    _discarded = true;
+    poisonedBursts++;
+  }
+}
+
+/// What a link-down must do to the session that just died.
+enum LinkDownAction {
+  /// Cancel every timer + subscription the session owns, then surface `idle`.
+  tearDownSession,
+
+  /// The event belongs to a session we already replaced — ignore it entirely.
+  ignoreStaleSession,
+}
+
+/// A dropped link used to only flip a flag and surface the phase; the actual
+/// teardown happened solely on the NEXT connect()/disconnect(). When
+/// [BondRefusalGiveUp] trips, the app pauses auto-reconnect and never calls
+/// disconnect() — so the dead session's five timers (heartbeat, keep-alive,
+/// periodic backfill, idle watchdog, historical retry) kept firing forever and
+/// its four `onValueReceived` subscriptions stayed registered, one more full
+/// set leaked per drop.
+class LinkDownPolicy {
+  const LinkDownPolicy._();
+
+  static LinkDownAction evaluate({required bool sessionIsCurrent}) =>
+      sessionIsCurrent
+          ? LinkDownAction.tearDownSession
+          : LinkDownAction.ignoreStaleSession;
+}
+
+/// Outcome of a process-wide single-owner band claim.
+enum BandClaimDecision {
+  /// Take the claim (nobody holds it, or the incumbent's claim is stale).
+  claim,
+
+  /// A live foreground owner exists and we are the background drainer —
+  /// don't touch the band this cycle.
+  yieldToOwner,
+
+  /// A live background owner exists and we are foreground — drop its link
+  /// (awaited) and then take the claim.
+  preemptThenClaim,
+}
+
+/// Pure arbitration for the process-wide single-owner guard.
+///
+/// The claim used to be tested for NON-NULLNESS only, and was taken BEFORE the
+/// link was up and released only by an explicit `disconnect()`. So a connect
+/// that threw left the claim pointing at an engine with no link, forever: a
+/// later iOS restore wake spun up a background drainer, saw a non-null owner,
+/// yielded, and reported "strap not reachable this cycle" for the rest of the
+/// process lifetime. [incumbentLive] is the fix — a claim held by an engine
+/// with no session is not a claim.
+class BandClaimPolicy {
+  const BandClaimPolicy._();
+
+  static BandClaimDecision decide({
+    required bool incumbentPresent,
+    required bool incumbentLive,
+    required bool isBackgroundDrainer,
+  }) {
+    if (!incumbentPresent) return BandClaimDecision.claim;
+    if (!incumbentLive) return BandClaimDecision.claim;
+    if (isBackgroundDrainer) return BandClaimDecision.yieldToOwner;
+    return BandClaimDecision.preemptThenClaim;
+  }
+}
+
+/// Where an inbound reassembled frame is processed.
+enum FrameRoute {
+  /// The single serialized offload queue (`_offloadFrames`), so history
+  /// records and their terminals are handled strictly in arrival order by ONE
+  /// loop.
+  serializedQueue,
+
+  /// Handled inline (command responses, events, live high-rate frames).
+  immediate,
+}
+
+/// Pure routing decision for [FrameRoute].
+///
+/// Metadata (HISTORY_START / HISTORY_END / HISTORY_COMPLETE) used to reach the
+/// serialized queue only when it arrived on the `data` characteristic;
+/// metadata reassembled on `cmd_from`/`events` was fired unawaited on the
+/// immediate path instead — the one route that could run a HISTORY_END handler
+/// CONCURRENTLY with the queued drain, i.e. two handlers racing on the same
+/// drain controller (one snapshots an empty buffer and can ACK before the
+/// other's commit is durable). Metadata now always takes the queue.
+class FrameRoutePolicy {
+  const FrameRoutePolicy._();
+
+  static FrameRoute route({
+    required bool isMetadata,
+    required bool isHistorical,
+    required bool isDataRole,
+  }) {
+    if (isMetadata) return FrameRoute.serializedQueue;
+    if (isHistorical && isDataRole) return FrameRoute.serializedQueue;
+    return FrameRoute.immediate;
+  }
+}
+
 /// Tracks ACK-write failures per historical-batch token ACROSS RECONNECTS —
 /// a chunk whose ACK keeps failing for the SAME token (the "Groundhog Day"
 /// re-flood signature: the band never trims, so it re-sends the identical

@@ -42,16 +42,10 @@ class NotificationEvent {
     this.route,
   });
 
-  /// Stable OS notification id, partitioned by category so a health alert can
-  /// never overwrite a reminder (and vice-versa). Bands are 100k apart and start
-  /// well above the fixed device/insight ids (< 3000) defined in the service.
-  int get osId {
-    final base = switch (category) {
-      NotifCategory.recovery => 200000,
-      NotifCategory.health => 300000,
-      NotifCategory.reminders => 400000,
-      NotifCategory.device => 100000,
-    };
-    return base + (dedupeKey.hashCode.abs() % 100000);
-  }
+  // The OS notification id is NOT derived here any more. It used to be
+  // `categoryBase + dedupeKey.hashCode.abs() % 100000` — a hash modulo, so two
+  // distinct dedupeKeys in the same category could map onto the same id, and
+  // `_plugin.show` REPLACES rather than stacks: one notification silently
+  // vanished. Ids are now allocated collision-free per dedupeKey — see
+  // notification_ids.dart (NotificationIds.idFor).
 }

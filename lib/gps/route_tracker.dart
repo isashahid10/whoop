@@ -147,6 +147,9 @@ class RouteTracker {
         // Surface — a dead location service otherwise looks like eternal
         // "Waiting for GPS…". The subscription stays up (cancelOnError: false)
         // so fixes resume seamlessly if the service comes back.
+        // `_stopped` guard: an event already in flight when stop()/dispose()
+        // cancelled the subscription must not write to a disposed notifier.
+        if (_stopped) return;
         error.value = e.toString();
       },
       cancelOnError: false,
@@ -250,11 +253,21 @@ class RouteTracker {
     }
   }
 
-  /// Stop tracking and flush any buffered tail. Idempotent. Retries the final
-  /// flush once — after stop() no later flush ever runs, so a single transient
-  /// sink failure here used to silently drop the route's tail.
+  /// Stop tracking and flush any buffered tail, then release the tracker.
+  /// Idempotent. Retries the final flush once — after stop() no later flush
+  /// ever runs, so a single transient sink failure here used to silently drop
+  /// the route's tail.
+  ///
+  /// TERMINAL: a tracker is single-use (`start` is a no-op after the first
+  /// call), and both owners in AppState drop their reference the moment they
+  /// call this, so stop() also runs [dispose]. Previously nothing ever called
+  /// dispose(), which leaked the six ValueNotifiers (and their listeners) once
+  /// per route workout. Read the notifiers BEFORE awaiting stop().
   Future<void> stop() async {
-    if (_stopped) return;
+    if (_stopped) {
+      dispose();
+      return;
+    }
     _stopped = true;
     _watchdog?.cancel();
     _watchdog = null;
@@ -262,10 +275,24 @@ class RouteTracker {
     _sub = null;
     await _flush();
     if (_buffer.isNotEmpty) await _flush(); // one retry for the tail
+    dispose();
   }
 
+  bool _disposed = false;
+
+  /// Release every resource the tracker holds. Idempotent, and safe to call
+  /// WITHOUT stop() — it cancels the GPS subscription too, which the previous
+  /// implementation did not: it only cancelled the watchdog, so a dispose()
+  /// without a stop() left the location stream (and the platform's GPS
+  /// hardware session behind it) running for the life of the process.
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _stopped = true;
     _watchdog?.cancel();
+    _watchdog = null;
+    unawaited(_sub?.cancel());
+    _sub = null;
     path.dispose();
     current.dispose();
     distanceMeters.dispose();

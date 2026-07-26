@@ -170,4 +170,83 @@ void main() {
         reason: 'clean baseline → readiness computes on the FIRST derive, '
             'with no refresh required to self-heal');
   });
+
+  // ── The SWEEP path: the "frozen" snapshot must actually stay frozen ────────
+  //
+  // The load path above was fixed, but the SWEEP re-introduced the same
+  // pollution one level up: `run()`/`rescanRecent()` loaded the snapshot ONCE
+  // — already containing the persisted values of the up-to-21 days it was
+  // about to re-derive — and then appended each finished day's scalars back
+  // into that shared snapshot, evicting a real old day to stay at 28. Days
+  // 2..N of the sweep therefore read a window holding duplicate copies of the
+  // recent days, in DESCENDING date order (the sweep runs newest-first), and
+  // median/MAD collapsed toward the repeated values exactly as before.
+
+  Future<void> seedSweepDays(String month, int n) async {
+    await (await LocalDb.instance).delete('metric_series');
+    for (var i = 1; i <= n; i++) {
+      // Distinct readiness AND distinct rhr per day, so "did this day's own
+      // value leak into its own window" is decidable by value.
+      await seedDay('2026-$month-${i.toString().padLeft(2, '0')}', 40.0 + i);
+    }
+  }
+
+  test('a sweep never mutates the frozen snapshot — every day gets the same '
+      'window a fresh load would give', () async {
+    await seedSweepDays('09', 28);
+    // run()/rescanRecent dispatch NEWEST-FIRST over the recent window.
+    final orderedDays = [
+      for (var i = 28; i >= 8; i--) '2026-09-${i.toString().padLeft(2, '0')}',
+    ];
+
+    final first = await debugSweepBaselineWindows('readiness', orderedDays);
+    final second = await debugSweepBaselineWindows('readiness', orderedDays);
+    expect(first, equals(second),
+        reason: 'the sweep snapshot is immutable — deriving days cannot change '
+            'what a later day in the same sweep reads');
+
+    for (var i = 0; i < orderedDays.length; i++) {
+      final window = first[i];
+      expect(window.toSet().length, window.length,
+          reason: '${orderedDays[i]}: no value may appear twice — the old '
+              'append path stacked each finished day back in');
+      final sorted = [...window]..sort();
+      expect(window, equals(sorted),
+          reason: '${orderedDays[i]}: the window is a real trailing series in '
+              'date order, not history with recent days appended out of order');
+    }
+  });
+
+  test('no day is ever inside its own baseline window', () async {
+    await seedSweepDays('10', 28);
+    final today = '2026-10-28';
+    final ownValue = 40.0 + 28;
+
+    // The unfiltered window (what backs the persisted artifact + the rescan
+    // signature) legitimately contains today...
+    final unfiltered = await debugBaselineWindow('readiness');
+    expect(unfiltered, contains(ownValue));
+
+    // ...but the window the day is DERIVED against must not.
+    final own = (await debugSweepBaselineWindows('readiness', [today])).single;
+    expect(own, isNot(contains(ownValue)),
+        reason: "z-scoring a day against a baseline containing itself pulls "
+            'the baseline toward the value under test — the exact '
+            'self-inclusion analytics v38 fixed one layer down');
+    expect(own.length, 27, reason: 'strictly the 27 prior days');
+    expect(own.every((v) => v < ownValue), isTrue,
+        reason: 'strictly EARLIER days — a backfill sweep must not leak later '
+            "days into an older day's baseline (that would also make the "
+            'result depend on sweep order)');
+  });
+
+  test('a mid-history backfill day sees only days before it', () async {
+    await seedSweepDays('11', 28);
+    // Re-derive a day in the MIDDLE of history (what "Re-analyze" does).
+    final mid = '2026-11-10';
+    final window = (await debugSweepBaselineWindows('readiness', [mid])).single;
+    expect(window.length, 9, reason: 'the 9 days 2026-11-01..09');
+    expect(window.last, 40.0 + 9);
+    expect(window.every((v) => v < 40.0 + 10), isTrue);
+  });
 }

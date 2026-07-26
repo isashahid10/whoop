@@ -11,6 +11,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ai/ai_prefs.dart';
 import '../ai/reminder_plan.dart';
@@ -67,15 +68,22 @@ class NotificationCenter {
   /// background_sync.dart's checkSyncStaleness) MUST pass `false`, so a
   /// not-yet-decided permission is checked, not requested, and never gets
   /// permanently mis-cached as "denied" by a background attempt.
-  Future<void> emit(
+  ///
+  /// Returns TRUE only when the event actually reached the OS. Callers that
+  /// keep their own "already fired today" guard (see [emitOncePerDay]) MUST key
+  /// it off this, never off the mere fact that emit was called: the event is
+  /// dropped outright when [NotificationPrefs.shouldFireOs] says no (quiet
+  /// hours, category muted) or when the OS present fails.
+  Future<bool> emit(
     NotificationEvent e, {
     bool allowPermissionPrompt = true,
   }) async {
+    var presented = false;
     try {
       final prefs = await NotificationPrefs.load();
       final now = DateTime.now();
       final minuteOfDay = now.hour * 60 + now.minute;
-      if (!prefs.shouldFireOs(e, minuteOfDay)) return;
+      if (!prefs.shouldFireOs(e, minuteOfDay)) return false;
       // Enforce the dedupeKey's "fires at most once" contract (issue #136).
       // The OS id only REPLACES a prior post of the same key — it still
       // re-alerts — and derivation re-runs on every BLE sync, so an insight
@@ -103,8 +111,44 @@ class NotificationCenter {
         } finally {
           if (!shown) await _fired.release(e.dedupeKey);
         }
+        presented = shown;
       });
     } catch (_) {/* OS present best-effort */}
+    return presented;
+  }
+
+  /// Fire [e] at most once per [dayId], with the persisted day-guard at
+  /// [prefsKey] consumed ONLY when the notification was actually presented.
+  /// Returns true iff it fired.
+  ///
+  /// The callers of this (recovery-ready, step-goal) used to write the guard
+  /// FIRST and then emit. [emit] drops the event outright when
+  /// [NotificationPrefs.shouldFireOs] is false, so a band that syncs at 06:40 —
+  /// inside the DEFAULT 22:00–07:00 quiet window — computed the new day's
+  /// recovery, burned the guard, got suppressed, and then had every retry that
+  /// day blocked by the guard it never earned: "Your recovery is ready" simply
+  /// never fired. Claiming the guard only on a real present makes the retry
+  /// (the next derive pass, after 07:00) work.
+  Future<bool> emitOncePerDay({
+    required String prefsKey,
+    required String dayId,
+    required NotificationEvent e,
+    bool allowPermissionPrompt = true,
+  }) async {
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+    } catch (_) {
+      prefs = null; // no store — [emit]'s own FiredKeyStore still dedupes
+    }
+    if (prefs != null && prefs.getString(prefsKey) == dayId) return false;
+    final shown = await emit(e, allowPermissionPrompt: allowPermissionPrompt);
+    if (shown && prefs != null) {
+      try {
+        await prefs.setString(prefsKey, dayId);
+      } catch (_) {/* guard is an optimisation; FiredKeyStore is the truth */}
+    }
+    return shown;
   }
 
   // Default schedule for standing reminders (user-overridable via prefs UI).

@@ -13,6 +13,7 @@ import '../../models/metric.dart'
 import '../../data/day_label.dart';
 import '../../state/app_state.dart';
 import '../design/design.dart';
+import '../widgets/async_guards.dart' show LatestRequestGate;
 import 'metric_row.dart';
 import 'trend_screen.dart';
 
@@ -98,6 +99,10 @@ class _FetchState extends State<_Fetch> {
   AppState? _app;
   VoidCallback? _insightsListener;
   int _lastInsightsRevision = -1;
+  // ...which then introduced its own race: two revisions in quick succession
+  // (rollup, then derive) leave two loads in flight and the later-STARTING one
+  // can complete first, letting the stale payload land last and win.
+  final LatestRequestGate _gate = LatestRequestGate();
 
   @override
   void initState() {
@@ -129,16 +134,17 @@ class _FetchState extends State<_Fetch> {
   Future<void> _go() async {
     final api = context.read<AppState>().repo;
     if (api == null) return;
+    final token = _gate.begin();
     try {
       final d = await widget.load(api);
-      if (mounted) {
-        setState(() {
-          _d = d;
-          _loading = false;
-        });
-      }
+      if (!mounted || !_gate.isCurrent(token)) return; // superseded
+      setState(() {
+        _d = d;
+        _loading = false;
+      });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (!mounted || !_gate.isCurrent(token)) return;
+      setState(() => _loading = false);
     }
   }
 
@@ -1480,6 +1486,22 @@ Widget _legendPill(String label, Color color) {
     );
   }
 
+  // A grade needs at least ONE computed dip metric. These used to default to
+  // 0, so a night with trusted coverage but nothing computed fell all the way
+  // through to "Quiet — No meaningful overnight oxygen dips were detected" —
+  // an affirmative all-clear derived from three absent numbers. Currently
+  // unreachable only because `spo2.disabled` short-circuits upstream; it goes
+  // live the moment SpO₂ decoding is re-enabled.
+  if (odiPerHour == null && maxDipPct == null && burdenPct == null) {
+    return (
+      label: 'Not graded',
+      color: AppColors.inkSoft,
+      reason:
+          'The overnight dip metrics weren’t computed for this night, so '
+          'there is nothing to grade — this is not an all-clear.',
+    );
+  }
+
   final odi = odiPerHour ?? 0;
   final maxDip = maxDipPct ?? 0;
   final burden = burdenPct ?? 0;
@@ -1539,6 +1561,7 @@ class _OxygenRecentStrip extends StatefulWidget {
 class _OxygenRecentStripState extends State<_OxygenRecentStrip> {
   Map<String, dynamic>? _trend;
   bool _loading = true;
+  final LatestRequestGate _gate = LatestRequestGate();
 
   @override
   void initState() {
@@ -1549,19 +1572,20 @@ class _OxygenRecentStripState extends State<_OxygenRecentStrip> {
   Future<void> _load() async {
     final api = context.read<AppState>().repo;
     if (api == null) return;
+    final token = _gate.begin();
     try {
       final trend = await api.getTrend(
         'spo2',
         scale: 'week',
         anchor: widget.date,
       );
-      if (!mounted) return;
+      if (!mounted || !_gate.isCurrent(token)) return; // superseded
       setState(() {
         _trend = trend;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_gate.isCurrent(token)) return;
       setState(() => _loading = false);
     }
   }
@@ -1601,7 +1625,7 @@ class _OxygenRecentStripState extends State<_OxygenRecentStrip> {
       return (
         label: 'spike',
         color: AppColors.warn,
-        reason: 'Tonight stands well above your recent oxygen-dip pattern.',
+        reason: 'Tonight stands well above your recent oxygen-index pattern.',
       );
     }
     if (drift >= 1.0) {
@@ -1664,7 +1688,18 @@ class _OxygenRecentStripState extends State<_OxygenRecentStrip> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Tag(pattern.label, color: pattern.color),
-                InfoDot(title: 'Last 7 nights', body: pattern.reason),
+                InfoDot(
+                  title: 'Last 7 nights',
+                  body: pattern.reason,
+                  // The `spo2` SERIES is not the ODI shown in the hero above:
+                  // the on-device pipeline writes null into it, so its only
+                  // writer is the cloud importer's vendor saturation index.
+                  // It must not be captioned "/h" as if it were a dip rate.
+                  methodNote:
+                      'These bars are the imported vendor oxygen index, not '
+                      'the dip rate in the hero above and not an absolute '
+                      'SpO₂. Nights with no imported value are left blank.',
+                ),
               ],
             ),
           ),
@@ -1684,9 +1719,9 @@ class _OxygenRecentStripState extends State<_OxygenRecentStrip> {
             spacing: Sp.x2,
             runSpacing: Sp.x1,
             children: [
-              StatusChip('Latest ${latest.toStringAsFixed(1)}/h',
+              StatusChip('Latest ${latest.toStringAsFixed(1)}',
                   tone: ChipTone.accent),
-              StatusChip('Avg ${avg.toStringAsFixed(1)}/h'),
+              StatusChip('Avg ${avg.toStringAsFixed(1)}'),
               StatusChip(
                 '${(latest - avg >= 0 ? '+' : '')}${(latest - avg).toStringAsFixed(1)} vs avg',
               ),
@@ -1896,6 +1931,20 @@ class WearDayContent extends StatelessWidget {
 
   num? _n(Object? v) => v is num ? v : null;
 
+  /// How many separate on-wrist stretches the day had.
+  ///
+  /// `getDayWear` emits `segments` as a LIST of on/off segment maps (the
+  /// engine builds it as a list). The old `(_n(d['segments']) ?? 0).toInt()`
+  /// therefore always saw a List, always fell through to `?? 0`, and printed
+  /// "Wear stretches 0" on every day on every device — including a 24 h-worn
+  /// day with three stretches. An EMPTY list means no wear block was stored at
+  /// all (a worn day necessarily has ≥1 stretch), which is absence, not zero.
+  static int? _segmentCount(Object? v) {
+    if (v is List) return v.isEmpty ? null : v.length;
+    if (v is num) return v.toInt(); // legacy/precomputed count
+    return null;
+  }
+
   // unix seconds → local "h:mm AM/PM"
   String _clock(num? ts) {
     if (ts == null) return '—';
@@ -1909,16 +1958,32 @@ class WearDayContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final d = data;
     final accent = AppColors.coralDeep;
-    final worn = (_n(d['worn_min']) ?? 0).toInt();
-    final cov = (_n(d['coverage_pct']) ?? 0).toInt();
+    // NULLABLE on purpose. "The strap was off all day" and "this day has no
+    // wear measurement" are different claims, and only one of them is ours to
+    // make. A cloud-imported day carries no wear/coverage block, so the old
+    // `?? 0` turned silence into the affirmative "No wrist contact was
+    // recorded" — on a day whose own Week bars showed hours of wear.
+    final worn = _n(d['worn_min'])?.toInt();
+    final cov = _n(d['coverage_pct'])?.toInt();
     final hourly = ((d['hourly'] as List?) ?? const [])
-        .map((e) => (e as num).toDouble())
+        .whereType<num>()
+        .map((e) => e.toDouble())
         .toList();
     final firstOn = _n(d['first_on']);
     final lastOn = _n(d['last_on']);
-    final segments = (_n(d['segments']) ?? 0).toInt();
-    final longestOff = (_n(d['longest_off_min']) ?? 0).toInt();
+    final segments = _segmentCount(d['segments']);
+    final longestOff = _n(d['longest_off_min'])?.toInt();
 
+    if (d.isEmpty || worn == null) {
+      return const _QuietState(
+        icon: OsIcon.wear,
+        title: 'Wear time wasn’t recorded',
+        message:
+            'This day has no wear measurement stored — imported days don’t '
+            'carry one. That is not the same as the strap being off, so '
+            'nothing is claimed either way.',
+      );
+    }
     if (worn == 0) {
       return const _QuietState(
         icon: OsIcon.wear,
@@ -1959,17 +2024,23 @@ class WearDayContent extends StatelessWidget {
                   Expanded(
                     child: BigStat(
                       value: hm(worn),
-                      caption: '$cov% of the day',
+                      caption: cov == null
+                          ? 'share of day not recorded'
+                          : '$cov% of the day',
                       size: BigStatSize.xl,
                     ),
                   ),
                   const SizedBox(width: Sp.x3),
                   ArcGauge(
-                    value: (cov / 100).clamp(0.0, 1.0),
+                    // NaN → the muted empty ring; a missing coverage figure
+                    // must not be drawn as a 0% ring.
+                    value: cov == null
+                        ? double.nan
+                        : (cov / 100).clamp(0.0, 1.0),
                     color: AppColors.coralDeep,
                     size: 96,
                     stroke: 10,
-                    valueText: '$cov%',
+                    valueText: cov == null ? '—' : '$cov%',
                     label: 'of day',
                   ),
                 ],
@@ -2012,6 +2083,29 @@ class WearDayContent extends StatelessWidget {
               ],
             ),
           ),
+        ] else ...[
+          // The hourly array is NOT stored per day (getDayWear hard-codes
+          // `'hourly': const []`), so for a recent day both branches above
+          // used to be false and the card vanished with no explanation —
+          // the one outcome the honesty contract forbids: rendering nothing
+          // silently. Say so instead.
+          const SizedBox(height: Sp.x3),
+          ProCard(
+            child: Row(
+              children: [
+                AppIcon(OsIcon.wear, size: 20, color: AppColors.inkMuted),
+                const SizedBox(width: Sp.x3),
+                Expanded(
+                  child: Text(
+                    'Hour-by-hour wear isn’t stored for this day — only the '
+                    'day totals above are. Nothing has been estimated to '
+                    'fill the gap.',
+                    style: AppText.caption.copyWith(color: AppColors.inkSoft),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
 
         // ── when + how continuous ────────────────────────────────────────────
@@ -2039,7 +2133,11 @@ class WearDayContent extends StatelessWidget {
                 children: [
                   const TileHeader('Wear stretches'),
                   const SizedBox(height: Sp.x2),
-                  BigStat(value: '$segments', size: BigStatSize.md),
+                  // Null → BigStat's honest em-dash.
+                  BigStat(
+                    value: segments?.toString(),
+                    size: BigStatSize.md,
+                  ),
                 ],
               ),
             ),
@@ -2066,8 +2164,14 @@ class WearDayContent extends StatelessWidget {
                 children: [
                   const TileHeader('Longest off'),
                   const SizedBox(height: Sp.x2),
+                  // 'none' is a positive claim ("never removed"). Only make it
+                  // from a MEASURED zero — a day whose bundle has coverage but
+                  // no engine wear block has no off-time measurement at all,
+                  // and its raw may already be pruned, so it can never get one.
                   BigStat(
-                    value: longestOff > 0 ? hm(longestOff) : 'none',
+                    value: longestOff == null
+                        ? null
+                        : (longestOff > 0 ? hm(longestOff) : 'none'),
                     size: BigStatSize.md,
                   ),
                 ],

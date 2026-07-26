@@ -57,10 +57,15 @@ the user's DERIVED data (raw signals are intentionally unavailable). Tables are 
 - v_baselines(key, value, mean, z, delta, ratio, n, updated_at) — rolling personal baselines.
 - v_insights(id, kind, title, body, date, created_at, read) — the local insight/alert feed.
 
-Rules: SELECT only, derived views only (no raw/base tables), dates are 'YYYY-MM-DD', timestamps
-are epoch SECONDS, irregular_flag/irregular_rhythm_flag are 1/0. Prefer aggregates
-(AVG/MIN/MAX/COUNT, GROUP BY) over selecting many rows; results cap at 200 rows. If a query is
-rejected, read the error and fix it. Examples:
+Rules: SELECT (or WITH … SELECT) only, ONE statement, no comments. Every table position — after
+FROM, after JOIN, and every extra member of a comma-separated list — must be one of the v_* views
+above or a CTE you declared in the same statement; nothing else is queryable, including base
+tables, sqlite_master, schema-qualified names ("main.v_daily"), quoted identifiers, table
+functions, and subqueries in FROM (put the subquery in a WITH instead). Subqueries in
+SELECT/WHERE over the views are fine. Dates are 'YYYY-MM-DD', timestamps are epoch SECONDS,
+irregular_flag/irregular_rhythm_flag are 1/0. Prefer aggregates (AVG/MIN/MAX/COUNT, GROUP BY)
+over selecting many rows; results cap at 200 rows. If a query is rejected, read the error and fix
+it. Examples:
   SELECT date, resting_hr, hrv, readiness FROM v_daily ORDER BY date DESC LIMIT 30
   SELECT AVG(strain) FROM v_daily WHERE date >= '2026-06-01'
   SELECT t, v FROM v_series WHERE date='2026-06-29' AND series='hr_curve' ORDER BY t

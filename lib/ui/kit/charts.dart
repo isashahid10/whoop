@@ -177,7 +177,11 @@ class BaselineProgress extends StatelessWidget {
 
 /// Tiny sparkline bars (for inside cards). Values normalized to their own max.
 class MiniBars extends StatelessWidget {
-  final List<double> values;
+  /// Bar values. A NULL entry is a documented gap (nothing was measured for
+  /// that slot) and renders as empty space — it is never compacted away (which
+  /// would shift every later bar left onto the wrong day) and never drawn as a
+  /// bar (which would read as a measured zero).
+  final List<double?> values;
   final Color? color;
   final double height;
   final double gap;
@@ -192,7 +196,9 @@ class MiniBars extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = this.color ?? AppColors.coral;
     if (values.isEmpty) return SizedBox(height: height);
-    final maxV = values.reduce(math.max);
+    final present = values.whereType<double>();
+    if (present.isEmpty) return SizedBox(height: height);
+    final maxV = present.reduce(math.max);
     return SizedBox(
       height: height,
       child: Row(
@@ -200,23 +206,32 @@ class MiniBars extends StatelessWidget {
         children: [
           for (int i = 0; i < values.length; i++) ...[
             Expanded(
-              child: TweenAnimationBuilder<double>(
-                duration: Motion.med,
-                curve: Motion.curve,
-                tween: Tween(begin: 0, end: maxV == 0 ? 0 : (values[i] / maxV)),
-                builder: (_, v, _) => Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Container(
-                    height: math.max(3, v * height),
-                    decoration: BoxDecoration(
-                      color: color.withValues(
-                        alpha: 0.4 + 0.6 * (maxV == 0 ? 0 : values[i] / maxV),
+              // A gap keeps its slot (so the bars stay aligned to their days)
+              // but draws nothing at all.
+              child: values[i] == null
+                  ? const SizedBox.shrink()
+                  : TweenAnimationBuilder<double>(
+                      duration: Motion.med,
+                      curve: Motion.curve,
+                      tween: Tween(
+                        begin: 0,
+                        end: maxV == 0 ? 0 : (values[i]! / maxV),
                       ),
-                      borderRadius: BorderRadius.circular(R.pill),
+                      builder: (_, v, _) => Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Container(
+                          height: math.max(3, v * height),
+                          decoration: BoxDecoration(
+                            color: color.withValues(
+                              alpha:
+                                  0.4 +
+                                  0.6 * (maxV == 0 ? 0 : values[i]! / maxV),
+                            ),
+                            borderRadius: BorderRadius.circular(R.pill),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ),
             ),
             if (i != values.length - 1) SizedBox(width: gap),
           ],
@@ -230,7 +245,11 @@ class MiniBars extends StatelessWidget {
 /// Shows the numeric value above each bar (set [showValues] false to hide).
 /// [onTapBar] makes a bar tappable (drill-down in the Metric Explorer).
 class LabeledBars extends StatelessWidget {
-  final List<double> values;
+  /// Bar values. A NULL entry is an explicit GAP — no measurement exists for
+  /// that period — and renders as an em-dash with NO bar. It must never be
+  /// coerced to 0.0: the bar floor (`heightFactor 0.02`) would otherwise draw
+  /// a real, accent-coloured, tappable bar for a day the strap wasn't worn.
+  final List<double?> values;
   final List<String> labels;
   final Color? color;
   final double height;
@@ -250,7 +269,10 @@ class LabeledBars extends StatelessWidget {
     this.onTapBar,
   });
 
-  String _fmt(double v) {
+  /// Label above a bar. Null = absent → the honest em-dash (NOT '' and NOT
+  /// '0': a missing measurement must never be printed as a number).
+  String _fmt(double? v) {
+    if (v == null) return '—';
     if (valueFmt != null) return valueFmt!(v);
     // tidy default: integers when whole, else one decimal; blank for exact 0.
     if (v == 0) return '';
@@ -260,7 +282,10 @@ class LabeledBars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = this.color ?? AppColors.coral;
-    final maxV = values.isEmpty ? 1.0 : math.max(1.0, values.reduce(math.max));
+    final present = values.whereType<double>();
+    final maxV = present.isEmpty
+        ? 1.0
+        : math.max(1.0, present.reduce(math.max));
     return SizedBox(
       height: height,
       child: Row(
@@ -281,7 +306,9 @@ class LabeledBars extends StatelessWidget {
                           _fmt(values[i]),
                           style: AppText.caption.copyWith(
                             fontWeight: FontWeight.w600,
-                            color: (highlight == null || highlight == i)
+                            color: values[i] == null
+                                ? AppColors.inkMuted
+                                : (highlight == null || highlight == i)
                                 ? AppColors.ink
                                 : AppColors.inkMuted,
                           ),
@@ -290,23 +317,31 @@ class LabeledBars extends StatelessWidget {
                         ),
                       if (showValues) const SizedBox(height: 2),
                       Expanded(
-                        child: TweenAnimationBuilder<double>(
-                          duration: Motion.med,
-                          curve: Motion.emphatic,
-                          tween: Tween(begin: 0, end: values[i] / maxV),
-                          builder: (_, v, _) => FractionallySizedBox(
-                            heightFactor: v.clamp(0.02, 1.0),
-                            alignment: Alignment.bottomCenter,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: (highlight == null || highlight == i)
-                                    ? color
-                                    : color.withValues(alpha: 0.28),
-                                borderRadius: BorderRadius.circular(R.pill),
+                        // Absent → draw NOTHING. The 0.02 floor below exists so
+                        // a genuine tiny value stays visible; applying it to a
+                        // missing day fabricates a bar out of no measurement.
+                        child: values[i] == null
+                            ? const SizedBox.shrink()
+                            : TweenAnimationBuilder<double>(
+                                duration: Motion.med,
+                                curve: Motion.emphatic,
+                                tween: Tween(begin: 0, end: values[i]! / maxV),
+                                builder: (_, v, _) => FractionallySizedBox(
+                                  heightFactor: v.clamp(0.02, 1.0),
+                                  alignment: Alignment.bottomCenter,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color:
+                                          (highlight == null || highlight == i)
+                                          ? color
+                                          : color.withValues(alpha: 0.28),
+                                      borderRadius: BorderRadius.circular(
+                                        R.pill,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
                       ),
                       const SizedBox(height: Sp.x2),
                       Text(
@@ -933,53 +968,60 @@ class _HrReplayOverlayState extends State<HrReplayOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final playing = _c.isAnimating;
+    // The AnimatedBuilder must sit OUTSIDE the `0 < t < 1` gate. It used to be
+    // inside it, so the only thing that could ever rebuild past the gate was
+    // the setState in _toggle — which runs while _c.value is still 0. The gate
+    // was therefore false on every rebuild and the replay dot never mounted.
     return Positioned.fill(
-      child: Stack(
-        children: [
-          if (_c.value > 0 && _c.value < 1)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _c,
-                  builder: (context, _) => CustomPaint(
-                    painter: _ReplayDotPainter(
-                      points: widget.points,
-                      t: _c.value,
-                      loX: widget.loX,
-                      hiX: widget.hiX,
-                      loY: widget.loY,
-                      hiY: widget.hiY,
-                      leftPad: widget.leftPad,
-                      topInset: widget.topInset,
-                      plotH: widget.chartHeight - widget.bottomPad,
-                      color: widget.color,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) {
+          final t = _c.value;
+          final playing = _c.isAnimating;
+          return Stack(
+            children: [
+              if (t > 0 && t < 1)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _ReplayDotPainter(
+                        points: widget.points,
+                        t: t,
+                        loX: widget.loX,
+                        hiX: widget.hiX,
+                        loY: widget.loY,
+                        hiY: widget.hiY,
+                        leftPad: widget.leftPad,
+                        topInset: widget.topInset,
+                        plotH: widget.chartHeight - widget.bottomPad,
+                        color: widget.color,
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned(
+                right: 0,
+                top: widget.topInset,
+                child: Material(
+                  color: widget.color,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: _toggle,
+                    child: Padding(
+                      padding: const EdgeInsets.all(7),
+                      child: Icon(
+                        playing ? Icons.pause : Icons.play_arrow,
+                        size: 16,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          Positioned(
-            right: 0,
-            top: widget.topInset,
-            child: Material(
-              color: widget.color,
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: _toggle,
-                child: Padding(
-                  padding: const EdgeInsets.all(7),
-                  child: Icon(
-                    playing ? Icons.pause : Icons.play_arrow,
-                    size: 16,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }

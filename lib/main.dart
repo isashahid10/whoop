@@ -32,7 +32,9 @@ const _kStartupInitTimeout = Duration(seconds: 6);
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase (overridden by dummy values until flutterfire configure)
+  // Initialize Firebase (overridden by dummy values until flutterfire configure).
+  // OPTIONAL: a build with no real google-services.json / GoogleService-Info.plist
+  // throws here and the app carries on without any Firebase at all.
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -40,6 +42,14 @@ Future<void> main() async {
   } catch (e) {
     debugPrint('Firebase init failed (run flutterfire configure!): $e');
   }
+  // ZERO COLLECTION UNTIL CONSENT. The SDKs are already told to stay quiet at
+  // the platform level (Info.plist / AndroidManifest.xml
+  // *_collection_enabled=false) so nothing is collected before Dart even runs;
+  // this restates it programmatically so a build with a stale native config
+  // still cannot auto-log first_open, an app-start trace, or a startup crash.
+  // Collection is only ever switched ON later, from the user's loaded consent
+  // (TelemetryService.applyConsent) — never here.
+  TelemetryService.instance.enforceCollectionOffUntilConsent();
 
   // Install crash/error hooks (FlutterError.onError + PlatformDispatcher.onError)
   // BEFORE anything else. Capture is always-on and LOCAL; nothing transmits until

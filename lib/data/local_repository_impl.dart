@@ -679,18 +679,29 @@ class LocalRepositoryImpl extends LocalRepository {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     final cov = _sub(b, 'coverage');
-    final total = (cov?['hr_samples'] as num?)?.toInt() ?? 0;
+    final hrSamples = (cov?['hr_samples'] as num?)?.toInt();
     // Wear block (on/off segments, first/last on, longest off) computed in the
     // engine; fall back to the coverage counts when absent.
     final w = b['wear'] is Map
         ? (b['wear'] as Map).cast<String, dynamic>()
         : null;
+    // MISSING IS NOT ZERO. This used to collapse "we never measured wear" into
+    // `worn_min: 0` via `hr_samples ?? 0`, which an imported day (no `wear`
+    // block, no `coverage` block) hits every time — making it byte-identical to
+    // a day the strap genuinely sat in a drawer, so the screen asserted "Not
+    // worn on this day — no wrist contact was recorded" about data it simply
+    // never had. Resolution order is now: engine wear block, then the day's
+    // own `worn_min` scalar, then the coverage record count, then absent.
+    final scalarWornMin = (_sub(b, 'scalars')?['worn_min'] as num?)?.toInt();
+    final wornMin = (w?['worn_min'] as num?)?.toInt() ??
+        scalarWornMin ??
+        (hrSamples == null ? null : (hrSamples / 60).round());
     return {
       // Wear = RECORD presence, not valid HR (HR drops out during daytime
       // motion). Fall back to the total record count, never hr_valid.
-      'worn_min': (w?['worn_min'] as num?)?.toInt() ?? (total / 60).round(),
-      'coverage_pct':
-          (w?['coverage_pct'] as num?)?.toInt() ?? (total > 0 ? 100 : 0),
+      'worn_min': wornMin,
+      'coverage_pct': (w?['coverage_pct'] as num?)?.toInt() ??
+          (hrSamples == null ? null : (hrSamples > 0 ? 100 : 0)),
       'segments': w?['segments'] ?? const [],
       'first_on': w?['first_on'],
       'last_on': w?['last_on'],
@@ -860,7 +871,7 @@ class LocalRepositoryImpl extends LocalRepository {
     // complete day.
     final bundleDate = (b['date'] as String?) ?? date;
     final dayStart = _localMidnightSec(bundleDate);
-    final dayEnd = dayStart + 86400;
+    final dayEnd = _localDayEndSec(bundleDate);
 
     // Sleep span (onset/wake) for the context band + sleep symbol.
     final sw = _sub(b, 'sleep.window.value');
@@ -876,15 +887,19 @@ class LocalRepositoryImpl extends LocalRepository {
 
     // Workouts + device events for that calendar day.
     final sess = await LocalDb.sessionsInRange(dayStart, dayEnd);
-    final allEvents = await LocalDb.unuploadedEvents(limit: 2000);
+    // Bounded BY THE DAY, in SQL. This used to pull `unuploadedEvents(limit:
+    // 2000)` — `ORDER BY ts ASC LIMIT 2000`, i.e. the OLDEST 2000 rows — and
+    // then filter that page down to this day. Once `events` held more than 2000
+    // rows the page could no longer reach recent days at all, so their markers
+    // silently vanished from the timeline (the same oldest-N-vs-trailing-N
+    // shape as the metricSeries(limit:) outage).
+    final dayEvents = await LocalDb.eventsInRange(dayStart, dayEnd);
     final events = <Map<String, dynamic>>[
-      for (final e in allEvents)
-        if (((e['ts'] as num?)?.toInt() ?? -1) >= dayStart &&
-            ((e['ts'] as num?)?.toInt() ?? -1) < dayEnd)
-          {
-            'event_id': (e['event_id'] as num?)?.toInt(),
-            'ts': (e['ts'] as num?)?.toInt(),
-          },
+      for (final e in dayEvents)
+        {
+          'event_id': (e['event_id'] as num?)?.toInt(),
+          'ts': (e['ts'] as num?)?.toInt(),
+        },
     ];
 
     // Daytime naps (principled detectNaps) as their own bands on the timeline.
@@ -969,15 +984,15 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   /// Local midnight (epoch sec) of a 'YYYY-MM-DD' date string.
-  int _localMidnightSec(String ymd) {
-    final p = ymd.split('-');
-    if (p.length != 3) return 0;
-    final y = int.tryParse(p[0]),
-        m = int.tryParse(p[1]),
-        d = int.tryParse(p[2]);
-    if (y == null || m == null || d == null) return 0;
-    return DateTime(y, m, d).millisecondsSinceEpoch ~/ 1000;
-  }
+  int _localMidnightSec(String ymd) => localDayStartSec(ymd) ?? 0;
+
+  /// End of that local day (epoch sec) — the NEXT local midnight.
+  ///
+  /// NOT `_localMidnightSec(ymd) + 86400`: a spring-forward day is 23 h local
+  /// and a fall-back day is 25 h, so the flat +86400 window pulled in an hour
+  /// of the next day (or dropped the last hour) on exactly those two days a
+  /// year. See day_label.dart.
+  int _localDayEndSec(String ymd) => localDayEndSec(ymd) ?? 0;
 
   // ── lists / summaries ─────────────────────────────────────────────────────
 
@@ -1478,7 +1493,7 @@ class LocalRepositoryImpl extends LocalRepository {
       final b = await _bundleForDate(today);
       final curve = (_sub(b, 'series')?['hr_curve'] as List?) ?? const [];
       final dayStart = _localMidnightSec(today);
-      final dayEnd = dayStart + 86400;
+      final dayEnd = _localDayEndSec(today);
       return {
         'points': [
           for (final e in curve)
@@ -1505,18 +1520,17 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getRecords() async {
-    final rows = await LocalDb.recentDayResults(3650);
-    final days = rows.length;
-    int nights = 0;
-    final sleepDays = <String>{};
-    for (final r in rows) {
-      final b = _decode(r['payload_json']);
-      if (_sub(b, 'sleep.accounting.value')?['tst_sec'] != null) {
-        nights++;
-        final d = r['date'] as String?;
-        if (d != null) sleepDays.add(d);
-      }
-    }
+    // PAYLOAD-FREE. This used to be `recentDayResults(3650)` — `SELECT r.*`
+    // over TEN YEARS of day_result, dragging every bundle's hr_curve /
+    // hypnogram / HRV series across and `jsonDecode`ing each on the main
+    // isolate, for a screen that only ever needs scalar extremes. At ~2 years
+    // of history that is hundreds of MB decoded to compute two counts. Both
+    // are now answered in SQLite: day labels from an index-only GROUP BY, the
+    // sleep count via json_extract (only the scalar crosses the boundary).
+    final dayLabelList = await LocalDb.dayResultDayIdsDesc();
+    final days = dayLabelList.length;
+    final sleepDays = await LocalDb.daysWithSleepTst();
+    final nights = sleepDays.length;
 
     // Personal records from the day scalars (metric_series) + the sessions
     // table — computed locally with the record's own date attached.
@@ -1598,10 +1612,7 @@ class LocalRepositoryImpl extends LocalRepository {
     }
 
     // Streaks: consecutive most-recent days with derived data / with sleep.
-    final dayLabels = <String>{
-      for (final r in rows)
-        if (r['date'] is String) r['date'] as String,
-    };
+    final dayLabels = dayLabelList.toSet();
     int streakOf(Set<String> have) {
       var streak = 0;
       var d = DateTime.now();
@@ -2261,8 +2272,18 @@ class LocalRepositoryImpl extends LocalRepository {
     // Phase + fertile window — only when meanLength is known (else honest unknown).
     String phase = 'unknown';
     String? fertileStart, fertileEnd;
-    if (meanLength != null && cycleDay != null && lastStart != null) {
-      final ovDay = (meanLength - 14).round().clamp(10, meanLength.round());
+    // A mean cycle shorter than the 10-day ovulation floor makes the clamp
+    // bounds cross — `clamp(10, 8)` THROWS ArgumentError (lowerLimit >
+    // upperLimit), and it threw straight out of getCycle() so the entire cycle
+    // screen errored instead of degrading. Two logged `start` markers 8 days
+    // apart is enough: a mis-tap the user then corrected, or a genuinely short
+    // cycle. Below the floor there is no defensible ovulation day to place, so
+    // be honest — leave `phase: 'unknown'` and publish no fertile window
+    // (predictedNext / cycleDay / the biometric overlay still render).
+    final ovDay = (meanLength == null || meanLength.round() < 10)
+        ? null
+        : (meanLength - 14).round().clamp(10, meanLength.round());
+    if (ovDay != null && cycleDay != null && lastStart != null) {
       if (cycleDay <= 5) {
         phase = 'menstrual';
       } else if (cycleDay < ovDay) {

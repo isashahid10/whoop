@@ -17,15 +17,49 @@
 // IosBleRestore (CB state restoration wake). iOS does NOT have an Activity concept,
 // so this Android-only path is guarded by Platform.isAndroid.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 
 import 'android_boot_signal.dart';
 import 'band_ownership.dart';
+import 'headless_gate.dart';
 import '../sync/background_sync.dart';
 import '../sync/edge_tracking.dart';
 import '../sync/paired_device.dart';
+
+/// The [HeadlessSyncGate] owner name for the Android post-boot wake.
+const String kBootWakeGateOwner = 'android_boot_wake';
+
+/// Run the boot drain THROUGH the process-wide headless gate.
+///
+/// The stated invariant is that EVERY headless entry point serialises through
+/// [HeadlessSyncGate] (skip, don't queue). The three iOS entry points did; this
+/// Android boot path called `runHeadlessSync` directly and fire-and-forget, so
+/// `HeadlessSyncGate.busy` read false for the entire duration of a boot drain
+/// and any iOS-style wake landing in the same process would have run
+/// concurrently with it.
+///
+/// Returns the runner's result, or null when the gate was busy and this cycle
+/// was skipped — in which case the band lease is released, since nothing will
+/// use it. [runner] is injectable for tests.
+Future<bool?> runBootSyncThroughGate(
+  BandLease lease, {
+  Future<bool> Function(BandLease lease)? runner,
+}) async {
+  final run = runner ?? ((l) => runHeadlessSync(lease: l));
+  final result = await HeadlessSyncGate.tryRun<bool>(
+    kBootWakeGateOwner,
+    () => run(lease),
+  );
+  if (result == null) {
+    // Skipped — release the lease we acquired up front, or the band stays
+    // owned by a headless run that never happened.
+    BandOwnership.release(lease);
+  }
+  return result;
+}
 
 /// Guards headless boot so we only run once per process lifetime. Prevents
 /// re-entry if main() is somehow invoked twice on the same engine.
@@ -76,7 +110,16 @@ Future<void> maybeHeadlessBoot() async {
   // disconnect). This catches up the offline backlog accumulated while the phone
   // was powered off. Errors are swallowed inside runHeadlessSync.
   debugPrint('[headless-boot] starting headless sync for ${paired.remoteId}');
-  runHeadlessSync(lease: lease).then((_) {
-    debugPrint('[headless-boot] headless sync complete');
-  });
+  // Fire-and-forget (see the doc above) but SERIALISED through the shared
+  // headless gate, so `HeadlessSyncGate.busy` is true for the whole boot drain.
+  unawaited(
+    runBootSyncThroughGate(lease).then((ran) {
+      debugPrint(
+        ran == null
+            ? '[headless-boot] boot wake skipped — another headless sync '
+                'holds the gate; lease released.'
+            : '[headless-boot] headless sync complete',
+      );
+    }),
+  );
 }

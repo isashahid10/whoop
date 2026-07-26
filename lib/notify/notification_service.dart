@@ -19,12 +19,53 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'notification_event.dart';
+import 'notification_ids.dart';
+
+/// The next wall-clock instant at [hour]:[minute] — optionally the next
+/// [weekday] — strictly after [now], in [now]'s own timezone.
+///
+/// CALENDAR arithmetic, never an absolute [Duration]. `d.add(const
+/// Duration(days: 1))` adds exactly 24 hours of ELAPSED time, which is NOT "the
+/// same wall-clock time tomorrow" across a DST transition: a Sunday-18:00
+/// weekly recap computed over a spring-forward landed at 19:00 (and 17:00 over
+/// a fall-back), and the bedtime/hydration dailies drifted the same hour.
+/// Rebuilding the [tz.TZDateTime] from its calendar fields pins the wall-clock
+/// time and lets the tz database resolve whatever offset that day carries.
+@visibleForTesting
+tz.TZDateTime nextInstanceOf(
+  tz.TZDateTime now,
+  int hour,
+  int minute, {
+  int? weekday,
+}) {
+  final loc = now.location;
+  tz.TZDateTime at(int y, int m, int d) =>
+      tz.TZDateTime(loc, y, m, d, hour, minute);
+  var d = at(now.year, now.month, now.day);
+  if (weekday != null) {
+    // Bounded: any weekday is at most 6 calendar days away.
+    for (var i = 0; i < 7 && d.weekday != weekday; i++) {
+      d = at(d.year, d.month, d.day + 1);
+    }
+  }
+  if (!d.isAfter(now)) {
+    d = at(d.year, d.month, d.day + (weekday != null ? 7 : 1));
+  }
+  return d;
+}
+
+/// The same wall-clock time on the following calendar day (DST-safe — see
+/// [nextInstanceOf]).
+@visibleForTesting
+tz.TZDateTime nextCalendarDay(tz.TZDateTime d) =>
+    tz.TZDateTime(d.location, d.year, d.month, d.day + 1, d.hour, d.minute);
 
 class NotificationService {
   NotificationService._();
@@ -161,27 +202,67 @@ class NotificationService {
   /// (never requests) via `checkPermissions()` and fails closed to `false`
   /// rather than attempting to prompt — matching the "in-app feed is ALWAYS
   /// written, OS presentation is best-effort" contract in NotificationCenter.
+  ///
+  /// A cached DENIAL is never final. `_granted` used to latch false for the
+  /// whole process with nothing to reset it, so a user who denied the prompt
+  /// (fired at pairing time), went to OS Settings, enabled notifications and
+  /// came back got ZERO notifications and ZERO scheduled reminders until a full
+  /// app restart — every presentEvent/scheduleDaily/scheduleWeekly/scheduleOnce
+  /// early-returned on the stale `false`. Only a GRANT is cached now; a denial
+  /// is re-read from the live OS state (non-prompting, cheap) on the next call.
+  /// [invalidatePermissionCache] additionally drops a cached grant so a
+  /// REVOCATION is noticed too — app.dart calls it on every foreground resume.
   Future<bool> ensurePermission({bool allowPrompt = true}) async {
-    await init();
-    if (_granted != null) return _granted!;
+    if (_granted == true) return true;
+    final request = debugRequestPermission;
+    if (request == null) await init();
+
+    if (_granted == false) {
+      // Denied earlier in this process — re-read the OS rather than trusting a
+      // stale no. Never re-prompts: once denied, both platforms no-op the
+      // request anyway, and Settings is the only real path back.
+      final live = await hasPermission();
+      if (live) _granted = true;
+      return live;
+    }
+
     if (!allowPrompt) return hasPermission();
 
-    bool granted = true;
-    final ios = _plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
-    if (ios != null) {
-      granted =
-          await ios.requestPermissions(alert: true, badge: true, sound: true) ??
-              false;
-    }
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    if (android != null) {
-      granted = await android.requestNotificationsPermission() ?? false;
+    bool granted;
+    if (request != null) {
+      granted = await request();
+    } else {
+      granted = true;
+      final ios = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      if (ios != null) {
+        granted = await ios.requestPermissions(
+                alert: true, badge: true, sound: true) ??
+            false;
+      }
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      if (android != null) {
+        granted = await android.requestNotificationsPermission() ?? false;
+      }
     }
     _granted = granted;
     return granted;
   }
+
+  /// Drop the cached authorization decision so the next [ensurePermission] /
+  /// [hasPermission] re-reads the live OS state. Called on every foreground
+  /// resume (app.dart): the user may have flipped our notification switch
+  /// either way in Settings while we were backgrounded.
+  void invalidatePermissionCache() => _granted = null;
+
+  /// Test seams for the platform permission plumbing (there is no plugin to
+  /// talk to in a unit test). [debugRequestPermission] stands in for the
+  /// interactive request, [debugProbePermission] for the non-prompting check.
+  @visibleForTesting
+  Future<bool> Function()? debugRequestPermission;
+  @visibleForTesting
+  Future<bool> Function()? debugProbePermission;
 
   /// Non-mutating: whether notifications are currently enabled, WITHOUT ever
   /// showing the OS authorization prompt. Safe to call from any context,
@@ -190,6 +271,8 @@ class NotificationService {
   /// "denied" just because a background check happened to run first.
   Future<bool> hasPermission() async {
     try {
+      final probe = debugProbePermission;
+      if (probe != null) return await probe();
       await init();
       final ios = _plugin.resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin>();
@@ -238,8 +321,11 @@ class NotificationService {
       if (!await ensurePermission(allowPrompt: allowPermissionPrompt)) {
         return false;
       }
+      // Collision-free allocated id (NOT the old hashCode-modulo) — see
+      // notification_ids.dart. Two same-category events used to be able to
+      // share an id, and `show` REPLACES: one of them vanished silently.
       await _plugin.show(
-        e.osId,
+        await NotificationIds.instance.idFor(e),
         e.title,
         e.body,
         _details(e.category),
@@ -265,19 +351,9 @@ class NotificationService {
 
   // ── Scheduling (wall-clock recurring nudges) ────────────────────────────────
 
-  tz.TZDateTime _nextInstanceOf(int hour, int minute, {int? weekday}) {
-    final now = tz.TZDateTime.now(tz.local);
-    var d = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
-    if (weekday != null) {
-      while (d.weekday != weekday) {
-        d = d.add(const Duration(days: 1));
-      }
-    }
-    if (!d.isAfter(now)) {
-      d = d.add(Duration(days: weekday != null ? 7 : 1));
-    }
-    return d;
-  }
+  tz.TZDateTime _nextInstanceOf(int hour, int minute, {int? weekday}) =>
+      nextInstanceOf(tz.TZDateTime.now(tz.local), hour, minute,
+          weekday: weekday);
 
   Future<void> scheduleDaily({
     required int id,
@@ -299,7 +375,8 @@ class NotificationService {
         if (when.year == now.year &&
             when.month == now.month &&
             when.day == now.day) {
-          when = when.add(const Duration(days: 1));
+          // Calendar day, not +24h — see nextInstanceOf's DST note.
+          when = nextCalendarDay(when);
         }
       }
       await _plugin.zonedSchedule(

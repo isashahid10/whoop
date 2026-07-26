@@ -359,6 +359,11 @@ class SegToggle extends StatelessWidget {
 }
 
 /// A ▲ +3.2% / ▼ −5% colored delta chip. Pass null to hide.
+///
+/// [pct] is a PERCENTAGE and is rendered with a literal '%'. Never hand it an
+/// absolute difference in the metric's own unit (e.g. `/trend`'s
+/// `delta_vs_prev`, which is `avg - prevAvg`) — "+20 min of sleep" would print
+/// as "▲ 20.0%". Use [BaselineDeltaChip] for absolute deltas.
 class DeltaChip extends StatelessWidget {
   final num? pct;
   final String suffix;
@@ -414,12 +419,19 @@ class BaselineDeltaChip extends StatelessWidget {
   final String unit; // e.g. 'bpm', 'ms', ''
   final bool goodIsUp; // RHR: down is good → false
   final bool showVsNormal;
+
+  /// What the delta is measured AGAINST, when it isn't the personal baseline
+  /// (e.g. 'vs prev' on a trend board comparing two adjacent windows). Ignored
+  /// while [showVsNormal] is true. Naming the comparand is not decoration —
+  /// an unlabelled signed number invites the reader to guess a unit.
+  final String? vsLabel;
   const BaselineDeltaChip(
     this.delta, {
     super.key,
     this.unit = '',
     this.goodIsUp = true,
     this.showVsNormal = true,
+    this.vsLabel,
   });
   @override
   Widget build(BuildContext context) {
@@ -443,7 +455,8 @@ class BaselineDeltaChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(R.pill),
       ),
       child: Text(
-        '$sign$shownMag${unit.isNotEmpty ? ' $unit' : ''}${showVsNormal ? ' vs normal' : ''}',
+        '$sign$shownMag${unit.isNotEmpty ? ' $unit' : ''}'
+        '${showVsNormal ? ' vs normal' : (vsLabel != null ? ' $vsLabel' : '')}',
         style: AppText.caption.copyWith(color: c, fontWeight: FontWeight.w700),
       ),
     );

@@ -18,6 +18,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'day_label.dart';
+import 'live_coverage_policy.dart';
 import 'models.dart';
 
 class LocalDb {
@@ -85,7 +86,28 @@ class LocalDb {
     return null;
   }
 
-  static const int _daySec = 86400;
+  /// The live schema version — the ONE place it is declared. Every
+  /// `openDatabase` this class performs (the app DB and the day-export DB) must
+  /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
+  /// version is specified')` BEFORE opening anything when `onCreate` is given
+  /// without `version` (sqflite_common database_mixin.dart).
+  static const int schemaVersion = 26;
+
+  /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
+  /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
+  /// built from row data MUST be chunked below this; a single day of
+  /// `decoded_onehz` is 86 400 counters. Same reason `commitSyncBatch` chunks.
+  static const int _maxSqlVars = 500;
+
+  /// Split [items] into `_maxSqlVars`-sized chunks for `IN (…)` binding.
+  static Iterable<List<T>> _sqlVarChunks<T>(List<T> items) sync* {
+    for (var i = 0; i < items.length; i += _maxSqlVars) {
+      yield items.sublist(
+        i,
+        i + _maxSqlVars > items.length ? items.length : i + _maxSqlVars,
+      );
+    }
+  }
 
   static Future<Database> _open() async {
     final dir = await getDatabasesPath();
@@ -178,6 +200,12 @@ class LocalDb {
           // rec_ts (not captured_at), so a multi-day flash backfill received in one
           // sync no longer collapses into a single "today" bucket. Additive + safe
           // on a populated DB.
+          // GUARDED add: an oldV <= 2 DB already had raw_records DROPped and
+          // re-created by the step-3 block above using the CURRENT `_createRaw`
+          // DDL — which already carries rec_ts. A bare ALTER … ADD COLUMN then
+          // threw "duplicate column name: rec_ts", and because onUpgrade runs
+          // inside ONE exclusive transaction the whole ladder rolled back and
+          // openDatabase rethrew → app stuck on the loading screen, forever.
           await _addRecTsColumn(db);
           await _backfillRecTs(db);
           await db.execute(
@@ -244,7 +272,14 @@ class LocalDb {
           await _backfillDecodedStore(db);
           // Live workout steps (Tier-A pedometer over the session's 100 Hz
           // R10 accel). Additive nullable column — old rows read null.
-          await db.execute('ALTER TABLE sessions ADD COLUMN steps INTEGER');
+          //
+          // GUARDED add: an oldV <= 6 DB gets `sessions` from the step-7
+          // `_createUserTables` block above, which uses the CURRENT DDL — and
+          // that already declares `steps`. A bare ALTER … ADD COLUMN then threw
+          // "duplicate column name: steps", rolling back the whole (single,
+          // exclusive) onUpgrade transaction so openDatabase rethrew → app
+          // permanently stuck on the loading screen.
+          await _addColumnIfMissing(db, 'sessions', 'steps', 'INTEGER');
         }
         if (oldV < 12) {
           // PURGE the old 1 Hz step ESTIMATE. 1 Hz can't count steps (Nyquist),
@@ -416,33 +451,55 @@ class LocalDb {
     await _dropRawStore(db);
   }
 
-  static Future<void> _ensureDayResultSkippedColumn(Database db) async {
-    final info = await db.rawQuery('PRAGMA table_info(day_result)');
-    final has = info.any((c) => c['name'] == 'skipped');
-    if (!has) {
-      try {
-        await db.execute(
-          'ALTER TABLE day_result ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0',
-        );
-      } catch (_) {
-        /* another opener won the race — column now exists */
-      }
+  /// The column names [table] currently has (empty if the table is absent).
+  static Future<Set<String>> _columnsOf(Database db, String table) async {
+    final info = await db.rawQuery('PRAGMA table_info($table)');
+    return {
+      for (final c in info)
+        if (c['name'] is String) c['name'] as String,
+    };
+  }
+
+  /// THE ONLY sanctioned way to add a column in a migration step.
+  ///
+  /// A bare `ALTER TABLE … ADD COLUMN` in the ladder is a latent brick: the
+  /// `_create*` helpers are MODERNIZED IN PLACE (they always emit the current
+  /// DDL), so any DB old enough to have a table created by a LATER-numbered
+  /// step already has the column an EARLIER-numbered ALTER tries to add. That
+  /// throws "duplicate column name", and since `onUpgrade` runs inside ONE
+  /// exclusive transaction the entire ladder rolls back and `openDatabase`
+  /// rethrows — the app is stuck on the loading screen on EVERY launch, with no
+  /// way out. Check first; swallow a lost race (SQLite does statement-level
+  /// rollback, so a caught failure never poisons the surrounding transaction).
+  static Future<void> _addColumnIfMissing(
+    Database db,
+    String table,
+    String column,
+    String ddlType,
+  ) async {
+    if ((await _columnsOf(db, table)).contains(column)) return;
+    try {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $ddlType');
+    } catch (_) {
+      /* another opener won the race — the column exists now */
     }
   }
 
-  static Future<void> _ensureDayResultPartialColumn(Database db) async {
-    final info = await db.rawQuery('PRAGMA table_info(day_result)');
-    final has = info.any((c) => c['name'] == 'partial');
-    if (!has) {
-      try {
-        await db.execute(
-          'ALTER TABLE day_result ADD COLUMN partial INTEGER NOT NULL DEFAULT 0',
-        );
-      } catch (_) {
-        /* another opener won the race — column now exists */
-      }
-    }
-  }
+  static Future<void> _ensureDayResultSkippedColumn(Database db) =>
+      _addColumnIfMissing(
+        db,
+        'day_result',
+        'skipped',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+
+  static Future<void> _ensureDayResultPartialColumn(Database db) =>
+      _addColumnIfMissing(
+        db,
+        'day_result',
+        'partial',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
 
   // ── MENSTRUAL SYMPTOM LOG ──────────────────────────────────────────────────
   static Future<void> _createCycleSymptom(Database db) async {
@@ -491,7 +548,7 @@ class LocalDb {
   // The "safe-trim invariant" is: persist decoded+raw → persist this cursor →
   // ACK with-response. The band only trims its flash once the ACK is link-layer
   // confirmed, so a crash anywhere before the ACK re-delivers the batch.
-  static Future<void> _createSyncCursor(Database db) async {
+  static Future<void> _createSyncCursor(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sync_cursor (
         name TEXT PRIMARY KEY,
@@ -680,6 +737,17 @@ class LocalDb {
   // Times are device epoch SECONDS (same clock as raw_records.rec_ts, since the
   // band's RTC is SET_CLOCK'd to phone time on connect). `day` = local date label
   // of the window start (for per-day step attribution).
+  //
+  // HISTORICAL ROWS. Databases written before the window derivation was fixed
+  // contain ZERO-WIDTH rows (`end_ts == start_ts`) — the old writer took both
+  // ends from a band record timestamp that does not advance during a live
+  // session. They are left as they are: their real durations were never
+  // recorded, and widening them after the fact would replace one wrong extent
+  // with another while silently changing already-derived days. Readers must
+  // tolerate them — `coverageWindowsOverlapping` matches them (`end_ts >= lo`)
+  // and the derivation's minute test (`s + 60 > start && s < end`) still
+  // excludes the minute containing the row, so such a row under-excludes but
+  // never crashes or double-adds its steps.
   static Future<void> _createLiveCoverage(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS live_coverage (
@@ -696,17 +764,27 @@ class LocalDb {
   }
 
   /// Record a real 100 Hz step window (device-time seconds) + its step count.
+  ///
+  /// The window is normalised by [sanitizeCoverageWindow] first: a zero-width
+  /// window that claims steps is REPAIRED (widened to the duration those steps
+  /// physically imply) rather than dropped, because dropping it would lose a
+  /// real 100 Hz count; an inverted window is rejected. See that function for
+  /// the reasoning. This is a guard, not the derivation — the caller is
+  /// expected to have measured a real window (see
+  /// `deriveLiveCoverageWindow`); it exists so an upstream regression cannot
+  /// silently reintroduce degenerate rows.
   static Future<void> addLiveCoverage(
     int startTs,
     int endTs,
     int steps,
     String day,
   ) async {
-    if (steps <= 0 || endTs < startTs) return;
+    final w = sanitizeCoverageWindow(startTs, endTs, steps);
+    if (w == null) return;
     final db = await instance;
     await db.insert('live_coverage', {
-      'start_ts': startTs,
-      'end_ts': endTs,
+      'start_ts': w.startTs,
+      'end_ts': w.endTs,
       'steps': steps,
       'day': day,
     });
@@ -1066,7 +1144,7 @@ class LocalDb {
     ''');
   }
 
-  static Future<void> _createSyncState(Database db) async {
+  static Future<void> _createSyncState(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sync_ledger (
         chunk_id TEXT PRIMARY KEY,
@@ -1156,17 +1234,8 @@ class LocalDb {
   }
 
   static Future<void> _ensureSessionSchema(Database db) async {
-    final cols = await db.rawQuery("PRAGMA table_info(sessions)");
-    final names = {
-      for (final c in cols)
-        if (c['name'] is String) c['name'] as String,
-    };
-    if (!names.contains('steps')) {
-      await db.execute('ALTER TABLE sessions ADD COLUMN steps INTEGER');
-    }
-    if (!names.contains('hrr_bpm')) {
-      await db.execute('ALTER TABLE sessions ADD COLUMN hrr_bpm REAL');
-    }
+    await _addColumnIfMissing(db, 'sessions', 'steps', 'INTEGER');
+    await _addColumnIfMissing(db, 'sessions', 'hrr_bpm', 'REAL');
   }
 
   // ── WORKOUT SUGGESTIONS (opt-in auto-detect) ───────────────────────────────
@@ -1346,125 +1415,171 @@ class LocalDb {
     ''');
   }
 
-  static Future<void> _ensureSyncCursorSchema(Database db) async {
-    final tables = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_cursor'",
-    );
-    if (tables.isEmpty) {
-      await _createSyncCursor(db);
-      return;
-    }
-    final cols = await db.rawQuery("PRAGMA table_info(sync_cursor)");
-    final names = {
-      for (final c in cols)
-        if (c['name'] is String) c['name'] as String,
-    };
-    if (names.contains('name') &&
-        names.contains('value') &&
-        names.contains('updated_at')) {
-      return;
-    }
+  /// Run a rename → recreate → copy legacy-shape migration ATOMICALLY and
+  /// IDEMPOTENTLY.
+  ///
+  /// The three callers below used to do `ALTER … RENAME`, then `CREATE`, then a
+  /// row-by-row copy, then `DROP` — all OUTSIDE any transaction. That is fine
+  /// under `onUpgrade` (sqflite wraps the whole ladder in one exclusive txn) but
+  /// these also run from `_repairOpenSchema` in `onOpen`, which is NOT wrapped.
+  /// A crash / OS kill between the rename and the end of the copy left
+  /// `<table>` present AND correctly shaped, so the next open hit the
+  /// "already current" early-return and `<table>_legacy` sat there orphaned with
+  /// its rows never migrated — losing `strap_trim` / `counter_hw` / `rec_ts_hw`,
+  /// i.e. the whole resumable-sync cursor and the safe-trim high-water.
+  ///
+  /// Now: one transaction — which sqflite JOINS to the already-open `onUpgrade`
+  /// transaction when called from the ladder, and opens for real from `onOpen`
+  /// — plus an explicit RESUME of an orphan left behind by any older build.
+  ///
+  /// [isCurrent] decides whether an existing `<table>` is already the new shape.
+  /// [copy] must be idempotent (INSERT OR REPLACE on a natural key); set
+  /// [copyOnlyIntoEmpty] for a destination with no natural key (autoincrement
+  /// id), where re-running a resume would otherwise duplicate rows.
+  static Future<void> _migrateLegacyTable(
+    Database db, {
+    required String table,
+    required bool Function(Set<String> columns) isCurrent,
+    required Future<void> Function(DatabaseExecutor ex) create,
+    required Future<void> Function(
+      DatabaseExecutor ex,
+      List<Map<String, Object?>> legacyRows,
+      int nowMs,
+    )
+    copy,
+    bool copyOnlyIntoEmpty = false,
+  }) async {
+    final legacy = '${table}_legacy';
+    await db.transaction((txn) async {
+      Future<bool> exists(String t) async =>
+          (await txn.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            [t],
+          )).isNotEmpty;
+      Future<Set<String>> columnsOf(String t) async {
+        final info = await txn.rawQuery('PRAGMA table_info($t)');
+        return {
+          for (final c in info)
+            if (c['name'] is String) c['name'] as String,
+        };
+      }
 
-    await db.execute('ALTER TABLE sync_cursor RENAME TO sync_cursor_legacy');
-    await _createSyncCursor(db);
-    final legacyRows = await db.query('sync_cursor_legacy');
-    final now = DateTime.now().millisecondsSinceEpoch;
-    for (final row in legacyRows) {
-      final name = row['name'] as String?;
-      if (name == null || name.isEmpty) continue;
-      await db.insert('sync_cursor', {
-        'name': name,
-        'value': row['value']?.toString(),
-        'updated_at': (row['updated_at'] as num?)?.toInt() ?? now,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-    await db.execute('DROP TABLE sync_cursor_legacy');
+      if (!await exists(legacy)) {
+        // Normal path.
+        if (!await exists(table)) {
+          await create(txn);
+          return;
+        }
+        if (isCurrent(await columnsOf(table))) return;
+        await txn.execute('ALTER TABLE $table RENAME TO $legacy');
+      }
+      // From here on `<table>_legacy` holds the rows of record. `<table>` is
+      // either absent (crash between RENAME and CREATE) or the new shape
+      // (possibly half-copied, or fully copied by an older build that then
+      // died before the DROP) — create it if needed and re-copy; the copy is
+      // idempotent, so a repeat is a no-op rather than a duplication.
+      if (!await exists(table)) await create(txn);
+      final skipCopy =
+          copyOnlyIntoEmpty &&
+          (Sqflite.firstIntValue(
+                await txn.rawQuery('SELECT COUNT(*) FROM $table'),
+              ) ??
+              0) >
+              0;
+      if (!skipCopy) {
+        await copy(
+          txn,
+          await txn.query(legacy),
+          DateTime.now().millisecondsSinceEpoch,
+        );
+      }
+      await txn.execute('DROP TABLE $legacy');
+    });
   }
 
-  static Future<void> _ensureSyncLedgerSchema(Database db) async {
-    final tables = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_ledger'",
-    );
-    if (tables.isEmpty) {
-      await _createSyncState(db);
-      return;
-    }
-    final cols = await db.rawQuery("PRAGMA table_info(sync_ledger)");
-    final names = {
-      for (final c in cols)
-        if (c['name'] is String) c['name'] as String,
-    };
-    if (names.contains('chunk_id')) return;
+  static Future<void> _ensureSyncCursorSchema(Database db) =>
+      _migrateLegacyTable(
+        db,
+        table: 'sync_cursor',
+        isCurrent: (c) =>
+            c.contains('name') &&
+            c.contains('value') &&
+            c.contains('updated_at'),
+        create: _createSyncCursor,
+        copy: (ex, legacyRows, now) async {
+          for (final row in legacyRows) {
+            final name = row['name'] as String?;
+            if (name == null || name.isEmpty) continue;
+            await ex.insert('sync_cursor', {
+              'name': name,
+              'value': row['value']?.toString(),
+              'updated_at': (row['updated_at'] as num?)?.toInt() ?? now,
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
+          }
+        },
+      );
 
-    await db.execute('ALTER TABLE sync_ledger RENAME TO sync_ledger_legacy');
-    await _createSyncState(db);
-    final legacyRows = await db.query('sync_ledger_legacy');
-    final now = DateTime.now().millisecondsSinceEpoch;
-    for (final row in legacyRows) {
-      final meta = <String, dynamic>{
-        'last_batch_token': row['last_batch_token'],
-        'last_batch_id': row['last_batch_id'],
-        'last_batch_records': row['last_batch_records'],
-        'last_history_complete_at': row['last_history_complete_at'],
-        'last_trim_cutoff_ms': row['last_trim_cutoff_ms'],
-        'last_trimmed_at': row['last_trimmed_at'],
-        if (row['note'] != null) 'legacy_note': row['note'],
-      };
-      await db.insert('sync_ledger', {
-        'chunk_id': (row['id'] as String?) ?? 'capture',
-        'kind': 'historical',
-        'status': row['last_history_complete_at'] != null
-            ? 'complete'
-            : row['last_batch_acked_at'] != null
-            ? 'acknowledged'
-            : 'legacy',
-        'created_at': (row['updated_at'] as num?)?.toInt() ?? now,
-        'updated_at': (row['updated_at'] as num?)?.toInt() ?? now,
-        'acked_at': (row['last_batch_acked_at'] as num?)?.toInt(),
-        'last_error': null,
-        'meta_json': jsonEncode(meta),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-    await db.execute('DROP TABLE sync_ledger_legacy');
-  }
+  static Future<void> _ensureSyncLedgerSchema(Database db) => _migrateLegacyTable(
+    db,
+    table: 'sync_ledger',
+    isCurrent: (c) => c.contains('chunk_id'),
+    create: _createSyncState,
+    copy: (ex, legacyRows, now) async {
+      for (final row in legacyRows) {
+        final meta = <String, dynamic>{
+          'last_batch_token': row['last_batch_token'],
+          'last_batch_id': row['last_batch_id'],
+          'last_batch_records': row['last_batch_records'],
+          'last_history_complete_at': row['last_history_complete_at'],
+          'last_trim_cutoff_ms': row['last_trim_cutoff_ms'],
+          'last_trimmed_at': row['last_trimmed_at'],
+          if (row['note'] != null) 'legacy_note': row['note'],
+        };
+        await ex.insert('sync_ledger', {
+          'chunk_id': (row['id'] as String?) ?? 'capture',
+          'kind': 'historical',
+          'status': row['last_history_complete_at'] != null
+              ? 'complete'
+              : row['last_batch_acked_at'] != null
+              ? 'acknowledged'
+              : 'legacy',
+          'created_at': (row['updated_at'] as num?)?.toInt() ?? now,
+          'updated_at': (row['updated_at'] as num?)?.toInt() ?? now,
+          'acked_at': (row['last_batch_acked_at'] as num?)?.toInt(),
+          'last_error': null,
+          'meta_json': jsonEncode(meta),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    },
+  );
 
-  static Future<void> _ensureSyncQuarantineSchema(Database db) async {
-    final tables = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_quarantine'",
-    );
-    if (tables.isEmpty) {
-      await _createSyncState(db);
-      return;
-    }
-    final cols = await db.rawQuery("PRAGMA table_info(sync_quarantine)");
-    final names = {
-      for (final c in cols)
-        if (c['name'] is String) c['name'] as String,
-    };
-    if (names.contains('payload_json')) return;
-
-    await db.execute(
-      'ALTER TABLE sync_quarantine RENAME TO sync_quarantine_legacy',
-    );
-    await _createSyncState(db);
-    final legacyRows = await db.query('sync_quarantine_legacy');
-    final now = DateTime.now().millisecondsSinceEpoch;
-    for (final row in legacyRows) {
-      await db.insert('sync_quarantine', {
-        'kind': (row['source_role'] as String?) ?? 'legacy',
-        'payload_json': jsonEncode({
-          'fingerprint': row['fingerprint'],
-          'packet_type': row['packet_type'],
-          'hex': row['hex'],
-          'counter': row['counter'],
-          'captured_at': row['captured_at'],
-        }),
-        'reason': (row['reason'] as String?) ?? 'legacy_migrated',
-        'created_at': (row['created_at'] as num?)?.toInt() ?? now,
-      });
-    }
-    await db.execute('DROP TABLE sync_quarantine_legacy');
-  }
+  static Future<void> _ensureSyncQuarantineSchema(Database db) =>
+      _migrateLegacyTable(
+        db,
+        table: 'sync_quarantine',
+        isCurrent: (c) => c.contains('payload_json'),
+        create: _createSyncState,
+        // `id INTEGER PRIMARY KEY AUTOINCREMENT` — no natural key to REPLACE
+        // on, so a resume must not re-copy into a destination that already has
+        // rows or the quarantine log would double on every retry.
+        copyOnlyIntoEmpty: true,
+        copy: (ex, legacyRows, now) async {
+          for (final row in legacyRows) {
+            await ex.insert('sync_quarantine', {
+              'kind': (row['source_role'] as String?) ?? 'legacy',
+              'payload_json': jsonEncode({
+                'fingerprint': row['fingerprint'],
+                'packet_type': row['packet_type'],
+                'hex': row['hex'],
+                'counter': row['counter'],
+                'captured_at': row['captured_at'],
+              }),
+              'reason': (row['reason'] as String?) ?? 'legacy_migrated',
+              'created_at': (row['created_at'] as num?)?.toInt() ?? now,
+            });
+          }
+        },
+      );
 
   // samples — LEGACY header-only record index (counter, ts, hr). Retained only
   // so pre-v11 databases stay readable if decoded_onehz backfill was partial.
@@ -1648,11 +1763,15 @@ class LocalDb {
   /// Add the additive `rec_ts` column to an EXISTING raw_records table (upgrade
   /// path only). NOT NULL with a DEFAULT 0 so legacy rows are well-formed until
   /// the backfill rewrites them.
-  static Future<void> _addRecTsColumn(Database db) async {
-    await db.execute(
-      'ALTER TABLE raw_records ADD COLUMN rec_ts INTEGER NOT NULL DEFAULT 0',
-    );
-  }
+  /// GUARDED (see [_addColumnIfMissing]): the step-3 rebuild already creates
+  /// raw_records from the CURRENT `_createRaw` DDL, which carries rec_ts — so on
+  /// an oldV <= 2 upgrade this column is already there.
+  static Future<void> _addRecTsColumn(Database db) => _addColumnIfMissing(
+    db,
+    'raw_records',
+    'rec_ts',
+    'INTEGER NOT NULL DEFAULT 0',
+  );
 
   /// Backfill `rec_ts` for every existing raw row by decoding its hex once. Runs
   /// inside the migration on a populated DB. Falls back to captured_at/1000 when a
@@ -1763,6 +1882,29 @@ class LocalDb {
     }
   }
 
+  /// THE orphan guard for an INSERT-OR-REPLACE into `decoded_onehz`.
+  ///
+  /// Queue this onto [batch] IMMEDIATELY BEFORE writing the row for [counter] @
+  /// [recTs] — every write path into `decoded_onehz` must go through it, or it
+  /// strands `decoded_rr` beats (see [_queueDecodedOneHz] for the full
+  /// derivation of both eviction cases). Returns the number of ops queued.
+  static int _queueOrphanGuard(
+    Batch batch, {
+    required int counter,
+    required int recTs,
+  }) {
+    batch.rawDelete(
+      'DELETE FROM decoded_rr WHERE '
+      // (a) UNIQUE(rec_ts) eviction — the LOSER counter's beats.
+      'counter IN '
+      '(SELECT counter FROM decoded_onehz WHERE rec_ts = ? AND counter != ?) '
+      // (b) counter-PK eviction — stale-timestamped beats under OUR counter.
+      'OR (counter = ? AND rr_ts_ms != ?)',
+      [recTs, counter, counter, recTs * 1000],
+    );
+    return 1;
+  }
+
   /// Queues the decoded_onehz + decoded_rr (+ orphan-guard delete) writes for
   /// one raw onto [batch]. Returns the number of batch operations added, so a
   /// caller committing a large offload can chunk the batch to bound the native
@@ -1788,11 +1930,20 @@ class LocalDb {
     // REPLACE on UNIQUE(rr_ts_ms, beat_index) only overwrites overlapping beat
     // indexes, so delete the evicted counter's beats explicitly, in the same
     // batch/transaction (mirrors the v17 rebuild's decoded_onehz join).
-    batch.rawDelete(
-      'DELETE FROM decoded_rr WHERE counter IN '
-      '(SELECT counter FROM decoded_onehz WHERE rec_ts = ? AND counter != ?)',
-      [recTs, raw.counter],
-    );
+    //
+    // …AND the COUNTER-PK eviction, which the guard used to miss entirely.
+    // `decoded_onehz` is `counter INTEGER PRIMARY KEY` as well as
+    // UNIQUE(rec_ts), and (per the comment above) the strap's counter RESETS to
+    // ~0 on every reboot — so this same REPLACE also silently DELETES the row
+    // of an OLDER SECOND that happened to reuse this counter. That older
+    // second's beats live under OUR counter carrying ITS rr_ts_ms, and only the
+    // overlapping beat_indexes get overwritten below: any beat at an index past
+    // the new record's beat count SURVIVES, still stamped days earlier. Neither
+    // prune path can ever see it (the counter-join finds a fresh rec_ts; the
+    // orphan sweep finds the counter present), so a later page's RR series was
+    // polluted with beats from another day — silently wrecking RMSSD/HRV.
+    // Drop every beat under this counter that is not stamped with THIS second.
+    var ops = _queueOrphanGuard(batch, counter: raw.counter, recTs: recTs);
     batch.insert('decoded_onehz', {
       'counter': raw.counter,
       'rec_ts': recTs,
@@ -1804,7 +1955,7 @@ class LocalDb {
       'spo2_ir_raw': decoded.spo2IrRaw ?? 0,
       'skin_temp_raw': decoded.skinTempRaw ?? 0,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
-    var ops = 2; // rawDelete + decoded_onehz insert
+    ops++; // the decoded_onehz insert
     for (var i = 0; i < decoded.rrIntervalsMs.length; i++) {
       final rr = decoded.rrIntervalsMs[i];
       if (rr <= 0) continue;
@@ -1861,6 +2012,12 @@ class LocalDb {
         captured_at INTEGER NOT NULL
       )
     ''');
+    // The PK is the frame hex, so a `ts` window (the timeline's day query, and
+    // the retention prune) was a full table scan. Cheap to build — `events` is
+    // pruned to the retention window.
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)',
+    );
   }
 
   // band_events / band_battery — structured local history for device-state
@@ -1899,19 +2056,8 @@ class LocalDb {
   /// Additive: add the `millivolts` column to an existing band_battery table.
   /// Guarded — the column already exists on fresh installs (see _createBandSignals)
   /// and ALTER … ADD COLUMN throws if it's already there.
-  static Future<void> _ensureBandBatteryMillivolts(Database db) async {
-    final info = await db.rawQuery('PRAGMA table_info(band_battery)');
-    final has = info.any((c) => c['name'] == 'millivolts');
-    if (!has) {
-      try {
-        await db.execute(
-          'ALTER TABLE band_battery ADD COLUMN millivolts INTEGER',
-        );
-      } catch (_) {
-        /* another opener won the race — column now exists */
-      }
-    }
-  }
+  static Future<void> _ensureBandBatteryMillivolts(Database db) =>
+      _addColumnIfMissing(db, 'band_battery', 'millivolts', 'INTEGER');
 
   /// Durable archive for historical records we received but could not decode
   /// (unknown/unsupported version). NEVER pruned — the whole point is that a
@@ -2119,11 +2265,35 @@ class LocalDb {
     };
   }
 
+  /// The OLDEST [limit] queued events — an upload-queue drain head, and ONLY
+  /// that. Never use it to answer "what happened on day X": once `events` holds
+  /// more than [limit] rows the page can't reach recent days at all (the same
+  /// oldest-N-vs-trailing-N shape as the `metricSeries(limit:)` outage). Use
+  /// [eventsInRange] for a day/window query.
   static Future<List<Map<String, dynamic>>> unuploadedEvents({
     int limit = 500,
   }) async {
     final db = await instance;
     return db.query('events', orderBy: 'ts ASC', limit: limit);
+  }
+
+  /// Events whose `ts` (epoch SECONDS) is in the half-open window
+  /// `[fromTs, toTs)`, oldest first. Bounded BY THE WINDOW, not by an unrelated
+  /// global page, so a day's markers can never be crowded out by older rows.
+  /// [limit] is a defensive cap on a pathological window only.
+  static Future<List<Map<String, dynamic>>> eventsInRange(
+    int fromTs,
+    int toTs, {
+    int limit = 5000,
+  }) async {
+    final db = await instance;
+    return db.query(
+      'events',
+      where: 'ts >= ? AND ts < ?',
+      whereArgs: [fromTs, toTs],
+      orderBy: 'ts ASC',
+      limit: limit,
+    );
   }
 
   static Future<void> deleteEvents(List<String> hexes) async {
@@ -2410,18 +2580,56 @@ class LocalDb {
     );
   }
 
-  /// Sparse RR beats for a contiguous decoded 1 Hz page, keyed by the owning
-  /// frame counter and ordered by that frame.
+  /// Sparse RR beats for one contiguous decoded 1 Hz page.
+  ///
+  /// [fromCounter] / [toCounter] are the page's FIRST and LAST row counters, as
+  /// returned by [decodedOneHzBatchByRecTsRange] (which orders `rec_ts ASC,
+  /// counter ASC`). They are page ENDPOINTS, **not** a monotonic counter span:
+  /// the strap's counter resets to ~0 on every reboot, so a page straddling a
+  /// reboot has first = a pre-reboot high and last = a post-reboot low. The old
+  /// `WHERE counter >= ? AND counter <= ?` then read `>= 1200000 AND <= 5` and
+  /// returned ZERO rows — the entire page's RR beats vanished with no error, so
+  /// that window silently produced no RMSSD/HRV at all.
+  ///
+  /// Selection is therefore by the page's real TIME window, resolved from those
+  /// two endpoint counters. `decoded_onehz` is UNIQUE(rec_ts), so
+  /// `[first.rec_ts, last.rec_ts]` contains exactly the page's rows — no
+  /// over-fetch — and the join to `decoded_onehz` additionally keeps orphaned
+  /// beats (whose owning row was evicted) out of the read path.
+  ///
+  /// When the endpoints are NOT real rows the caller is asking for a plain
+  /// counter span (e.g. `0 .. 1<<30` = "everything"); that falls back to a
+  /// NORMALIZED counter range so an inverted pair still can't return nothing.
   static Future<List<Map<String, dynamic>>> decodedRrByCounterRange({
     required int fromCounter,
     required int toCounter,
   }) async {
     final db = await instance;
+    final bounds = (await db.rawQuery(
+      'SELECT COUNT(*) AS n, MIN(rec_ts) AS lo, MAX(rec_ts) AS hi '
+      'FROM decoded_onehz WHERE counter IN (?, ?)',
+      [fromCounter, toCounter],
+    )).first;
+    final n = (bounds['n'] as num?)?.toInt() ?? 0;
+    final want = fromCounter == toCounter ? 1 : 2;
+    if (n == want) {
+      return db.rawQuery(
+        'SELECT rr.counter AS counter, rr.beat_index AS beat_index, '
+        '       rr.rr_ts_ms AS rr_ts_ms, rr.rr_ms AS rr_ms '
+        'FROM decoded_rr rr '
+        'JOIN decoded_onehz d ON d.counter = rr.counter '
+        'WHERE d.rec_ts >= ? AND d.rec_ts <= ? '
+        'ORDER BY d.rec_ts ASC, rr.beat_index ASC',
+        [bounds['lo'], bounds['hi']],
+      );
+    }
+    final lo = fromCounter <= toCounter ? fromCounter : toCounter;
+    final hi = fromCounter <= toCounter ? toCounter : fromCounter;
     return db.query(
       'decoded_rr',
       columns: ['counter', 'beat_index', 'rr_ts_ms', 'rr_ms'],
       where: 'counter >= ? AND counter <= ?',
-      whereArgs: [fromCounter, toCounter],
+      whereArgs: [lo, hi],
       orderBy: 'counter ASC, beat_index ASC',
     );
   }
@@ -2510,6 +2718,46 @@ class LocalDb {
       [limit],
     );
     return [for (final r in rows) _withDate(r)];
+  }
+
+  /// Every day_id that has a `day_result` row at its LATEST algo_version, newest
+  /// first — WITHOUT touching `payload_json`.
+  ///
+  /// `recentDayResults()` does `SELECT r.*`, which drags the whole bundle
+  /// (hr_curve / hypnogram / HRV series, tens of KB a day) across the isolate
+  /// boundary. Screens that only need "which days exist" must use this instead:
+  /// over a multi-year history the payload variant is hundreds of MB.
+  static Future<List<String>> dayResultDayIdsDesc() async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT day_id FROM day_result GROUP BY day_id ORDER BY day_id DESC',
+    );
+    return [
+      for (final r in rows)
+        if (r['day_id'] is String) r['day_id'] as String,
+    ];
+  }
+
+  /// Day labels whose LATEST-version bundle records a real sleep total
+  /// (`sleep.accounting.value.tst_sec` present). Extracted IN SQLite via
+  /// json_extract, so only the scalar crosses the boundary — never the payload.
+  static Future<Set<String>> daysWithSleepTst() async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT r.day_id FROM day_result r '
+      'JOIN (SELECT day_id, MAX(algo_version) AS v FROM day_result GROUP BY day_id) m '
+      '  ON r.day_id = m.day_id AND r.algo_version = m.v '
+      // json_valid() first: json_extract() ERRORS on a malformed payload, and a
+      // corrupt bundle must degrade to "no sleep that day", never take out the
+      // whole Records screen.
+      'WHERE json_valid(r.payload_json) '
+      "AND json_extract(r.payload_json, '\$.sleep.accounting.value.tst_sec') "
+      'IS NOT NULL',
+    );
+    return {
+      for (final r in rows)
+        if (r['day_id'] is String) r['day_id'] as String,
+    };
   }
 
   /// Every day label ('YYYY-MM-DD') the lookback screen can actually RENDER —
@@ -2677,8 +2925,23 @@ class LocalDb {
     return out;
   }
 
-  static int _localDayStartSec(String dayId) =>
-      DateTime.parse(dayId).millisecondsSinceEpoch ~/ 1000;
+  /// The half-open LOCAL window `[startSec, endSec)` covering day [dayId].
+  ///
+  /// `endSec` is the NEXT local midnight, NOT `startSec + 86400`: a local
+  /// calendar day is 23 h on spring-forward and 25 h on fall-back. With the
+  /// flat +86400 this returned a window that overran into the next day's first
+  /// hour (deleteDays silently deleted the following day's first hour of
+  /// decoded_onehz / sessions / band_* / events) or fell an hour short
+  /// (fall-back left the last hour behind, and the export dropped it). Shared
+  /// with the UI/coach via day_label.dart so every layer agrees.
+  static (int, int) _localDayWindow(String dayId) {
+    final lo = localDayStartSec(dayId);
+    final hi = localDayEndSec(dayId);
+    if (lo == null || hi == null) {
+      throw ArgumentError.value(dayId, 'dayId', 'not a YYYY-MM-DD day label');
+    }
+    return (lo, hi);
+  }
 
   static Future<String> exportDaysDb(Set<String> dayIds) async {
     final sorted = dayIds.toList()..sort();
@@ -2692,6 +2955,11 @@ class LocalDb {
     await deleteDatabase(dest);
     final out = await openDatabase(
       dest,
+      // `version:` is MANDATORY here. Without it sqflite throws
+      // ArgumentError('onCreate must be null if no version is specified')
+      // before opening anything — so this whole export path (Profile → Data
+      // history → Export) had never once produced a file.
+      version: schemaVersion,
       onCreate: (db, _) async {
         await _createSamples(db);
         await _createDecodedStore(db);
@@ -2751,25 +3019,28 @@ class LocalDb {
           for (final row in decoded)
             if (row['counter'] != null) row['counter'],
         ];
-        if (counters.isNotEmpty) {
-          final placeholders = List.filled(counters.length, '?').join(',');
+        // CHUNKED `IN (…)`: a full day is 86 400 counters, two orders of
+        // magnitude past SQLITE_MAX_VARIABLE_NUMBER — one giant statement can
+        // never bind. (This never surfaced only because the missing `version:`
+        // above aborted the export earlier.)
+        for (final chunk in _sqlVarChunks(counters)) {
+          final placeholders = List.filled(chunk.length, '?').join(',');
           final rr = await src.rawQuery(
             'SELECT * FROM decoded_rr WHERE counter IN ($placeholders)',
-            counters,
+            chunk,
           );
-          if (rr.isNotEmpty) {
-            await out.transaction((txn) async {
-              final batch = txn.batch();
-              for (final row in rr) {
-                batch.insert(
-                  'decoded_rr',
-                  Map<String, Object?>.from(row),
-                  conflictAlgorithm: ConflictAlgorithm.replace,
-                );
-              }
-              await batch.commit(noResult: true);
-            });
-          }
+          if (rr.isEmpty) continue;
+          await out.transaction((txn) async {
+            final batch = txn.batch();
+            for (final row in rr) {
+              batch.insert(
+                'decoded_rr',
+                Map<String, Object?>.from(row),
+                conflictAlgorithm: ConflictAlgorithm.replace,
+              );
+            }
+            await batch.commit(noResult: true);
+          });
         }
       }
       await copyRows(
@@ -2805,8 +3076,7 @@ class LocalDb {
     }
 
     for (final dayId in sorted) {
-      final startSec = _localDayStartSec(dayId);
-      final endSec = startSec + _daySec;
+      final (startSec, endSec) = _localDayWindow(dayId);
       await copyRawRange(startSec, endSec);
       await copyRows('day_result', where: 'day_id = ?', whereArgs: [dayId]);
       await copyRows('metric_series', where: 'date = ?', whereArgs: [dayId]);
@@ -2839,17 +3109,20 @@ class LocalDb {
       String column,
       List<String> values,
     ) async {
-      final placeholders = List.filled(values.length, '?').join(',');
-      deleted += await txn.rawDelete(
-        'DELETE FROM $table WHERE $column IN ($placeholders)',
-        values,
-      );
+      // Chunked: "select all" on a multi-year history binds one day label per
+      // parameter, which would blow SQLITE_MAX_VARIABLE_NUMBER.
+      for (final chunk in _sqlVarChunks(values)) {
+        final placeholders = List.filled(chunk.length, '?').join(',');
+        deleted += await txn.rawDelete(
+          'DELETE FROM $table WHERE $column IN ($placeholders)',
+          chunk,
+        );
+      }
     }
 
     await db.transaction((txn) async {
       for (final dayId in sorted) {
-        final startSec = _localDayStartSec(dayId);
-        final endSec = startSec + _daySec;
+        final (startSec, endSec) = _localDayWindow(dayId);
         deleted += await txn.delete(
           'decoded_rr',
           where:
@@ -2881,6 +3154,16 @@ class LocalDb {
           where: 'ts >= ? AND ts < ?',
           whereArgs: [startSec, endSec],
         );
+        // CASCADE the GPS route BEFORE its session row disappears — otherwise
+        // the join key is gone and every lat/lng point of a deleted run stays
+        // on disk forever (deleteSession cascades explicitly; this path did
+        // not). Must run first: once `sessions` is deleted the subquery is
+        // empty and the route is unreachable.
+        deleted += await txn.rawDelete(
+          'DELETE FROM workout_route WHERE session_id IN '
+          '(SELECT id FROM sessions WHERE start_ts >= ? AND start_ts < ?)',
+          [startSec, endSec],
+        );
         deleted += await txn.delete(
           'sessions',
           where: 'start_ts >= ? AND start_ts < ?',
@@ -2899,6 +3182,11 @@ class LocalDb {
       await deleteByIn(txn, 'notifications', 'date', sorted);
       await deleteByIn(txn, 'sleep_session_candidates', 'day_id', sorted);
       await deleteByIn(txn, 'wake_day_features', 'day_id', sorted);
+      // Day-keyed USER rows. Same class of leak as workout_route: "delete this
+      // day" must not leave the user's own logged health data behind.
+      await deleteByIn(txn, 'cycle_symptom', 'date', sorted);
+      await deleteByIn(txn, 'workout_suggestions', 'date', sorted);
+      await deleteByIn(txn, 'sleep_override', 'day_id', sorted);
     });
     return deleted;
   }
@@ -2976,7 +3264,20 @@ class LocalDb {
         }
         var copied = 0;
         await db.transaction((txn) async {
-          final batch = txn.batch();
+          // CHUNKED, for the same reason commitSyncBatch chunks: sqflite
+          // serialises a whole batch's args into ONE platform message. A
+          // full-history import is hundreds of thousands of rows, and the
+          // orphan guard below adds an op per decoded_onehz row on top.
+          const chunkOps = 4000;
+          var batch = txn.batch();
+          var ops = 0;
+          Future<void> flush() async {
+            if (ops == 0) return;
+            await batch.commit(noResult: true);
+            batch = txn.batch();
+            ops = 0;
+          }
+
           for (final r in rows) {
             final row = <String, Object?>{
               for (final e in r.entries)
@@ -2989,10 +3290,24 @@ class LocalDb {
                 )) {
               continue; // locally finalized — never overwritten by an import
             }
+            // ORPHAN GUARD ON THE IMPORT PATH. A plain replace-insert into
+            // decoded_onehz bypasses _queueDecodedOneHz entirely, so a foreign
+            // row colliding on UNIQUE(rec_ts) (different counter) or on the
+            // `counter` PRIMARY KEY (different second) evicted a local row and
+            // stranded its decoded_rr beats — the exact leak the ingest path is
+            // guarded against, wide open here. Queue the SAME guard, in the
+            // same batch/transaction, right before the row.
+            if (t == 'decoded_onehz') {
+              final counter = (row['counter'] as num?)?.toInt();
+              final recTs = (row['rec_ts'] as num?)?.toInt();
+              if (counter == null || recTs == null) continue;
+              ops += _queueOrphanGuard(batch, counter: counter, recTs: recTs);
+            }
             batch.insert(t, row, conflictAlgorithm: ConflictAlgorithm.replace);
             copied++;
+            if (++ops >= chunkOps) await flush();
           }
-          await batch.commit(noResult: true);
+          await flush();
         });
         counts[t] = copied;
       }
@@ -3862,17 +4177,8 @@ class LocalDb {
   /// existing workout_route table. Guarded — fresh installs get it from
   /// _createWorkoutRoute directly once that's updated; ALTER … ADD COLUMN
   /// throws if it's already there.
-  static Future<void> _ensureWorkoutRouteSpeed(Database db) async {
-    final info = await db.rawQuery('PRAGMA table_info(workout_route)');
-    final has = info.any((c) => c['name'] == 'speed');
-    if (!has) {
-      try {
-        await db.execute('ALTER TABLE workout_route ADD COLUMN speed REAL');
-      } catch (_) {
-        /* another opener won the race — column now exists */
-      }
-    }
-  }
+  static Future<void> _ensureWorkoutRouteSpeed(Database db) =>
+      _addColumnIfMissing(db, 'workout_route', 'speed', 'REAL');
 
   /// Append a batch of route rows (INSERT OR REPLACE — idempotent on
   /// (session_id, seq)). Each row is a [RoutePoint.toRow] map.

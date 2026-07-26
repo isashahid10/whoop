@@ -225,7 +225,13 @@ class _DrillLevelState extends State<_DrillLevel> {
 }
 
 /// Bar label for a /trend bucket at a given scale ('week' → weekday initials,
-/// 'month' → W1..W5, 'quarter' → month names). Pure; shared with tests.
+/// 'month' → the window's END date, 'quarter' → month names). Pure; shared
+/// with tests.
+///
+/// 'month' buckets are NOT calendar weeks — the repository builds four ROLLING
+/// 7-day windows ending at the anchor day, so 'W1…W4' was a lie (W1 of a month
+/// it may not even overlap). Labelling by the window's last day is the only
+/// honest short form.
 String trendBarLabel(String scale, int i, Map b) {
   final ts = (b['t_start'] as num?)?.toInt();
   if (ts == null) return b['label']?.toString() ?? '';
@@ -234,11 +240,58 @@ String trendBarLabel(String scale, int i, Map b) {
     case 'week':
       return _wd[(d.weekday - 1) % 7];
     case 'month':
-      return 'W${i + 1}';
+      final end = trendBucketEnd(b) ?? d.add(const Duration(days: 6));
+      return '${_mon[end.month - 1]} ${end.day}';
     default: // quarter → month
       return _mon[d.month - 1];
   }
 }
+
+/// Last day (inclusive, UTC) covered by a /trend bucket. `t_end` is exclusive.
+DateTime? trendBucketEnd(Map b) {
+  final end = (b['t_end'] as num?)?.toInt();
+  if (end == null) return null;
+  return DateTime.fromMillisecondsSinceEpoch((end - 86400) * 1000, isUtc: true);
+}
+
+/// The value a /trend bucket actually carries, or NULL when the repository
+/// marked the bucket absent.
+///
+/// The repository writes `{'value': v ?? 0.0, 'has': v != null}` — the 0.0 is
+/// pure padding and `has` is the only truth. Reading `value` alone turns every
+/// unworn day into a measured zero. Payloads that predate `has` fall back to
+/// value-presence.
+double? trendBucketValue(Map b) {
+  final v = (b['value'] as num?)?.toDouble();
+  if (b.containsKey('has')) return b['has'] == true ? v : null;
+  return v;
+}
+
+/// Display (label, unit) for a trend series, correcting the repository's
+/// nominal naming where the stored series does not contain what the name says.
+///
+/// `spo2` is the only such series: the on-device 1 Hz pipeline writes
+/// `scalars['spo2'] = null` and `odi_per_hour = null`, so nothing local ever
+/// populates it. Its ONLY writer is the cloud importer, which stores the
+/// vendor's `spo2_idx` — a relative saturation index in the 90s, not a dip
+/// rate. Presenting it as "95.3 dips/h" is a category error on top of a
+/// three-orders-of-magnitude wrong number.
+({String label, String unit}) trendDisplay(
+  String metric,
+  String label,
+  String unit,
+) {
+  if (metric == 'spo2') {
+    return (label: 'imported oxygen index', unit: '');
+  }
+  return (label: label, unit: unit);
+}
+
+/// Metrics where a DOWNWARD move is the good one (for delta-chip colouring).
+bool trendGoodIsUp(String metric) => switch (metric) {
+  'resting_hr' || 'stress' || 'spo2' || 'debt' => false,
+  _ => true,
+};
 
 /// TrendBoard — the pure over-time hero of the rebuilt MetricScreen: one
 /// BentoTile with a whispered header + (i) definition, a BigStat average with
@@ -269,11 +322,32 @@ class TrendBoard extends StatelessWidget {
     this.onTapBar,
   });
 
+  /// Generic name for the window's LENGTH. Never "this week"/"this month":
+  /// with no explicit anchor the repository anchors on the LAST DAY WITH DATA,
+  /// so after five unsynced days "this week" is a fortnight ago. [_periodOf]
+  /// prefers the buckets' real dates; this is only the fallback.
   String get _period => scale == 'week'
-      ? 'this week'
+      ? '7 days'
       : scale == 'month'
-          ? 'this month'
-          : 'last 3 months';
+      ? '4 weeks'
+      : '3 months';
+
+  /// The window the bars ACTUALLY cover, read off the buckets ('Jul 15–21').
+  String _periodOf(List buckets) {
+    if (buckets.isEmpty) return _period;
+    final firstTs = ((buckets.first as Map)['t_start'] as num?)?.toInt();
+    final last = trendBucketEnd(buckets.last as Map);
+    if (firstTs == null || last == null) return _period;
+    final start = DateTime.fromMillisecondsSinceEpoch(
+      firstTs * 1000,
+      isUtc: true,
+    );
+    final s = '${_mon[start.month - 1]} ${start.day}';
+    final e = start.month == last.month
+        ? '${last.day}'
+        : '${_mon[last.month - 1]} ${last.day}';
+    return '$s–$e';
+  }
 
   String _fmtAvg(num v) {
     // Sleep + wear avgs come in minutes → show as Hh Mm in the hero.
@@ -288,23 +362,38 @@ class TrendBoard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final buckets = (data['buckets'] as List?) ?? const [];
-    final unit = data['unit']?.toString() ?? '';
-    final label = data['label']?.toString() ?? title;
+    final display = trendDisplay(
+      metric,
+      data['label']?.toString() ?? title,
+      data['unit']?.toString() ?? '',
+    );
+    final unit = display.unit;
+    final label = display.label;
     final summary = (data['summary'] as Map?)?.cast<String, dynamic>();
-    final values = [
-      for (final b in buckets) ((b as Map)['value'] as num?)?.toDouble() ?? 0.0,
+    // NULL for an absent bucket — see [trendBucketValue]. Coercing to 0.0 here
+    // is what made an unworn Tuesday draw a real bar (and, for oxygen, print a
+    // literal "0" SpO₂) under a tooltip promising "empty periods stay empty".
+    final List<double?> values = [
+      for (final b in buckets) trendBucketValue(b as Map),
     ];
     final labels = [
       for (var i = 0; i < buckets.length; i++)
         trendBarLabel(scale, i, buckets[i] as Map),
     ];
-    final allZero = values.every((v) => v == 0);
+    // "No data" means NO bucket carried a measurement — not "every measurement
+    // happened to be zero", which is itself a finding worth drawing.
+    final noData = values.every((v) => v == null);
     final avg = summary?['avg'] as num?;
     final delta = summary?['delta_vs_prev'] as num?;
     final met = summary?['met_count'] as num?;
     final total = summary?['total'] as num?;
     final showUnit = unit.isNotEmpty && metric != 'sleep' && metric != 'wear';
     final info = infoFor(metric);
+    final period = _periodOf(buckets);
+    // /trend's `delta_vs_prev` is `avg - prevAvg` — an ABSOLUTE difference in
+    // the metric's own unit. Sleep/wear averages travel in minutes even though
+    // their display unit is 'h', so the chip must say 'min'.
+    final deltaUnit = (metric == 'sleep' || metric == 'wear') ? 'min' : unit;
 
     return BentoTile(
       accent: accent,
@@ -314,7 +403,7 @@ class TrendBoard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           TileHeader(
-            '$label · $_period',
+            '$label · $period',
             icon: icon,
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -325,10 +414,17 @@ class TrendBoard extends StatelessWidget {
                 InfoDot(
                   title: title,
                   body: info ??
-                      'Your $label, averaged across $_period. Tap a bar to '
-                          'drill into a finer period.',
-                  methodNote: 'Bars show each period’s value; empty periods '
-                      'stay empty.',
+                      'Your $label, averaged across the last $_period. Tap a '
+                          'bar to drill into a finer period.',
+                  methodNote: metric == 'spo2'
+                      ? 'This series is the IMPORTED vendor oxygen index — a '
+                            'relative saturation number, not a dip rate and '
+                            'not an absolute SpO₂. On-device decoding writes '
+                            'nothing here. Bars show each period’s value; '
+                            'periods with no measurement stay empty.'
+                      : 'Bars show each period’s value; periods with no '
+                            'measurement stay empty — a gap is a gap, never '
+                            'a zero.',
                 ),
               ],
             ),
@@ -347,12 +443,18 @@ class TrendBoard extends StatelessWidget {
               ),
               if (delta != null && delta != 0) ...[
                 const SizedBox(width: Sp.x3),
-                DeltaChip(delta),
+                BaselineDeltaChip(
+                  delta,
+                  unit: deltaUnit,
+                  goodIsUp: trendGoodIsUp(metric),
+                  showVsNormal: false,
+                  vsLabel: 'vs prev',
+                ),
               ],
             ],
           ),
           const SizedBox(height: Sp.x5),
-          if (allZero)
+          if (noData)
             SizedBox(
               height: 120,
               child: Center(

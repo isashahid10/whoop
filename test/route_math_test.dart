@@ -218,6 +218,57 @@ void main() {
         isEmpty,
       );
     });
+
+    // REGRESSION: computeSplits walked raw haversine over every consecutive
+    // pair while totalDistanceMeters skipped implausible segments, so one GPS
+    // teleport across a tunnel gap made the route detail screen contradict its
+    // own headline — "5 km" above a list of ~60 splits, most of them phantom.
+    group('implausible segments (recording gaps)', () {
+      /// 5 km of real running, then a 55 km teleport, then more running.
+      List<RoutePoint> withTeleport() {
+        final pts = _line(count: 51, stepMeters: 100, stepSec: 30); // 5 000 m
+        final last = pts.last;
+        return [
+          ...pts,
+          // 55 km in 30 s — far past kMaxPlausibleSpeedMps × gap.
+          RoutePoint(
+            seq: 51,
+            tsMs: last.tsMs + 30000,
+            lat: 0,
+            lng: last.lng + 55000 / _mPerDegLngAtEq,
+          ),
+          RoutePoint(
+            seq: 52,
+            tsMs: last.tsMs + 60000,
+            lat: 0,
+            lng: last.lng + (55000 + 100) / _mPerDegLngAtEq,
+          ),
+        ];
+      }
+
+      test('splits agree with totalDistanceMeters across a teleport', () {
+        final pts = withTeleport();
+        final total = totalDistanceMeters(pts);
+        expect(total, closeTo(5100, 30)); // teleport contributes nothing
+
+        final splits = computeSplits(pts, const [], unitMeters: 1000);
+        final splitSum = splits.fold<double>(0, (a, s) => a + s.meters);
+        expect(splitSum, closeTo(total, 1),
+            reason: 'headline distance and the splits list must not disagree');
+        // 5 full km + a short trailing partial — NOT ~60 phantom splits.
+        expect(splits.length, 6);
+        expect(splits.last.meters, closeTo(100, 30));
+      });
+
+      test('a plausible fast segment is still counted', () {
+        // 300 m in 30 s (10 m/s) is fast but real — must not be filtered.
+        final pts = _line(count: 11, stepMeters: 300, stepSec: 30); // 3 000 m
+        final splits = computeSplits(pts, const [], unitMeters: 1000);
+        expect(splits.fold<double>(0, (a, s) => a + s.meters),
+            closeTo(totalDistanceMeters(pts), 1));
+        expect(splits.length, 3);
+      });
+    });
   });
 
   group('emaSpeed', () {

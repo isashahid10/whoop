@@ -26,8 +26,20 @@ import '../compute/substrate.dart';
 class NoopImportResult {
   final int days;
   final int rows;
-  NoopImportResult(this.days, this.rows);
+
+  /// Rows whose local date had ALREADY been derived and pruned by the time
+  /// they appeared in the file (a genuinely out-of-order export). They cannot
+  /// be folded back in, so they are counted here rather than silently dropped
+  /// — a non-zero value means the export was not fully time-ordered.
+  final int lateRows;
+  NoopImportResult(this.days, this.rows, [this.lateRows = 0]);
 }
+
+/// What to do with an incoming row given the import's high-water date.
+/// [advance] closes out the previous date; [buffer] folds the row into the
+/// current rolling window; [late] means its day was already derived + pruned,
+/// so the row cannot be used (counted in [NoopImportResult.lateRows]).
+enum RowOrder { advance, buffer, late }
 
 /// One second's worth of the 1 Hz channels (sparse — only set streams present).
 class _Sec {
@@ -63,7 +75,8 @@ class NoopImporter {
     final rrTs = <double>[]; // beat end time (epoch ms)
     final rrMs = <double>[];
     String? curDate;
-    var totalRows = 0, daysDone = 0;
+    final derived = <String>{}; // dates already derived + pruned out of `secs`
+    var totalRows = 0, daysDone = 0, lateRows = 0;
 
     Future<void> deriveAndPrune(String date) async {
       // Build a Substrate from everything buffered (prev + current date) and
@@ -113,11 +126,34 @@ class NoopImporter {
       final stream = at(f, 'stream');
 
       final date = localDateLabel(ts);
-      // Date advanced → the previous date is complete; derive it from the window.
-      if (curDate != null && date != curDate && _after(date, curDate)) {
-        await deriveAndPrune(curDate);
+      //
+      // OUT-OF-ORDER ROWS. `curDate` is a HIGH-WATER mark and must only ever
+      // move forward. It used to be assigned unconditionally, so one backwards
+      // timestamp rewound it; the next forward row then called
+      // deriveAndPrune(<older date>), whose `secs.removeWhere(label != date)`
+      // discarded every buffered sample for the newer day — silent, unbounded
+      // loss with nothing surfaced.
+      //
+      // Now: a forward row closes out the previous date (derive + prune); a
+      // backwards row for a day we have NOT derived yet is simply folded into
+      // the buffer at its own timestamp (the Substrate is rebuilt sorted by ts,
+      // so arrival order never mattered); and a row for a day already derived
+      // is genuinely too late to use — counted in
+      // [NoopImportResult.lateRows] and reported instead of being allowed to
+      // wipe the current day.
+      switch (decideRow(date, curDate, derived)) {
+        case RowOrder.advance:
+          if (curDate != null) {
+            await deriveAndPrune(curDate);
+            derived.add(curDate);
+          }
+          curDate = date;
+        case RowOrder.buffer:
+          break;
+        case RowOrder.late:
+          lateRows++;
+          continue;
       }
-      curDate = date;
       totalRows++;
 
       switch (stream) {
@@ -161,7 +197,7 @@ class NoopImporter {
     }
 
     await engine.finalizeImport(profile);
-    return NoopImportResult(daysDone, totalRows);
+    return NoopImportResult(daysDone, totalRows, lateRows);
   }
 
   /// Build a Substrate from the buffered seconds + RR beats. Gravity / SpO₂ /
@@ -224,4 +260,22 @@ class NoopImporter {
 
   /// String date compare 'YYYY-MM-DD' — true when [a] is strictly after [b].
   static bool _after(String a, String b) => a.compareTo(b) > 0;
+
+  /// Where a row belongs given the import's high-water date [curDate] and the
+  /// set of dates already [derived] (and therefore already pruned out of the
+  /// rolling buffer).
+  ///
+  /// This is the whole out-of-order contract, isolated so it can be tested
+  /// without a database: `curDate` only ever moves FORWARD. It used to be
+  /// assigned unconditionally, so one backwards timestamp rewound it and the
+  /// next forward row called `deriveAndPrune(<older date>)` — whose
+  /// `secs.removeWhere(label != date)` threw away every buffered sample of the
+  /// NEWER day, silently and with no error surfaced.
+  static RowOrder decideRow(String date, String? curDate, Set<String> derived) {
+    if (curDate == null || _after(date, curDate)) return RowOrder.advance;
+    if (date == curDate) return RowOrder.buffer;
+    // Older than the high-water day. Still usable as prior-evening context
+    // unless its day has already been derived and pruned.
+    return derived.contains(date) ? RowOrder.late : RowOrder.buffer;
+  }
 }

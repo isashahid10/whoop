@@ -115,6 +115,21 @@ const int kRecTsGridSeconds = 300; // 5-minute grid
 int snapToGrid(int ts, [int grid = kRecTsGridSeconds]) => (ts ~/ grid) * grid;
 
 class ClockPolicy {
+  /// Whether a GET_CLOCK `clock_epoch` read may be trusted enough to become
+  /// this session's strap-RTC ↔ wall correlation ([ClockRef]).
+  ///
+  /// `range_newest` (GET_DATA_RANGE) is already guarded by [isCorruptFutureRtc]
+  /// before it is allowed to tighten the per-record plausibility window;
+  /// `clock_epoch` had NO such gate, even though it feeds something strictly
+  /// more dangerous. A corrupt far-future RTC read yields a large NEGATIVE
+  /// [ClockRef.driftSec], and [AlarmPayloads.toStrapFrame] arms the wake alarm
+  /// at `when - driftSec` — i.e. years in the future, where it silently never
+  /// fires. Reject the read instead: with no correlation the alarm falls back
+  /// to the raw wall epoch, and the bounded SET_CLOCK retry budget is not
+  /// spent chasing a value that was never real.
+  static bool acceptsClockRead(int deviceClock, int wallNow) =>
+      !isCorruptFutureRtc(deviceClock, wallNow);
+
   /// Re-issue SET_CLOCK if the strap clock has drifted > 1 day or is frozen in
   /// the pre-2023 past (an unset RTC).
   static bool shouldSetClock(int deviceClock, int wallNow) {

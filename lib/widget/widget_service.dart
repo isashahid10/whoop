@@ -78,7 +78,12 @@ class WidgetService {
         s.isEmpty ? -1.0 : s.value!.toDouble(),
       );
       await setI('sleep_min', sleep.isEmpty ? -1 : sleep.value!.round());
-      await setI('sleep_need_min', need.isEmpty ? 480 : need.value!.round());
+      // -1, like every other int key here. This used to write a hard 480 —
+      // a fabricated 8h00m sleep need shown on the home widget AND mirrored to
+      // the watch, with the sleep ring's fill computed as a fraction of an
+      // invented denominator. The native readers gate their ring on
+      // `needMin > 0`, so the sentinel simply leaves it empty.
+      await setI('sleep_need_min', need.isEmpty ? -1 : need.value!.round());
       await setI('rhr', rhr.isEmpty ? -1 : rhr.value!.round());
       await HomeWidget.saveWidgetData<String>(
         'coach_line',

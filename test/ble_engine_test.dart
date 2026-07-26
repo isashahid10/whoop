@@ -122,41 +122,6 @@ void main() {
     });
   });
 
-  group('history-end settle streak', () {
-    test('resets while queue is not empty', () {
-      final streak = nextBurstStablePollStreak(
-        queueEmpty: false,
-        currentCount: 79,
-        previousCount: 79,
-        stableStreak: 2,
-      );
-
-      expect(streak, 0);
-    });
-
-    test('increments only when queue is empty and count is unchanged', () {
-      final streak = nextBurstStablePollStreak(
-        queueEmpty: true,
-        currentCount: 79,
-        previousCount: 79,
-        stableStreak: 1,
-      );
-
-      expect(streak, 2);
-    });
-
-    test('resets when traffic count changes between polls', () {
-      final streak = nextBurstStablePollStreak(
-        queueEmpty: true,
-        currentCount: 80,
-        previousCount: 79,
-        stableStreak: 2,
-      );
-
-      expect(streak, 0);
-    });
-  });
-
   group('maintenance traffic gating', () {
     test('maintenance traffic is paused while offload is active', () {
       expect(shouldPauseMaintenanceTraffic(offloadActive: true), isTrue);

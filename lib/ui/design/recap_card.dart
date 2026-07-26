@@ -51,7 +51,11 @@ class RecapCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final a = accent ?? AppColors.accent;
-    final barsClean = bars?.whereType<double>().toList() ?? const <double>[];
+    // Nulls go THROUGH to MiniBars, which keeps their slots empty. Stripping
+    // them here compacted the strip: a week missing Wednesday drew six bars
+    // with Thu–Sun shifted a day left, silently re-dating every value after
+    // the gap.
+    final barStrip = bars ?? const <double?>[];
     return BentoTile(
       tone: BentoTone.paper,
       accent: a,
@@ -104,11 +108,14 @@ class RecapCard extends StatelessWidget {
                     size: BigStatSize.md,
                   ),
                 ),
-                if (barsClean.length >= 2) ...[
+                // Gate on how many slots actually CARRY a value (a strip of
+                // one real bar plus six gaps isn't a trend), but draw the
+                // full-length strip so the bars keep their days.
+                if (barStrip.whereType<double>().length >= 2) ...[
                   const SizedBox(width: Sp.x3),
                   SizedBox(
                     width: 96,
-                    child: MiniBars(barsClean, color: a, height: 34),
+                    child: MiniBars(barStrip, color: a, height: 34),
                   ),
                 ],
               ],
