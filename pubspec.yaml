@@ -29,17 +29,32 @@ dependencies:
   # still builds against ../analytics and ../protocol via pubspec_overrides.yaml.
   # NOTE: this branch is intentionally WHOOP-4-only — protocol stays on `main`,
   # NOT the gen5/multiband branch.
+  # ⚠️ THESE TWO CURRENTLY POINT AT PR-BRANCH COMMITS, NOT `main`.
+  # This edge change does not compile against the previous pins — it calls
+  # analytics API that only exists on OpenStrap/analytics#30 — so pinning the
+  # PR head is what makes CI meaningful rather than green-by-omission. They are
+  # still immutable commit SHAs, never floating refs.
+  # BEFORE RELEASE / ON MERGE: move both to the resulting `main` commits and
+  # bump kAlgoVersion again. Leaving a PR-branch SHA pinned after merge risks
+  # the commit being unreachable if the branch is deleted after a squash.
   openstrap_protocol:
     git:
       url: https://github.com/OpenStrap/protocol.git
-      ref: 02fc8e5f2310ded690a522cd9884bf51b4cdc7e1 # tip of protocol main
+      # OpenStrap/protocol#19 (fix/issues): bounded R-R counts, NaN accel
+      # rejection, v7/v9/v12/v18 routed through parseR24 so a historical record
+      # keeps its OWN timestamp instead of collapsing to capture time, alarm
+      # form dispatch, bounded battery.
+      ref: 5675b2fc58ab5aa7455cb7b0f7837fe5391e8291
   openstrap_analytics:
     git:
       url: https://github.com/OpenStrap/analytics.git
-      # Tip of analytics main: ANR trig fix (#27) + readinessComposite mean/SD-z
-      # fallback on degenerate MAD (#26 — the change the v43 changelog documented
-      # but the previous pin never actually contained; it ships at v46).
-      ref: e3705bf6fc591560e0d6f9d68343a3b861ef3765
+      # OpenStrap/analytics#30 (fix/issues): the abstain-over-fabricate sweep,
+      # plus the step/activity rebuild on a calibration-invariant feature —
+      # dailyStepEstimate's new signature, personalDynFloorFromDailySummaries
+      # and dailyDynSummary, all of which lib/compute/ now calls.
+      # This is the SHA whose content the v49 changelog describes; verify with
+      # `git show <sha>:lib/src/onehz/motion/steps.dart` before trusting it.
+      ref: 8b1aa4e99490b8cc15397154bc548ec3fc32c44a
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8

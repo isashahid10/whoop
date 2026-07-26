@@ -285,16 +285,13 @@ import 'substrate.dart';
 //   - Historical days resolve their timezone offset at their own timestamp
 //     rather than through today's offset.
 //
-// ⚠️ SIBLING-PACKAGE changes are NOT in this bump yet. The analytics fixes from
-// the same sweep (sleep no longer reporting a no-data window as light sleep,
+// SIBLING-PACKAGE changes ride along with this bump: the analytics sweep from
+// the same review (sleep no longer reporting a no-data window as light sleep,
 // the Lipponen-Tarvainen threshold on the signed dRR series, abstention on
 // degenerate dispersion, the reconciled TRIMP stack, circular social jetlag)
-// live in an analytics commit that `pubspec.yaml` does NOT yet point at — the
-// pin is still the previous SHA. Do NOT extend this changelog to claim them
-// until that pin is updated to a merged analytics commit and verified with
-// `git show <sha>:<file>`. Citing an analytics change that the pinned SHA never
-// contained is exactly how the v43 changelog documented a readiness fix that
-// stayed broken for three releases; when the pin moves, bump again.
+// and the protocol decode fixes. This was NOT true when v48 was first written —
+// pubspec.yaml still pointed at the pre-fix SHAs then, and this note said so.
+// The pins were moved as part of v49; see the pin-status note above it.
 // v49: steps/activity rebuilt on a calibration-invariant feature.
 //
 // Diagnosed on a real user database: the day reported 39,384 steps against a
@@ -326,9 +323,16 @@ import 'substrate.dart';
 //     when the 1 Hz estimate is absent.
 //
 // This bump also re-derives days whose stored step figure came from the old
-// estimator. NOTE: the sibling analytics fixes still are NOT pinned — see the
-// v48 note below; pubspec.yaml must be repinned and this bumped again once the
-// analytics PR merges.
+// estimator.
+//
+// PIN STATUS: as of this bump pubspec.yaml points at the analytics and protocol
+// PR-branch commits, so everything described in v48 AND v49 is genuinely in the
+// build — the edge code physically cannot compile against the older analytics
+// pin, which is how we know. Those pins must move to the merge commits (and
+// this must bump again) when the sibling PRs land. Verify any analytics claim
+// made here with `git show <pinned-sha>:<file>` before trusting it; a changelog
+// citing a change the pinned SHA never contained is how v43 documented a
+// readiness fix that stayed broken for three releases.
 const int kAlgoVersion = 49;
 
 /// Raw is kept this many days past derivation, then pruned (derived stays).
