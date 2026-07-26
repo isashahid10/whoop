@@ -14,6 +14,20 @@ An app that makes a WHOOP 4.0 useful without a WHOOP subscription. Connects to t
 
 <img width="1774" height="887" alt="image" src="https://github.com/user-attachments/assets/66653a25-ac97-4f8c-8be1-6c9fceeaf08b" />
 
+## As featured in
+
+> **"The goal of the so-called OpenStrap project is not to re-create the WHOOP app.
+> Rather, the algorithms and processing methods are developed from scratch, based on
+> public research… The health data collected from the watch never leaves the phone."**
+>
+> — [**Hackaday**, 15 July 2026](https://hackaday.com/2026/07/15/making-a-locked-down-wearable-work-without-a-subscription/)
+
+> **"When a membership lapses, the hardware is basically useless. You own it, you still
+> can't use it — it just goes dark, because the app stops talking to it. So you've got a
+> perfectly good sensor turning into a paperweight."**
+>
+> — [**Adafruit**, 15 July 2026](https://blog.adafruit.com/2026/07/15/openstrap-edge-makes-a-whoop-4-0-band-useful-without-a-subscription/)
+
 ## Install
 
 | | |
