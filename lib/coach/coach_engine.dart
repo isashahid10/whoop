@@ -14,6 +14,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
@@ -170,6 +171,15 @@ class CoachEngine {
   // Serializable display transcript (text bubbles + charts) shown in the UI.
   final List<CoachItem> transcript = [];
 
+  /// Test seams for the history-trimming invariant. `_history` is private and
+  /// the trim only runs deep inside the tool-calling loop, so there is no other
+  /// way to pin the orphaned-`tool` edge case without a live provider.
+  @visibleForTesting
+  List<Map<String, dynamic>> get debugHistory => _history;
+
+  @visibleForTesting
+  void debugTrimHistory() => _trimHistory();
+
   // Current session identity (sessions are persisted per-user, many per user).
   String _sessionId = '';
   String _title = '';
@@ -233,6 +243,15 @@ class CoachEngine {
       while (_history.length > 1 && _history.first['role'] != 'user') {
         _history.removeAt(0);
       }
+    }
+    // Both loops stop at `length > 1`, so one turn larger than the whole budget
+    // can strand a lone `tool` at the head: [assistant(tool_calls), tool] drops
+    // the assistant and then has nothing left to pair with. That orphan is the
+    // exact shape this method exists to prevent, and providers 400 on it, so
+    // enforce the invariant unconditionally rather than as a side effect of the
+    // loop bounds.
+    while (_history.isNotEmpty && _history.first['role'] == 'tool') {
+      _history.removeAt(0);
     }
   }
 

@@ -391,6 +391,12 @@ const int _maxDenseTrimpDays = 400;
 /// PURE: `DateTime.parse` / `DateTime(y, m, d + 1)` are deterministic functions
 /// of the input strings, and the day-step normalizes DST-length days correctly.
 List<double> _denseDailyTrimp(List<String> dates, List<double?> trimps) {
+  // NO observed load at all is not "a run of zero-load days" — it is no load
+  // history. Densifying it would hand the EWMA a synthetic all-zero series and
+  // turn "we have never seen a workout" into a confident CTL/ATL/TSB of 0,
+  // which is the fabrication this whole pass exists to remove. Abstain by
+  // handing back an empty series and let the load model decline.
+  if (!trimps.any((t) => t != null)) return const <double>[];
   final byDate = <String, double>{};
   String? first, last;
   for (var i = 0; i < dates.length && i < trimps.length; i++) {
