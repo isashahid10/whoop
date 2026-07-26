@@ -16,8 +16,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # PINNED, not `channel: stable`. A floating channel silently changes the
+      # toolchain under the repo: the first run of this workflow failed because
+      # stable had moved to 3.44.8 while local dev was on 3.41.6, and
+      # CupertinoPageTransitionsBuilder had moved between cupertino.dart and
+      # material.dart in between — analyze was clean on one and five errors on
+      # the other. Same reasoning as the commit-SHA pins for sibling packages in
+      # pubspec.yaml. Bump this deliberately.
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: 3.44.8
           channel: stable
           cache: true
 
