@@ -184,35 +184,35 @@ class Substrate {
       };
 
   static Substrate fromJson(Map<String, dynamic> m) {
-    List<int> _i(Map<String, dynamic> m, String k) =>
+    List<int> ints(Map<String, dynamic> m, String k) =>
         ((m[k] as List?) ?? const []).map((e) => (e as num).toInt()).toList();
     List<double> dbls(String k) =>
         ((m[k] as List?) ?? const []).map((e) => (e as num).toDouble()).toList();
         
-    final tsSec = _i(m, 'ts_sec');
+    final tsSec = ints(m, 'ts_sec');
     final n = tsSec.length;
     
-    List<int> _safeI(String k) {
-      final l = _i(m, k);
+    List<int> safeI(String k) {
+      final l = ints(m, k);
       return (l.isEmpty && n > 0) ? List<int>.filled(n, 0) : l;
     }
-    List<double> _safeD(String k) {
+    List<double> safeD(String k) {
       final l = dbls(k);
       return (l.isEmpty && n > 0) ? List<double>.filled(n, 0.0) : l;
     }
 
     return Substrate(
       tsSec: tsSec,
-      hr: _safeI('hr'),
+      hr: safeI('hr'),
       rrTsMs: dbls('rr_ts_ms'), // rrTsMs and rrMs don't have to match n
       rrMs: dbls('rr_ms'),
-      ax: _safeD('ax'),
-      ay: _safeD('ay'),
-      az: _safeD('az'),
-      spo2Red: _safeI('spo2_red'),
-      spo2Ir: _safeI('spo2_ir'),
-      skinTemp: _safeI('skin_temp'),
-      skinContact: _safeI('skin_contact'),
+      ax: safeD('ax'),
+      ay: safeD('ay'),
+      az: safeD('az'),
+      spo2Red: safeI('spo2_red'),
+      spo2Ir: safeI('spo2_ir'),
+      skinTemp: safeI('skin_temp'),
+      skinContact: safeI('skin_contact'),
     );
   }
 }

@@ -1,0 +1,40 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Sibling packages resolve from their pinned commit SHAs in pubspec.yaml.
+      # There is no pubspec_overrides.yaml here — that file is gitignored and
+      # local-dev only — so CI tests exactly the pins a release would ship.
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      # --concurrency=1: the suite uses sqflite_common_ffi against real database
+      # files, and parallel workers race on them.
+      #
+      # The golden capture (whoop_hist.jsonl) is a real band recording kept
+      # beside the repo rather than committed to it, so the two derivation-replay
+      # tests SKIP here and run locally.
+      - name: Test
+        run: flutter test --concurrency=1 --reporter=expanded

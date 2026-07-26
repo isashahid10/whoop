@@ -854,18 +854,16 @@ class _GpsControlPanel extends StatelessWidget {
 class _Stat extends StatelessWidget {
   final String label, value, unit;
   final OsIcon icon;
-  final Color? valueColor;
   const _Stat({
     required this.label,
     required this.value,
     required this.unit,
     required this.icon,
-    this.valueColor,
   });
   @override
   Widget build(BuildContext context) {
     return Column(mainAxisSize: MainAxisSize.min, children: [
-      AppIcon(icon, size: 16, color: valueColor?.withValues(alpha: 0.7) ?? Colors.white38),
+      AppIcon(icon, size: 16, color: Colors.white38),
       const SizedBox(height: Sp.x2),
       // mainAxisSize.min + explicit centering: when this _Stat sits inside
       // an Expanded (the merged GPS stat row), a bare default Row here
@@ -879,7 +877,7 @@ class _Stat extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          Text(value, style: AppText.metric.copyWith(color: valueColor ?? Colors.white, fontSize: 24)),
+          Text(value, style: AppText.metric.copyWith(color: Colors.white, fontSize: 24)),
           if (unit.isNotEmpty) ...[const SizedBox(width: 4), Text(unit, style: AppText.caption.copyWith(color: Colors.white38))],
         ],
       ),

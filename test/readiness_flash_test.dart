@@ -21,7 +21,7 @@ TodayData _today({
   bool showingPrior = false,
 }) {
   return TodayData.fromJson({
-    'daily': {if (readiness != null) 'readiness': readiness},
+    'daily': {'readiness': ?readiness},
     'sleep': const <String, dynamic>{},
     if (overnightState != null)
       'status': {

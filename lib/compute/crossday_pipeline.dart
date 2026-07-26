@@ -147,6 +147,15 @@ Map<String, dynamic> buildCrossDayBundle(
     lowerIsBetter: true,
   );
   if (gbTemp != null) gbInputs.add(gbTemp);
+  // NOT the headline score — `readinessComposite` is, and it is computed
+  // elsewhere. This call is kept only for glassBoxReadiness's percentile-of-you
+  // breakdown and deterministic narrative, which readinessComposite does not
+  // produce, and for back-compat with the stored "readiness_glassbox" key.
+  //
+  // Migrating this to readinessComposite is a deliberate open decision, not an
+  // oversight: it changes user-visible numbers, so it needs a kAlgoVersion bump
+  // and a release note. Suppressed rather than silently switched.
+  // ignore: deprecated_member_use
   final glassBox = ana.glassBoxReadiness(gbInputs);
 
   // ── breathing-rate variability across the resp-rate series ─────────────────
