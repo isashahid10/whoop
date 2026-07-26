@@ -71,16 +71,30 @@ spot-check, real-time breathing coherence.
 **Activity** — auto-detected workouts, live workout tracking with GPS routes, heart-rate
 zones.
 
+**Your data, elsewhere** — writes to **Apple Health** (HealthKit) and **Google Health
+Connect**: sleep stages, resting HR, HRV, respiratory rate, active energy and workouts.
+Only things the band actually measures — never the derived scores, which have no native
+type and would be fabricated. Exports are idempotent, so a day re-deriving never
+duplicates samples. You can also export the entire local SQLite database to a file
+whenever you like — it's your data, in a format anything can open.
+
+**Background sync** — the band drains without you opening the app. Android runs a
+foreground service with a 15-minute watchdog worker and re-attaches via
+CompanionDeviceManager. iOS uses a background processing task plus a light refresh task,
+and a separate restore Bluetooth central that relaunches the app when the band
+reconnects.
+
 **Everything else** — trends/history, a journal with on-device correlation insights
 ("what actually moves your numbers"), cycle tracking, a deterministic coach, a shareable
 weekly recap, a BYOK AI assistant, home-screen widgets, iOS Live Activities, Siri
-shortcuts.
+shortcuts, a smart alarm that buzzes the band.
 
 ## What doesn't work (yet, or maybe ever)
 
-- iOS background sync is best-effort. Apple doesn't give third-party apps a real
-  background-service option, so syncing while you haven't opened the app in a while is
-  "usually," not "always." 
+- iOS background sync is best-effort. It genuinely works (see above), but Apple doesn't
+  give third-party apps a real background-service option, so the OS decides when those
+  tasks actually run. Syncing while you haven't opened the app in a while is "usually,"
+  not "always." Android has no such limit.
 - Metrics are approximations off published research — not medical-grade, not validated
   against a lab, don't treat any of it as a diagnosis.
 - Not on the App Store or Play Store yet. iOS is a public TestFlight beta, which is a
