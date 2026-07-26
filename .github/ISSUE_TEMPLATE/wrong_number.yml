@@ -63,7 +63,9 @@ body:
     attributes:
       label: Screenshots
       description: >-
-        The metric screen plus its trend view is ideal. Redact anything you'd
-        rather not share — we don't need your actual health data to debug this.
+        The metric screen plus its trend view is ideal. This issue is PUBLIC and
+        stays public — redact health values, dates, names, and any device or
+        account identifiers first. The shape of a chart is usually enough; we
+        don't need your actual numbers to debug this.
     validations:
       required: false

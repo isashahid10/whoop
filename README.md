@@ -146,10 +146,25 @@ you're into this kind of thing.
 ## Your data stays on your phone
 
 Everything's computed and stored locally. No cloud account required, no backend this
-needs to work day to day. The only network calls this app ever makes are three narrow,
-optional things — a one-time legacy-account import if you had an old cloud account, an
-OTA/announcement pointer, and a BYOK LLM proxy for the AI assistant. None of them are
-required for the app to work.
+needs to work day to day. **Your health data never leaves the device unless you
+explicitly send it somewhere.**
+
+Being precise about the network, since "no cloud" gets said too loosely. Nothing below
+is required for the app to work, and none of it carries health data except the two you
+turn on yourself:
+
+- **Anonymous diagnostics** (Firebase crash/performance). **On by default in GitHub
+  release builds** — switch it off in your profile and collection stops immediately.
+  **Not present at all** in App Store / Play Store builds. Never includes health data.
+- **OTA/announcement pointer** — checks whether there's a newer build.
+- **Legacy account import** — one-time, only if you had an old OpenStrap cloud account.
+- **BYOK AI assistant** — only if you configure a provider; your key, your account,
+  prompts go to whoever you chose.
+- **Health-data contribution** — opt-in, off by default, GitHub builds only. This one
+  does upload your local database, which is the entire point of it, and it's the only
+  thing here that does.
+
+Full detail in [PRIVACY.md](PRIVACY.md).
 
 ## Repo layout
 

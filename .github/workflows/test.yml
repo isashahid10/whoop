@@ -10,11 +10,20 @@ concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only: this job only builds and tests. Nothing here needs write access,
+# and it executes code from pull requests.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Don't leave GITHUB_TOKEN in .git/config where PR-authored test code
+          # could read it. Nothing in this job pushes back to the repo.
+          persist-credentials: false
 
       # PINNED, not `channel: stable`. Two reasons, both found the hard way when
       # this workflow first ran:

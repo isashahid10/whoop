@@ -397,3 +397,11 @@ strong {
   white-space: nowrap;
   user-select: all;
 }
+
+/* Qualifying fineprint inside a card — separated from the claim it qualifies,
+   so it reads as a footnote rather than a continuation of the paragraph. */
+.card p + .fineprint {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}

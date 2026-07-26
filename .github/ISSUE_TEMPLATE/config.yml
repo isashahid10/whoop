@@ -23,3 +23,9 @@ contact_links:
     about: >-
       Install trouble is usually covered by the guide — TestFlight is the easy
       path now.
+
+  - name: Report a security vulnerability (private)
+    url: https://github.com/OpenStrap/edge/security/advisories/new
+    about: >-
+      Please don't open a public issue for a security problem — this reports it
+      privately instead. See SECURITY.md for what's in scope.

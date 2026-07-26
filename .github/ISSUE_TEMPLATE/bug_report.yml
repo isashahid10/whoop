@@ -75,7 +75,11 @@ body:
     id: screenshots
     attributes:
       label: Screenshots
-      description: Very helpful for anything visual. Redact whatever you want to.
+      description: >-
+        Very helpful for anything visual. Note this issue is PUBLIC and stays
+        public — please redact health data, dates, names, and any device or
+        account identifiers before uploading. Blurring the numbers is fine;
+        we usually only need the layout and the state of the screen.
     validations:
       required: false
 
