@@ -40,6 +40,7 @@ import '../compute/hr_max.dart';
 import '../compute/profile.dart';
 import '../data/day_label.dart';
 import '../data/db.dart';
+import '../data/live_coverage_policy.dart';
 import '../data/local_repository.dart';
 import '../gps/gps_source.dart';
 import '../gps/route_tracker.dart';
@@ -801,6 +802,24 @@ class AppState extends ChangeNotifier {
   @visibleForTesting
   Future<void> debugReconcileOrphanedLiveWorkout() =>
       _reconcileOrphanedLiveWorkout();
+
+  /// Feed one live accel frame through the live-pedometer path exactly as
+  /// [_onLiveFrame] does, with the ingest wall-clock supplied by the caller.
+  /// Tests only — lets a test replay a session's frames deterministically.
+  @visibleForTesting
+  void debugFeedLiveAccel(
+    List<double> mags, {
+    int? recTs,
+    required int atMs,
+  }) {
+    _ingestLiveMagsAt(proto.ImuFrame(recTs ?? 0, 0, mags), atMs);
+    _trackCoverage(recTs);
+  }
+
+  /// End the live-pedometer session (persist the coverage window, fold the bout
+  /// into the cadence calibration) without a BLE disconnect. Tests only.
+  @visibleForTesting
+  Future<void> debugFinalizeLivePedometer() => _finalizeLivePedometer();
 
   /// Feed a strap alarm-lifecycle event (56 set / 57–58 fired / 59 cleared)
   /// without going through the BLE event path. Tests only.
@@ -1728,13 +1747,35 @@ class AppState extends ChangeNotifier {
   int _lastLiveUiNotifyMs = 0;
   // DEVICE-time window (epoch sec) the live pedometer covered this session — so
   // the 1 Hz estimate can EXCLUDE these minutes (100 Hz real count wins).
+  //
+  // The band's record timestamp is the ANCHOR only: it keeps the window in the
+  // same base as `decoded_onehz.rec_ts` (what `coverageWindowsOverlapping`
+  // compares against). It is NOT the duration — in practice every live frame of
+  // a session repeats the same `recTs`, so start==end and the window covered
+  // nothing. The duration comes from what we actually ingested (100 Hz sample
+  // count + the phone-clock hull of the ingest times), combined by
+  // [deriveLiveCoverageWindow]. See that function for the base reconciliation.
   int? _liveCoverStartTs;
   int _liveCoverEndTs = 0;
+  int? _liveFirstIngestMs; // phone clock at the first ingested live frame
+  int? _liveLastIngestMs; // …and at the last one
   void _trackCoverage(int? recTs) {
     if (recTs == null || recTs <= 0) return;
     _liveCoverStartTs ??= recTs;
     if (recTs > _liveCoverEndTs) _liveCoverEndTs = recTs;
   }
+
+  /// The window this session covered, or null when there is nothing defensible
+  /// to record. Pure decision lives in [deriveLiveCoverageWindow]; this only
+  /// feeds it the observations.
+  LiveCoverageWindow? _liveCoverageWindow(int steps) => deriveLiveCoverageWindow(
+        steps: steps,
+        samples100Hz: _liveSamples,
+        bandStartTs: _liveCoverStartTs,
+        bandEndTs: _liveCoverEndTs,
+        firstIngestMs: _liveFirstIngestMs,
+        lastIngestMs: _liveLastIngestMs,
+      );
 
   /// Steps counted on the live 100 Hz stream this connected session (real,
   /// gain-applied). Used for cadence calibration. 0 when not streaming.
@@ -1754,7 +1795,12 @@ class AppState extends ChangeNotifier {
     return raw > 0 ? (raw * ana.StepParams.gain).round() : 0;
   }
 
-  void _ingestLiveMags(proto.ImuFrame f) {
+  void _ingestLiveMags(proto.ImuFrame f) =>
+      _ingestLiveMagsAt(f, DateTime.now().millisecondsSinceEpoch);
+
+  // `nowMs` is passed in (rather than read here) so the coverage bookkeeping
+  // this method feeds is drivable from a test without a fake clock.
+  void _ingestLiveMagsAt(proto.ImuFrame f, int nowMs) {
     final mags = f.mags;
     if (mags.isEmpty) return;
     // Append this frame's |a|(g) samples (gravity INCLUDED — AN-2554's dynamic
@@ -1769,7 +1815,13 @@ class AppState extends ChangeNotifier {
     final e = (magSum / mags.length) - 1.0;
     _liveEnmoSum += e > 0 ? e : 0.0;
     _liveEnmoN++;
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    // Phone-clock extent of the ingested stream — the only observation that
+    // reports how long this session actually ran (the band's record timestamp
+    // typically repeats). Used as a DURATION only; see [_liveCoverageWindow].
+    _liveFirstIngestMs ??= nowMs;
+    if (_liveLastIngestMs == null || nowMs > _liveLastIngestMs!) {
+      _liveLastIngestMs = nowMs;
+    }
     // Stamp last real motion (for the inactivity nudge). 0.02 g over baseline is
     // clearly dynamic movement, not resting jitter.
     if (e > 0.02) {
@@ -1825,6 +1877,8 @@ class AppState extends ChangeNotifier {
     _imuStreamSeen = false;
     _liveCoverStartTs = null;
     _liveCoverEndTs = 0;
+    _liveFirstIngestMs = null;
+    _liveLastIngestMs = null;
   }
 
   /// End-of-session: if the bout is credible walking, fold it into the personal
@@ -1833,20 +1887,19 @@ class AppState extends ChangeNotifier {
     final steps = liveSteps; // gain-applied
     final durS = _liveSamples / 100.0;
     final enmo = _liveEnmoN > 0 ? _liveEnmoSum / _liveEnmoN : 0.0;
-    // Capture the device-time coverage window BEFORE resetting.
-    final coverStart = _liveCoverStartTs;
-    final coverEnd = _liveCoverEndTs;
+    // Derive the coverage window BEFORE resetting (it reads session counters).
+    final window = _liveCoverageWindow(steps);
     _resetLivePedometer();
     // Record the REAL 100 Hz step window (device time). The derivation pass adds
     // it to the day's steps AND excludes those minutes from the 1 Hz estimate, so
     // 100 Hz always wins and a minute is never counted twice.
-    if (steps > 0 && coverStart != null && coverEnd >= coverStart) {
-      final d = DateTime.fromMillisecondsSinceEpoch(coverStart * 1000);
+    if (window != null) {
+      final d = DateTime.fromMillisecondsSinceEpoch(window.startTs * 1000);
       final day =
           '${d.year.toString().padLeft(4, '0')}-'
           '${d.month.toString().padLeft(2, '0')}-'
           '${d.day.toString().padLeft(2, '0')}';
-      unawaited(LocalDb.addLiveCoverage(coverStart, coverEnd, steps, day));
+      await LocalDb.addLiveCoverage(window.startTs, window.endTs, steps, day);
     }
     if (steps <= 0 || durS < 20) return;
     final cadence = steps / (durS / 60.0);

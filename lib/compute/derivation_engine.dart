@@ -295,7 +295,41 @@ import 'substrate.dart';
 // `git show <sha>:<file>`. Citing an analytics change that the pinned SHA never
 // contained is exactly how the v43 changelog documented a readiness fix that
 // stayed broken for three releases; when the pin moves, bump again.
-const int kAlgoVersion = 48;
+// v49: steps/activity rebuilt on a calibration-invariant feature.
+//
+// Diagnosed on a real user database: the day reported 39,384 steps against a
+// true value of ~2,000. ENMO is `mean(max(0, |a| - gRef))` and gRef is
+// auto-calibrated per day from the stillest samples — which are the long sleep
+// block, where the wrist sits in a different orientation. gRef came out at
+// 0.9797 that day vs ~1.032 on every other, and since ENMO subtracts it from
+// every sample, a reference 0.05 g low adds 0.05 g to every minute: exactly the
+// 0.05 g walking floor. Sweeping gRef over the identical samples gave 42,155
+// steps at 0.97 and 0 at 1.02 — the signal and the calibration error are both
+// ~0.05 g, so no threshold could have fixed it.
+//
+// The analytics package now decides activity from the per-axis high-passed
+// dynamic amplitude (gravity is DC in the sensor frame; any per-axis offset or
+// gain error cancels exactly), anchored on a PERSONAL floor pooled from
+// trailing days rather than an absolute constant or a same-day baseline — both
+// of which were measured to fail, in opposite directions.
+//
+// Edge side of that change:
+//   - `dyn_p90` joins the baseline series: each day persists its own high
+//     quantile of the dynamic amplitude, and the next day's derive takes the
+//     MEDIAN across trailing days (self-excluded, like every other baseline) as
+//     its floor. Below the minimum history the estimator ABSTAINS — a day with
+//     no personal baseline now reports the real 100 Hz count only, instead of a
+//     fabricated 1 Hz number.
+//   - `active_min` is persisted as a first-class series. Minutes are what 1 Hz
+//     can resolve; steps are derived from them as a range.
+//   - The steps bundle carries the range + the floor used, and says plainly
+//     when the 1 Hz estimate is absent.
+//
+// This bump also re-derives days whose stored step figure came from the old
+// estimator. NOTE: the sibling analytics fixes still are NOT pinned — see the
+// v48 note below; pubspec.yaml must be repinned and this bumped again once the
+// analytics PR merges.
+const int kAlgoVersion = 49;
 
 /// Raw is kept this many days past derivation, then pruned (derived stays).
 const int rawRetentionDays = 3;
@@ -410,6 +444,12 @@ class _BaselineHistoryCache {
     'resp_rate',
     'skin_temp_adc',
     'readiness',
+    // Per-day high quantile of the calibration-invariant dynamic accel
+    // amplitude. The 1 Hz activity estimator's floor is anchored on the MEDIAN
+    // of this series across trailing days, never on a same-day value: a
+    // single-day threshold collapses on a quiet day and passes everything,
+    // which is the mirror image of the absolute-constant failure it replaced.
+    'dyn_p90',
   ];
 
   /// DATED baseline samples, ascending by date, one entry per day (metric_series
@@ -1743,6 +1783,15 @@ class DerivationEngine {
       final stepCalib = await LocalDb.getStepCalibration();
       final savedSessions = await LocalDb.sessionsInRange(dayLo, dayHi);
 
+      // PERSONAL ambulatory floor, from days STRICTLY BEFORE this one (the same
+      // self-exclusion every other baseline uses — a day must not help set the
+      // threshold it is then scored against). Anchoring on trailing days is the
+      // whole point: an absolute g constant is destroyed by a few-percent
+      // gravity-reference excursion, and a same-day floor collapses on a quiet
+      // day. Below the minimum history this is null and the estimator abstains.
+      final dynHistory = history.valuesBefore('dyn_p90', day.date);
+      final dynFloorG = ana.personalDynFloorFromDailySummaries(dynHistory);
+
       // Built on THIS isolate so the Isolate.run closure captures only this plain
       // sendable object (never `this`, `day`, or `bundle`).
       final blocksInput = _DayBlocksInput(
@@ -1756,6 +1805,8 @@ class DerivationEngine {
         coverageWindows: coverageWindows,
         liveStepsReal: liveStepsReal,
         stepCalib: stepCalib,
+        dynFloorG: dynFloorG,
+        dynHistoryDays: dynHistory.length,
         savedSessions: savedSessions,
         date: day.date,
         dayEndSec: day.endSec,
@@ -1870,6 +1921,14 @@ class DerivationEngine {
         // Steps = real 100 Hz count + 1 Hz estimate over uncovered minutes
         // (computed in _stepsAndEnergy; never double-counted).
         'steps': sc('steps'),
+        // Ambulatory minutes — the quantity 1 Hz can actually resolve, and the
+        // unit public activity guidance uses. Steps are derived FROM this.
+        'active_min': sc('active_min'),
+        // This day's high quantile of the calibration-invariant dynamic accel
+        // amplitude. Not a user-facing metric: it is the per-day summary the
+        // NEXT day's derive pools to anchor its personal ambulatory floor, so
+        // the threshold never depends on a single day (see _BaselineHistoryCache).
+        'dyn_p90': sc('dyn_p90'),
         'calories_total': sc('calories_total'),
         // Daytime nap minutes (principled van Hees + HR-dip) → trend + Sleep Coach.
         'nap_min': sc('nap_min'),
@@ -2520,12 +2579,20 @@ class DerivationEngine {
     List<List<int>> coverageWindows,
     int liveStepsReal,
     ana.StepCalibration? stepCalib,
+    double? dynFloorG,
+    int dynHistoryDays,
   ) {
     try {
       if (daySub.length < 60) return;
       final motion = _motionMinutes(daySub);
       if (motion.isEmpty) return;
       final hrPerMin = _hrPerMinuteAligned(motion, daySub);
+
+      // This day's own contribution to the personal floor, persisted to
+      // metric_series so tomorrow's derive can anchor on it. Null for a day too
+      // thin to summarise — we store nothing rather than a fabricated level.
+      final dynSummary = ana.dailyDynSummary(motion);
+      if (dynSummary != null) scMap?['dyn_p90'] = dynSummary;
 
       // STEPS — hybrid, no double-count. Drop any minute already covered by a
       // 100 Hz window (real count wins), estimate steps for the rest from 1 Hz.
@@ -2548,29 +2615,52 @@ class DerivationEngine {
       final rhr = (scMap?['rhr'] as num?)?.toDouble();
       final est = ana.dailyStepEstimate(
         motionUn,
+        personalDynFloorG: dynFloorG,
         hrPerMin: hrUn,
         restingHr: rhr,
         calib: stepCalib,
+        pooledMinutesAvailable: dynHistoryDays,
       );
-      final estSteps = est.present ? est.value!.steps : 0;
+      final v = est.present ? est.value : null;
+      final estSteps = v?.steps ?? 0;
       final daySteps = liveStepsReal + estSteps;
       scMap?['steps'] = daySteps.toDouble();
+      // ACTIVE MINUTES is the primary, honest quantity here: 1 Hz cannot count
+      // steps (gait is 1.4-2.5 Hz and 120 spm aliases to DC at this rate), but
+      // it can resolve ambulatory MINUTES, which is also the unit public
+      // activity guidance is written in. The step figures are a RANGE over the
+      // free-living cadence band, and are absent entirely when the personal
+      // floor has not been established yet.
       bundle['steps'] = <String, dynamic>{
         'value': daySteps,
         'real_100hz': liveStepsReal, // AN-2554 over live windows (real count)
-        'estimated_1hz':
-            estSteps, // walking-min × cadence for uncovered minutes
-        'ambulatory_min': est.present ? est.value!.ambulatoryMinutes : 0,
-        'cadence_used_spm': est.present ? est.value!.cadenceUsed : 0,
+        'estimated_1hz': estSteps, // midpoint of the 1 Hz range
+        'estimated_1hz_low': v?.stepsLow,
+        'estimated_1hz_high': v?.stepsHigh,
+        'active_min': v?.activeMinutes ?? 0,
+        'cadence_low_spm': v?.cadenceLowSpm,
+        'cadence_high_spm': v?.cadenceHighSpm,
+        'dyn_floor_g': v?.dynFloorG,
+        'estimate_present': v != null,
         'confidence': liveStepsReal > 0
             ? 0.7
             : (est.present ? est.confidence : 0.2),
         'tier': liveStepsReal > 0 && estSteps == 0 ? 'HIGH' : 'ESTIMATE',
-        'inputs_used': const ['live_100hz_pedometer', 'enmo_1hz', 'hr_1hz'],
-        'note':
-            'real 100 Hz count for streamed time + 1 Hz walking estimate for '
-            'the rest (1 Hz cannot count steps directly)',
+        'inputs_used': const [
+          'live_100hz_pedometer',
+          'dyn_amp_1hz',
+          'hr_1hz',
+          'personal_dyn_floor',
+        ],
+        'note': v == null
+            ? 'real 100 Hz count only — the 1 Hz activity estimate needs a '
+                'personal movement baseline from several days of wear '
+                '(${est.note ?? 'need_baseline'})'
+            : 'real 100 Hz count for streamed time + ${v.activeMinutes} active '
+                'minutes estimated from 1 Hz for the rest (1 Hz cannot count '
+                'steps directly, so the step figure is a range)',
       };
+      if (v != null) scMap?['active_min'] = v.activeMinutes.toDouble();
       if (profile.isComplete) {
         final perMinFull = <double>[
           for (final h in hrPerMin)
@@ -2627,6 +2717,7 @@ class DerivationEngine {
     required int sleepOnsetSec,
     required int sleepOffsetSec,
     double? restingHr,
+    double? dynFloorG,
   }) {
     final activeMin = _activeMinutes(daySub, sleepOnsetSec, sleepOffsetSec);
     final wear = _wearBlock(daySub);
@@ -2682,8 +2773,15 @@ class DerivationEngine {
       // Steps do NOT need a profile: `dailyStepEstimate` falls back to the day's
       // own 10th-percentile HR when `restingHr` is null, which is data-derived,
       // not imputed. Pass the real value or nothing — never the old 60.0.
+      //
+      // This is the EARLY-READ path (what Today shows before the full day result
+      // exists); `_stepsAndEnergy` recomputes and overwrites it with the hybrid
+      // real-100 Hz + 1 Hz figure moments later. Without a personal floor the
+      // estimator abstains and `steps` stays null here, which is correct — the
+      // early read then shows no step figure rather than a fabricated one.
       final stepMetric = ana.dailyStepEstimate(
         motion,
+        personalDynFloorG: dynFloorG,
         hrPerMin: hrPerMinAll,
         restingHr: rhrForTrimp,
       );
@@ -3428,6 +3526,7 @@ class DerivationEngine {
       sleepOnsetSec: onset,
       sleepOffsetSec: offset,
       restingHr: inp.rhr,
+      dynFloorG: inp.dynFloorG,
     );
     _applyWakeDayFeatures(bundlePatch, scMap, wake);
     _stepsAndEnergy(
@@ -3438,6 +3537,8 @@ class DerivationEngine {
       inp.coverageWindows,
       inp.liveStepsReal,
       inp.stepCalib,
+      inp.dynFloorG,
+      inp.dynHistoryDays,
     );
     // _stepsAndEnergy just corrected `steps`/`calories_total` in bundlePatch +
     // scMap using the hybrid real-100Hz + 1Hz-estimate count, but `wake` (built
@@ -3835,6 +3936,15 @@ class _DayBlocksInput {
   final List<List<int>> coverageWindows;
   final int liveStepsReal;
   final ana.StepCalibration? stepCalib;
+
+  /// PERSONAL ambulatory floor (g, dynAmp units) from trailing days, or null
+  /// when there isn't enough history yet — in which case the 1 Hz estimator
+  /// abstains rather than falling back to a constant. Computed on the main
+  /// isolate (it needs metric_series) and carried in, like the other history.
+  final double? dynFloorG;
+
+  /// How many trailing days backed [dynFloorG] — only for the cold-start note.
+  final int dynHistoryDays;
   final List<Map<String, dynamic>> savedSessions;
   final String date;
   final int dayEndSec;
@@ -3850,6 +3960,8 @@ class _DayBlocksInput {
     required this.coverageWindows,
     required this.liveStepsReal,
     required this.stepCalib,
+    required this.dynFloorG,
+    required this.dynHistoryDays,
     required this.savedSessions,
     required this.date,
     required this.dayEndSec,

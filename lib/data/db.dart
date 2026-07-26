@@ -18,6 +18,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'day_label.dart';
+import 'live_coverage_policy.dart';
 import 'models.dart';
 
 class LocalDb {
@@ -736,6 +737,17 @@ class LocalDb {
   // Times are device epoch SECONDS (same clock as raw_records.rec_ts, since the
   // band's RTC is SET_CLOCK'd to phone time on connect). `day` = local date label
   // of the window start (for per-day step attribution).
+  //
+  // HISTORICAL ROWS. Databases written before the window derivation was fixed
+  // contain ZERO-WIDTH rows (`end_ts == start_ts`) — the old writer took both
+  // ends from a band record timestamp that does not advance during a live
+  // session. They are left as they are: their real durations were never
+  // recorded, and widening them after the fact would replace one wrong extent
+  // with another while silently changing already-derived days. Readers must
+  // tolerate them — `coverageWindowsOverlapping` matches them (`end_ts >= lo`)
+  // and the derivation's minute test (`s + 60 > start && s < end`) still
+  // excludes the minute containing the row, so such a row under-excludes but
+  // never crashes or double-adds its steps.
   static Future<void> _createLiveCoverage(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS live_coverage (
@@ -752,17 +764,27 @@ class LocalDb {
   }
 
   /// Record a real 100 Hz step window (device-time seconds) + its step count.
+  ///
+  /// The window is normalised by [sanitizeCoverageWindow] first: a zero-width
+  /// window that claims steps is REPAIRED (widened to the duration those steps
+  /// physically imply) rather than dropped, because dropping it would lose a
+  /// real 100 Hz count; an inverted window is rejected. See that function for
+  /// the reasoning. This is a guard, not the derivation — the caller is
+  /// expected to have measured a real window (see
+  /// `deriveLiveCoverageWindow`); it exists so an upstream regression cannot
+  /// silently reintroduce degenerate rows.
   static Future<void> addLiveCoverage(
     int startTs,
     int endTs,
     int steps,
     String day,
   ) async {
-    if (steps <= 0 || endTs < startTs) return;
+    final w = sanitizeCoverageWindow(startTs, endTs, steps);
+    if (w == null) return;
     final db = await instance;
     await db.insert('live_coverage', {
-      'start_ts': startTs,
-      'end_ts': endTs,
+      'start_ts': w.startTs,
+      'end_ts': w.endTs,
       'steps': steps,
       'day': day,
     });
