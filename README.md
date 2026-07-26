@@ -243,7 +243,7 @@ different band is worth a great deal — see
 
 ## Star history
 
-<img src="docs/star-history.svg" alt="Star history for edge, protocol and analytics" width="760">
+<img src="docs/star-history.svg" alt="Star history for OpenStrap/edge" width="760">
 
 That cliff in mid-July is [Hackaday](https://hackaday.com/2026/07/15/making-a-locked-down-wearable-work-without-a-subscription/)
 and [Adafruit](https://blog.adafruit.com/2026/07/15/openstrap-edge-makes-a-whoop-4-0-band-useful-without-a-subscription)
@@ -253,7 +253,9 @@ covering it on the same day.
 ([workflow](.github/workflows/star-history.yml)) rather than embedded from
 star-history.com or starchart.cc — the first refuses these repos outright, the
 second rate-limits, and neither should be making a request from a page about
-keeping your data to yourself.</sub>
+keeping your data to yourself. Charts this repo only: a workflow's built-in token
+can't read sibling repos. Set `STAR_HISTORY_REPOS` with a cross-repo PAT to add
+them.</sub>
 
 ## Support the work
 
