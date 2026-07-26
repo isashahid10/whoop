@@ -2,9 +2,27 @@
 
 An app that makes a WHOOP 4.0 useful without a WHOOP subscription. Connects to the band over Bluetooth, computes everything on your phone locally iOS and Android.
 
+[![test](https://github.com/OpenStrap/edge/actions/workflows/test.yml/badge.svg)](https://github.com/OpenStrap/edge/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![TestFlight](https://img.shields.io/badge/iOS-TestFlight-0D96F6?logo=apple&logoColor=white)](https://testflight.apple.com/join/2BVSwq65)
+[![APK](https://img.shields.io/github/v/release/OpenStrap/edge?label=Android%20APK&logo=android&logoColor=white)](https://github.com/OpenStrap/edge/releases/latest)
+
 > Not affiliated with WHOOP. Not a clone of their app or their scores — see below.
 
 <img width="1774" height="887" alt="image" src="https://github.com/user-attachments/assets/66653a25-ac97-4f8c-8be1-6c9fceeaf08b" />
+
+## Install
+
+| | |
+|---|---|
+| **iOS** | **[Join the TestFlight beta →](https://testflight.apple.com/join/2BVSwq65)** — normal TestFlight install, no sideloading, no computer needed. |
+| **Android** | **[Download the APK →](https://github.com/OpenStrap/edge/releases/latest)** — allow installs from unknown sources and open it. |
+
+Quit the official WHOOP app before you pair. Bluetooth only lets one app own the
+band at a time.
+
+Prefer to sideload the unsigned IPA instead of using TestFlight? That still
+works — see [`guides/IOS_SIDELOAD.md`](guides/IOS_SIDELOAD.md).
 
 ## What made me build this app 
 
@@ -65,11 +83,11 @@ shortcuts.
   "usually," not "always." 
 - Metrics are approximations off published research — not medical-grade, not validated
   against a lab, don't treat any of it as a diagnosis.
-- Sideload only right now — not on the App Store or Play Store. You're installing an APK
-  or an unsigned IPA straight off Releases. Android's just "allow unknown sources" and
-  you're done. iOS needs one extra tool — see
-  [`guides/IOS_SIDELOAD.md`](guides/IOS_SIDELOAD.md) if you just want the app and aren't
-  planning to build it yourself.
+- Not on the App Store or Play Store yet. iOS is a public TestFlight beta, which is a
+  normal install but still a beta; Android is an APK straight off Releases.
+- WHOOP 5.0 / MG support is in progress and **experimental** — the band is detected and
+  spoken to, but it hasn't been validated against real 5.0 hardware. WHOOP 4.0 is the
+  only one that's actually tested.
 
 ## Run it
 
@@ -139,3 +157,18 @@ Found something broken? Open an issue. Found something broken and fixed it? Even
 send the PR. Protocol-level stuff (new record types, opcodes) belongs in the protocol
 repo, metric/formula changes belong in analytics, anything about the app itself —
 Bluetooth, storage, UI — belongs here.
+
+[**CONTRIBUTING.md**](CONTRIBUTING.md) has the details: which repo a change belongs in,
+how to run the three packages together locally, and the two rules that matter most —
+never fabricate a number when the data isn't there, and cite the published method you're
+implementing.
+
+Security problems shouldn't go in a public issue — see [SECURITY.md](SECURITY.md) for
+private reporting.
+
+## Support the work
+
+Free, MIT, no company behind it. If it gave your band a second life:
+[**DONATE.md**](DONATE.md) has BTC and EVM addresses. Bug reports from real bands are
+worth more than money, though — there's only one person's physiology in the test data
+otherwise.

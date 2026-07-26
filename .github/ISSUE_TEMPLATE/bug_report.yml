@@ -1,0 +1,90 @@
+name: Bug report
+description: Something in the app is broken or wrong
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A couple of things make bugs much faster to fix:
+        the app version, and whether the number is *wrong* or *missing* — those
+        are usually different causes.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw, and what you expected instead.
+      placeholder: |
+        Readiness showed "—" all morning even though the band synced overnight.
+        I expected a score by the time I woke up.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: If you can. "It just happens every morning" is a valid answer.
+      placeholder: |
+        1. Wear the band overnight
+        2. Open the app in the morning
+        3. Today screen shows "—"
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Profile → scroll to the bottom, or the release you installed.
+      placeholder: "0.9.20"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - iOS (TestFlight)
+        - iOS (sideloaded IPA)
+        - Android (APK)
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Phone model and OS version
+      placeholder: "Pixel 8, Android 15 / iPhone 15 Pro, iOS 18.5"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: band
+    attributes:
+      label: Which band?
+      options:
+        - WHOOP 4.0
+        - WHOOP 5.0 / MG (experimental — expect breakage)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Very helpful for anything visual. Redact whatever you want to.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Quick checks
+      options:
+        - label: The official WHOOP app is not also connected to this band
+          required: false
+        - label: I've searched existing issues for this
+          required: false

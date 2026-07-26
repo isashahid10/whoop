@@ -212,3 +212,188 @@ footer.site a {
 strong {
   font-weight: 600;
 }
+
+/* ── Landing page (index.html) ────────────────────────────────────────────
+   Everything below is used only by the landing page. The legal pages keep
+   the plain document styling above. */
+
+.fineprint {
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.hero {
+  padding: 8px 0 4px;
+}
+
+.hero h1 {
+  font-size: clamp(28px, 5.2vw, 40px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin-bottom: 16px;
+}
+
+.lede {
+  font-size: 17px;
+  color: var(--fg-muted);
+  max-width: 34em;
+  margin-bottom: 28px;
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.cta {
+  display: block;
+  flex: 1 1 220px;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--fg);
+  font-weight: 650;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.cta:hover {
+  border-color: var(--accent);
+}
+
+.cta span {
+  display: block;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--fg-muted);
+  margin-top: 2px;
+}
+
+.cta.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.cta.primary span {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.cta.primary:hover {
+  filter: brightness(1.08);
+}
+
+.shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin: 44px 0 10px;
+}
+
+.shots figure {
+  margin: 0;
+}
+
+.shots img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.shots figcaption {
+  font-size: 13px;
+  color: var(--fg-muted);
+  text-align: center;
+  margin-top: 8px;
+}
+
+.shots-note {
+  font-size: 13px;
+  color: var(--fg-muted);
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 44px;
+}
+
+.card {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.card h2 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.card p {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--fg-muted);
+}
+
+.honest ul {
+  padding-left: 20px;
+}
+
+.honest li {
+  margin-bottom: 10px;
+  color: var(--fg-muted);
+}
+
+.honest li strong {
+  color: var(--fg);
+}
+
+.pipeline {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--fg-muted);
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.addr {
+  margin: 0 0 16px;
+}
+
+.addr dt {
+  font-weight: 650;
+  font-size: 13px;
+  color: var(--fg-muted);
+  margin-top: 12px;
+}
+
+.addr dd {
+  margin: 4px 0 0;
+}
+
+.addr code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow-x: auto;
+  white-space: nowrap;
+  user-select: all;
+}

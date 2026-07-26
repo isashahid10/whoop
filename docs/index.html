@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenStrap Edge — use your WHOOP 4.0 without a subscription</title>
+<meta name="description" content="An open-source app that makes a WHOOP 4.0 useful without a WHOOP subscription. Pairs over Bluetooth, computes everything on your phone. No cloud, no account, MIT licensed.">
+<meta property="og:title" content="OpenStrap Edge — use your WHOOP 4.0 without a subscription">
+<meta property="og:description" content="Pairs over Bluetooth, computes everything on your phone. No cloud, no account, MIT licensed.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://openstrap.github.io/edge/">
+<meta property="og:image" content="https://raw.githubusercontent.com/OpenStrap/edge/main/screenshots/today.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="index.html">Edge</a>
+    <nav class="pages">
+      <a href="https://github.com/OpenStrap/edge">GitHub</a>
+      <a href="legal.html">Legal</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Your WHOOP&nbsp;4.0 doesn&rsquo;t stop working when the subscription does.</h1>
+      <p class="lede">
+        Only the app goes dark. Edge pairs with the band over Bluetooth, decodes what it
+        recorded, and works out your sleep, recovery, strain and the rest &mdash;
+        entirely on your phone. No account, no cloud, nothing to pay.
+      </p>
+
+      <div class="cta-row">
+        <a class="cta primary" href="https://testflight.apple.com/join/2BVSwq65">
+          Get it on iOS
+          <span>TestFlight beta</span>
+        </a>
+        <a class="cta" href="https://github.com/OpenStrap/edge/releases/latest">
+          Get it on Android
+          <span>APK from Releases</span>
+        </a>
+      </div>
+
+      <p class="fineprint">
+        Free and MIT licensed. Not affiliated with WHOOP.
+        Tested on WHOOP&nbsp;4.0 &mdash; 5.0&nbsp;/&nbsp;MG support is experimental.
+      </p>
+    </section>
+
+    <section class="shots">
+      <figure>
+        <img src="https://raw.githubusercontent.com/OpenStrap/edge/main/screenshots/today.png" alt="The Today screen, showing a readiness ring and the day's headline metrics" loading="lazy">
+        <figcaption>Today</figcaption>
+      </figure>
+      <figure>
+        <img src="https://raw.githubusercontent.com/OpenStrap/edge/main/screenshots/sleep.png" alt="The Sleep screen, showing a hypnogram and sleep stage breakdown" loading="lazy">
+        <figcaption>Sleep</figcaption>
+      </figure>
+      <figure>
+        <img src="https://raw.githubusercontent.com/OpenStrap/edge/main/screenshots/heart.png" alt="The Heart screen, showing heart rate and HRV trends" loading="lazy">
+        <figcaption>Heart</figcaption>
+      </figure>
+      <figure>
+        <img src="https://raw.githubusercontent.com/OpenStrap/edge/main/screenshots/recap.png" alt="The weekly Recap screen" loading="lazy">
+        <figcaption>Recap</figcaption>
+      </figure>
+    </section>
+    <p class="shots-note">Every screenshot is real output from a WHOOP&nbsp;4.0.</p>
+
+    <section class="cards">
+      <div class="card">
+        <h2>It runs on your phone</h2>
+        <p>
+          The band talks to the app, the app decodes the bytes and computes every metric
+          locally, and the results are stored on the device. There&rsquo;s no server that
+          sees your health data &mdash; that isn&rsquo;t a setting, it&rsquo;s the
+          architecture.
+        </p>
+      </div>
+      <div class="card">
+        <h2>Published methods, cited</h2>
+        <p>
+          Banister TRIMP, Cole&ndash;Kripke, Lomb&ndash;Scargle, van&nbsp;Hees and friends.
+          Nothing invented, no neural net guessing at WHOOP&rsquo;s formulas. You can go
+          read the paper and decide whether you trust the number.
+        </p>
+      </div>
+      <div class="card">
+        <h2>It admits what it doesn&rsquo;t know</h2>
+        <p>
+          Every metric carries a confidence and a tier. When the data isn&rsquo;t there
+          you get a dash, not a plausible-looking guess. SpO<sub>2</sub> and skin
+          temperature are relative-only, because that&rsquo;s what the band actually
+          gives up.
+        </p>
+      </div>
+      <div class="card">
+        <h2>Not a WHOOP clone</h2>
+        <p>
+          Different algorithms, different numbers. They have years of research and a
+          team; this is textbook methods over a reverse-engineered byte stream. It trends
+          correctly and it&rsquo;ll tell you when you&rsquo;re under-recovered. It
+          isn&rsquo;t their secret sauce and never claims to be.
+        </p>
+      </div>
+    </section>
+
+    <section class="honest">
+      <h2>Before you install</h2>
+      <ul>
+        <li><strong>Quit the official WHOOP app before pairing.</strong> Bluetooth only lets one app own the band at a time.</li>
+        <li><strong>Pick one and stay on it.</strong> A firmware push from the official app could change the records this depends on, and there&rsquo;s no fixing that from here.</li>
+        <li><strong>Not medical-grade.</strong> These are approximations from published research, not validated against a lab. Nothing here is a diagnosis.</li>
+        <li><strong>There are bugs.</strong> It&rsquo;s a beta built by one person. <a href="https://github.com/OpenStrap/edge/issues">Open an issue</a> when something looks wrong &mdash; that&rsquo;s genuinely the most useful thing you can do.</li>
+      </ul>
+    </section>
+
+    <section class="repos">
+      <h2>How it&rsquo;s put together</h2>
+      <p class="pipeline">band &rarr; Bluetooth &rarr; protocol decoder &rarr; local storage &rarr; analytics &rarr; the UI</p>
+      <div class="index-links">
+        <a href="https://github.com/OpenStrap/edge">
+          edge
+          <span>The app. Bluetooth, storage, the compute pipeline, every screen.</span>
+        </a>
+        <a href="https://github.com/OpenStrap/protocol">
+          protocol
+          <span>The decoders. Raw band bytes into named fields. Pure Dart, zero dependencies.</span>
+        </a>
+        <a href="https://github.com/OpenStrap/analytics">
+          analytics
+          <span>The math. Published, peer-reviewed methods with citations in the code.</span>
+        </a>
+        <a href="https://github.com/OpenStrap/research">
+          research
+          <span>The lab notebook. The protocol written down, plus a Python client.</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="support">
+      <h2>Support the work</h2>
+      <p>
+        Free, MIT licensed, no company behind it. Bug reports from real bands are worth
+        more than money &mdash; but if you&rsquo;d like to chip in:
+      </p>
+      <dl class="addr">
+        <dt>BTC</dt>
+        <dd><code>bc1qvtcch38dcwp967ar764uu6eetw7tf907844wfq</code></dd>
+        <dt>EVM</dt>
+        <dd><code>0x8310C89393366b7eBCD47ABa82e1dfB5ECeFFbD9</code></dd>
+      </dl>
+      <p class="fineprint">
+        Nothing is gated behind paying, and nothing ever will be.
+      </p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <p>
+      <a href="https://github.com/OpenStrap/edge">GitHub</a> &middot;
+      <a href="legal.html">Legal</a> &middot;
+      <a href="privacy.html">Privacy</a> &middot;
+      <a href="notice.html">Notice</a>
+    </p>
+    <p class="fineprint">
+      Not affiliated with, endorsed by, or connected to WHOOP,&nbsp;Inc.
+      &ldquo;WHOOP&rdquo; is their trademark, used only to say which device this talks to.
+      MIT licensed.
+    </p>
+  </footer>
+</div>
+</body>
+</html>
