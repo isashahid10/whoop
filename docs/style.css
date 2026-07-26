@@ -459,3 +459,78 @@ strong {
   word-break: break-all;
   white-space: normal;
 }
+
+/* ── Press strip ──────────────────────────────────────────────────────────
+   Sits directly under the hero: third-party corroboration is worth more than
+   another paragraph of our own claims, so it goes above the screenshots. */
+.press {
+  margin: 44px 0 8px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.press .eyebrow {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.press-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+.press figure {
+  margin: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.press blockquote {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--fg);
+  text-wrap: pretty;
+}
+
+/* Quote mark as a hanging accent rather than a decorative glyph blob. */
+.press blockquote::before {
+  content: "\201C";
+  color: var(--accent);
+  font-size: 28px;
+  line-height: 0;
+  vertical-align: -0.15em;
+  margin-right: 2px;
+}
+
+.press figcaption {
+  margin-top: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.press figcaption a {
+  font-weight: 650;
+  color: var(--fg);
+  text-decoration: none;
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 1px;
+}
+
+.press figcaption a:hover { color: var(--accent); }
+
+.press figcaption span {
+  color: var(--fg-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+
+.press > .fineprint { margin: 14px 0 0; }
