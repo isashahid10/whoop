@@ -137,9 +137,14 @@ def build_svg(series):
         parts.append(f'<text class="lgd" x="{PAD_L + 24}" y="{ly + 1}" '
                      f'font-size="11.5">{esc(label)} · {len(dates)}</text>')
 
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Stamp the most recent STAR, not "now". Using the wall clock would change
+    # the SVG on every run, so the workflow's `git diff --quiet` no-change path
+    # could never be taken and it would commit a pointless revision every week
+    # forever. Derived from the data, the file is byte-identical until a star
+    # actually arrives — which is exactly when a commit is warranted.
     parts.append(f'<text class="tick" x="{W - PAD_R}" y="{PAD_T + 3}" '
-                 f'font-size="10" text-anchor="end">updated {stamp}</text>')
+                 f'font-size="10" text-anchor="end">'
+                 f'to {t_max.strftime("%Y-%m-%d")}</text>')
     parts.append("</svg>")
     return "\n".join(parts)
 
@@ -147,11 +152,15 @@ def build_svg(series):
 def main():
     series = []
     for repo in REPOS:
+        # Fail the whole run rather than skipping a repo. A transient API error
+        # would otherwise silently publish a chart with a series missing, and
+        # the workflow would commit that over the last good one. Better to abort
+        # and leave the previously complete chart in place until next week.
         try:
             dates = stargazer_dates(repo)
         except RuntimeError as e:
-            print(f"warn: {e}", file=sys.stderr)
-            continue
+            raise SystemExit(f"error: {e} — aborting rather than publishing a "
+                             f"partial chart") from e
         series.append((repo.split("/")[1], dates))
         print(f"{repo}: {len(dates)} stars", file=sys.stderr)
 
