@@ -1,0 +1,67 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only: this job only builds and tests. Nothing here needs write access,
+# and it executes code from pull requests.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Don't leave GITHUB_TOKEN in .git/config where PR-authored test code
+          # could read it. Nothing in this job pushes back to the repo.
+          persist-credentials: false
+
+      # PINNED, not `channel: stable`. Two reasons, both found the hard way when
+      # this workflow first ran:
+      #
+      #  1. The repo does NOT currently build on Flutter 3.44.x. phosphor_flutter
+      #     2.1.0 extends IconData, which became a `final class` in 3.44, so
+      #     every widget test fails to compile:
+      #       "The class 'IconData' can't be extended outside of its library
+      #        because it's a final class."
+      #     Upgrading past 3.41.x needs phosphor_flutter bumped or dropped first.
+      #  2. CupertinoPageTransitionsBuilder moved between cupertino.dart and
+      #     material.dart across those versions, so theme.dart's imports are
+      #     version-sensitive too.
+      #
+      # A floating channel means the toolchain changes underneath an already
+      # reviewed commit — the same reasoning as the commit-SHA pins for sibling
+      # packages in pubspec.yaml. Bump this deliberately, with the phosphor
+      # dependency sorted out in the same change.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.6
+          channel: stable
+          cache: true
+
+      # Sibling packages resolve from their pinned commit SHAs in pubspec.yaml.
+      # There is no pubspec_overrides.yaml here — that file is gitignored and
+      # local-dev only — so CI tests exactly the pins a release would ship.
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      # --concurrency=1: the suite uses sqflite_common_ffi against real database
+      # files, and parallel workers race on them.
+      #
+      # The golden capture (whoop_hist.jsonl) is a real band recording kept
+      # beside the repo rather than committed to it, so the two derivation-replay
+      # tests SKIP here and run locally.
+      - name: Test
+        run: flutter test --concurrency=1 --reporter=expanded

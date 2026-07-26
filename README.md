@@ -2,9 +2,27 @@
 
 An app that makes a WHOOP 4.0 useful without a WHOOP subscription. Connects to the band over Bluetooth, computes everything on your phone locally iOS and Android.
 
+[![test](https://github.com/OpenStrap/edge/actions/workflows/test.yml/badge.svg)](https://github.com/OpenStrap/edge/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![TestFlight](https://img.shields.io/badge/iOS-TestFlight-0D96F6?logo=apple&logoColor=white)](https://testflight.apple.com/join/2BVSwq65)
+[![APK](https://img.shields.io/github/v/release/OpenStrap/edge?label=Android%20APK&logo=android&logoColor=white)](https://github.com/OpenStrap/edge/releases/latest)
+
 > Not affiliated with WHOOP. Not a clone of their app or their scores — see below.
 
 <img width="1774" height="887" alt="image" src="https://github.com/user-attachments/assets/66653a25-ac97-4f8c-8be1-6c9fceeaf08b" />
+
+## Install
+
+| | |
+|---|---|
+| **iOS** | **[Join the TestFlight beta →](https://testflight.apple.com/join/2BVSwq65)** — normal TestFlight install, no sideloading, no computer needed. |
+| **Android** | **[Download the APK →](https://github.com/OpenStrap/edge/releases/latest)** — allow installs from unknown sources and open it. |
+
+Quit the official WHOOP app before you pair. Bluetooth only lets one app own the
+band at a time.
+
+Prefer to sideload the unsigned IPA instead of using TestFlight? That still
+works — see [`guides/IOS_SIDELOAD.md`](guides/IOS_SIDELOAD.md).
 
 ## What made me build this app 
 
@@ -53,23 +71,37 @@ spot-check, real-time breathing coherence.
 **Activity** — auto-detected workouts, live workout tracking with GPS routes, heart-rate
 zones.
 
+**Your data, elsewhere** — writes to **Apple Health** (HealthKit) and **Google Health
+Connect**: sleep stages, resting HR, HRV, respiratory rate, active energy and workouts.
+Only things the band actually measures — never the derived scores, which have no native
+type and would be fabricated. Exports are idempotent, so a day re-deriving never
+duplicates samples. You can also export the entire local SQLite database to a file
+whenever you like — it's your data, in a format anything can open.
+
+**Background sync** — the band drains without you opening the app. Android runs a
+foreground service with a 15-minute watchdog worker and re-attaches via
+CompanionDeviceManager. iOS uses a background processing task plus a light refresh task,
+and a separate restore Bluetooth central that relaunches the app when the band
+reconnects.
+
 **Everything else** — trends/history, a journal with on-device correlation insights
 ("what actually moves your numbers"), cycle tracking, a deterministic coach, a shareable
 weekly recap, a BYOK AI assistant, home-screen widgets, iOS Live Activities, Siri
-shortcuts.
+shortcuts, a smart alarm that buzzes the band.
 
 ## What doesn't work (yet, or maybe ever)
 
-- iOS background sync is best-effort. Apple doesn't give third-party apps a real
-  background-service option, so syncing while you haven't opened the app in a while is
-  "usually," not "always." 
+- iOS background sync is best-effort. It genuinely works (see above), but Apple doesn't
+  give third-party apps a real background-service option, so the OS decides when those
+  tasks actually run. Syncing while you haven't opened the app in a while is "usually,"
+  not "always." Android has no such limit.
 - Metrics are approximations off published research — not medical-grade, not validated
   against a lab, don't treat any of it as a diagnosis.
-- Sideload only right now — not on the App Store or Play Store. You're installing an APK
-  or an unsigned IPA straight off Releases. Android's just "allow unknown sources" and
-  you're done. iOS needs one extra tool — see
-  [`guides/IOS_SIDELOAD.md`](guides/IOS_SIDELOAD.md) if you just want the app and aren't
-  planning to build it yourself.
+- Not on the App Store or Play Store yet. iOS is a public TestFlight beta, which is a
+  normal install but still a beta; Android is an APK straight off Releases.
+- WHOOP 5.0 / MG support is in progress and **experimental** — the band is detected and
+  spoken to, but it hasn't been validated against real 5.0 hardware. WHOOP 4.0 is the
+  only one that's actually tested.
 
 ## Run it
 
@@ -114,10 +146,27 @@ you're into this kind of thing.
 ## Your data stays on your phone
 
 Everything's computed and stored locally. No cloud account required, no backend this
-needs to work day to day. The only network calls this app ever makes are three narrow,
-optional things — a one-time legacy-account import if you had an old cloud account, an
-OTA/announcement pointer, and a BYOK LLM proxy for the AI assistant. None of them are
-required for the app to work.
+needs to work day to day. **Your health data never leaves the device unless you
+explicitly send it somewhere.**
+
+Being precise about the network, since "no cloud" gets said too loosely. Nothing below
+is required for the app to work, and none of it carries health data except the two you
+turn on yourself:
+
+- **Anonymous diagnostics** (Firebase crash/performance). **On by default in GitHub
+  release builds** — switch it off in your profile and collection stops immediately.
+  **Not present at all** in App Store / Play Store builds. Never includes health data.
+- **OTA/announcement pointer** — checks whether there's a newer build.
+- **Legacy account import** — one-time, only if you had an old OpenStrap cloud account.
+- **BYOK AI assistant** — only if you configure a provider. Your key, your account. Be
+  aware that **the prompts contain your health data**: to answer "why is my recovery
+  low", the assistant is given your metrics to read. That data goes to whichever
+  provider you chose, under their policies, not ours.
+- **Health-data contribution** — opt-in, off by default, GitHub builds only. Uploads
+  your local database wholesale, which is the entire point of it. It's the only thing
+  here that sends the whole database rather than a slice.
+
+Full detail in [PRIVACY.md](PRIVACY.md).
 
 ## Repo layout
 
@@ -139,3 +188,18 @@ Found something broken? Open an issue. Found something broken and fixed it? Even
 send the PR. Protocol-level stuff (new record types, opcodes) belongs in the protocol
 repo, metric/formula changes belong in analytics, anything about the app itself —
 Bluetooth, storage, UI — belongs here.
+
+[**CONTRIBUTING.md**](CONTRIBUTING.md) has the details: which repo a change belongs in,
+how to run the three packages together locally, and the two rules that matter most —
+never fabricate a number when the data isn't there, and cite the published method you're
+implementing.
+
+Security problems shouldn't go in a public issue — see [SECURITY.md](SECURITY.md) for
+private reporting.
+
+## Support the work
+
+Free, MIT, no company behind it. If it gave your band a second life:
+[**DONATE.md**](DONATE.md) has BTC and EVM addresses. Bug reports from real bands are
+worth more than money, though — there's only one person's physiology in the test data
+otherwise.

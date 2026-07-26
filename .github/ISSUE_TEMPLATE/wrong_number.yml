@@ -1,0 +1,85 @@
+name: A metric looks wrong
+description: A number is displayed, but you think it's incorrect
+labels: ["analytics", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth saying up front, so nobody wastes time: **OpenStrap's numbers are
+        not meant to match WHOOP's.** Different algorithms, published methods,
+        computed from a reverse-engineered byte stream. "It doesn't match the
+        WHOOP app" on its own isn't a bug.
+
+        What *is* a bug: a number that's physiologically implausible, one that
+        contradicts the app's own raw data, one that jumps around without
+        cause, or one that's confidently wrong when the underlying data is
+        clearly missing.
+
+  - type: input
+    id: metric
+    attributes:
+      label: Which metric?
+      placeholder: "Readiness / RHR / Sleep stages / Strain / Steps / …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: shown
+    attributes:
+      label: What it showed, and why you think it's wrong
+      description: >-
+        Include the value, the day, and what you'd have expected. If another
+        screen in the app disagrees with it, that's a strong signal — say so.
+      placeholder: |
+        Readiness 100 after about 10 minutes of wear. There's no overnight data
+        yet, so it shouldn't be able to produce a confident score at all.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of wrong?
+      options:
+        - Physiologically implausible (impossible value)
+        - Contradicts other screens in this app
+        - Confident number where the data is missing (should show "—")
+        - Shows "—" where there clearly is data
+        - Jumps or changes without new data
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      placeholder: "0.9.20"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: band
+    attributes:
+      label: Which band?
+      description: >-
+        Matters more than it looks — WHOOP 5.0 / MG feeds a thinner record than
+        4.0 does, so a metric can be wrong on one and fine on the other.
+      options:
+        - WHOOP 4.0
+        - WHOOP 5.0 / MG (experimental — expect breakage)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: >-
+        The metric screen plus its trend view is ideal. This issue is PUBLIC and
+        stays public — redact health values, dates, names, and any device or
+        account identifiers first. The shape of a chart is usually enough; we
+        don't need your actual numbers to debug this.
+    validations:
+      required: false

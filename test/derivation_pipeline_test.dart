@@ -34,6 +34,13 @@ void main() {
   // never from receive time. decodeRecTs is the pure resolver used at insert AND
   // in the v6 migration backfill — if it returned the fallback (≈now) the whole
   // multi-day backfill would collapse into one "today" bucket and hang derivation.
+  // The fixture is a real band capture kept beside the repo, not inside it, so
+  // it is there for local runs and absent in CI. Skip rather than fail when it
+  // is missing — a green CI must not depend on an untracked file.
+  final skipNoFixture = fixtureFile() == null
+      ? 'whoop_hist.jsonl fixture not found beside the repo'
+      : null;
+
   test('decodeRecTs reads the frame\'s real ts, not the fallback', () {
     final f = fixtureFile();
     expect(f, isNotNull, reason: 'whoop_hist.jsonl fixture not found');
@@ -59,7 +66,7 @@ void main() {
     expect(decodedCount, greaterThan(50), reason: 'decoded real frames');
     // Every decoded frame bucketed by its own real day (here all one day).
     expect(dayLabels, isNotEmpty);
-  });
+  }, skip: skipNoFixture);
 
   test('V2 path: decodeSubstrate → segmentation → deriveDayBundle is sane', () {
     final f = fixtureFile();
@@ -194,7 +201,7 @@ void main() {
     final rhrMetric = (daily['resting_hr'] as Map).cast<String, dynamic>();
     expect(rhrMetric['value'], isNotNull);
     expect(rhrMetric['value'], isNot('—'));
-  });
+  }, skip: skipNoFixture);
 }
 
 /// Minimal mirror of LocalRepositoryImpl.getToday() shaping (no DB).

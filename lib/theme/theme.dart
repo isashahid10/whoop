@@ -25,7 +25,12 @@
 // [Palette] (not the live getters) so the light + dark ThemeData objects are
 // each internally consistent regardless of which mode is currently active.
 
-import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
+// CupertinoPageTransitionsBuilder (used below for iOS/macOS) comes from
+// material.dart on the pinned toolchain (Flutter 3.41.6 — see
+// .github/workflows/test.yml). It moved between cupertino.dart and
+// material.dart across Flutter versions, so if you bump the pin and this
+// suddenly fails to resolve, re-add:
+//   import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'page_transitions.dart';
