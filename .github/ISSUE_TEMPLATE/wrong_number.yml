@@ -58,6 +58,20 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: band
+    attributes:
+      label: Which band?
+      description: >-
+        Matters more than it looks — WHOOP 5.0 / MG feeds a thinner record than
+        4.0 does, so a metric can be wrong on one and fine on the other.
+      options:
+        - WHOOP 4.0
+        - WHOOP 5.0 / MG (experimental — expect breakage)
+        - Not sure
+    validations:
+      required: true
+
   - type: textarea
     id: screenshots
     attributes:

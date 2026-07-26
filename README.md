@@ -158,11 +158,13 @@ turn on yourself:
   **Not present at all** in App Store / Play Store builds. Never includes health data.
 - **OTA/announcement pointer** — checks whether there's a newer build.
 - **Legacy account import** — one-time, only if you had an old OpenStrap cloud account.
-- **BYOK AI assistant** — only if you configure a provider; your key, your account,
-  prompts go to whoever you chose.
-- **Health-data contribution** — opt-in, off by default, GitHub builds only. This one
-  does upload your local database, which is the entire point of it, and it's the only
-  thing here that does.
+- **BYOK AI assistant** — only if you configure a provider. Your key, your account. Be
+  aware that **the prompts contain your health data**: to answer "why is my recovery
+  low", the assistant is given your metrics to read. That data goes to whichever
+  provider you chose, under their policies, not ours.
+- **Health-data contribution** — opt-in, off by default, GitHub builds only. Uploads
+  your local database wholesale, which is the entire point of it. It's the only thing
+  here that sends the whole database rather than a slice.
 
 Full detail in [PRIVACY.md](PRIVACY.md).
 
