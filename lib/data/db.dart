@@ -142,6 +142,7 @@ class LocalDb {
         await _createWorkoutSuggestions(db);
         await _createSleepOverride(db);
         await _createWorkoutRoute(db);
+        await _createNotifFired(db);
         await _ensureCoachViews(db);
       },
       onUpgrade: (db, oldV, newV) async {
@@ -345,11 +346,21 @@ class LocalDb {
           // right.
           await _ensureDayResultPartialColumn(db);
         }
+        if (oldV < 26) {
+          // Cross-isolate fire-once for notifications. The dedupe guard used to
+          // live entirely in SharedPreferences, where a check and a record are
+          // two separate operations — so the foreground and WorkManager derive
+          // isolates could both read "not fired" and both alert (issue #136's
+          // tail). This table makes the claim a single atomic INSERT OR IGNORE.
+          // Purely additive; the legacy prefs keys are migrated lazily on first
+          // use by FiredKeyStore, so nothing is lost on upgrade.
+          await _createNotifFired(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
       },
-      version: 25,
+      version: 26,
     );
   }
 
@@ -398,6 +409,7 @@ class LocalDb {
     await _ensureWorkoutRouteSpeed(db);
     await _ensureDayResultSkippedColumn(db);
     await _ensureDayResultPartialColumn(db);
+    await _createNotifFired(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
@@ -497,6 +509,114 @@ class LocalDb {
   //   source: 'manual'    — user typed the times
   //           'confirmed' — user accepted the fallback's proposed window
   // Times are epoch SECONDS (phone clock; raw rec_ts is SET_CLOCK'd to match).
+  /// The cross-isolate fire-once claim ledger for notification dedupeKeys.
+  ///
+  /// SharedPreferences CANNOT enforce fire-once across isolates, however fresh
+  /// its reads: a check and a record are two independent operations, so the
+  /// foreground derive isolate and the WorkManager background derive isolate
+  /// can both read "not fired" before either writes, and both alert. SQLite
+  /// can: `INSERT OR IGNORE` against a PRIMARY KEY is ONE atomic statement, and
+  /// writers are serialised (a single native handle per process, and SQLite's
+  /// own write lock across handles), so for a given key exactly one caller ever
+  /// observes `changes() == 1`. That caller owns the fire; everyone else backs
+  /// off. See [claimNotifFired] and lib/notify/fired_keys.dart.
+  static Future<void> _createNotifFired(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS notif_fired (
+        key TEXT PRIMARY KEY,
+        fired_at INTEGER NOT NULL
+      )
+    ''');
+  }
+
+  /// Atomically claim [key] for a one-time OS notification fire.
+  ///
+  /// Returns true iff THIS caller won the claim (the row did not exist and we
+  /// inserted it). A concurrent claimant — in this isolate or the other
+  /// derivation isolate — gets false and MUST NOT present.
+  ///
+  /// Throws if the claim can't be decided, deliberately: the caller falls back
+  /// to the best-effort store rather than treating an unusable DB as "already
+  /// fired", which would silently swallow every notification on the device.
+  static Future<bool> claimNotifFired(String key, {int? firedAtMs}) async {
+    final now = firedAtMs ?? DateTime.now().millisecondsSinceEpoch;
+    final won = await _guardedWrite<bool>((db) async {
+      return db.transaction<bool>((txn) async {
+        await txn.rawInsert(
+          'INSERT OR IGNORE INTO notif_fired(key, fired_at) VALUES(?, ?)',
+          [key, now],
+        );
+        // changes() reports rows touched by the statement just executed on this
+        // connection; inside the transaction that is unambiguously our INSERT.
+        final n = Sqflite.firstIntValue(await txn.rawQuery('SELECT changes()'));
+        return n == 1;
+      });
+    });
+    if (won == null) throw StateError('notif_fired: claim undecided');
+    return won;
+  }
+
+  /// Give back a claim taken by [claimNotifFired] — used when the present did
+  /// NOT actually happen (permission denied, OS error), so a later attempt can
+  /// still fire. Best-effort: never throws into the notification path.
+  static Future<void> releaseNotifFired(String key) async {
+    await _guardedWrite<int>(
+      (db) => db.delete('notif_fired', where: 'key = ?', whereArgs: [key]),
+      bestEffort: true,
+    );
+  }
+
+  /// Whether [key] has already been claimed (read-only; does not claim).
+  static Future<bool> notifFiredExists(String key) async {
+    final db = await instance;
+    final rows = await db.query(
+      'notif_fired',
+      columns: ['key'],
+      where: 'key = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  /// Seed claims for [keys] without taking ownership — used once to carry the
+  /// legacy SharedPreferences fired-key list over, so keys that already fired
+  /// under the old store don't re-fire on the upgrade.
+  static Future<void> seedNotifFired(
+    Iterable<String> keys, {
+    int? firedAtMs,
+  }) async {
+    if (keys.isEmpty) return;
+    final now = firedAtMs ?? DateTime.now().millisecondsSinceEpoch;
+    await _guardedWrite<void>((db) async {
+      final batch = db.batch();
+      for (final k in keys) {
+        batch.rawInsert(
+          'INSERT OR IGNORE INTO notif_fired(key, fired_at) VALUES(?, ?)',
+          [k, now],
+        );
+      }
+      await batch.commit(noResult: true);
+    }, bestEffort: true);
+  }
+
+  /// Drop dated claims whose leading "YYYY-MM-DD" is before [cutoffDate].
+  ///
+  /// Undated keys (e.g. `alarm_fired:<epoch>`) are left alone: they have no day
+  /// to expire against, and they're rare enough to be self-limiting. Matches
+  /// the retention semantics of the SharedPreferences fallback exactly.
+  static Future<void> pruneNotifFired(String cutoffDate) async {
+    await _guardedWrite<int>(
+      (db) => db.rawDelete(
+        "DELETE FROM notif_fired "
+        "WHERE substr(key, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "
+        "AND substr(key, 1, 10) < ?",
+        [cutoffDate],
+      ),
+      bestEffort: true,
+    );
+  }
+
   static Future<void> _createSleepOverride(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sleep_override (
@@ -3038,6 +3158,7 @@ class LocalDb {
       'wake_day_features',
       'live_coverage',
       'workout_route',
+      'notif_fired',
     ];
 
     final missingTables = <String>[];

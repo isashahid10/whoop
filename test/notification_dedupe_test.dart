@@ -4,11 +4,20 @@
 // persisted across restarts, while a fresh (e.g. next-day) key still fires and
 // the existing category/quiet-hours gating is untouched. We inject a fake
 // present sink (counts calls, no device) and a mocked SharedPreferences.
+//
+// NOTE — this suite runs with NO sqlite factory registered, so FiredKeyStore's
+// atomic SQLite claim is unavailable and every test here exercises its DEGRADED
+// SharedPreferences fallback. That's deliberate: the fallback is what runs when
+// the DB is torn down mid-background-pass, and it must still dedupe. The atomic
+// claim itself (and the legacy-list migration) is covered against a real DB in
+// notification_claim_atomic_test.dart.
 
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:openstrap_edge/data/day_label.dart';
 
 import 'package:openstrap_edge/notify/fired_keys.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
@@ -271,10 +280,12 @@ void main() {
     });
   });
 
-  group('FiredKeyStore per-key + retention', () {
-    // A YYYY-MM-DD offset from today, for retention-window assertions.
+  group('FiredKeyStore per-key + retention (degraded mode)', () {
+    // A local YYYY-MM-DD offset from today, for retention-window assertions.
+    // dayLabelOf, not raw toIso8601String: day labels are LOCAL everywhere, and
+    // the store's own cutoff is computed the same way.
     String dayOffset(int days) =>
-        DateTime.now().add(Duration(days: days)).toIso8601String().substring(0, 10);
+        dayLabelOf(DateTime.now().add(Duration(days: days)));
 
     test('hasFired reflects recordFired', () async {
       SharedPreferences.setMockInitialValues({});
