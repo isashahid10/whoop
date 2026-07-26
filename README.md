@@ -249,13 +249,7 @@ That cliff in mid-July is [Hackaday](https://hackaday.com/2026/07/15/making-a-lo
 and [Adafruit](https://blog.adafruit.com/2026/07/15/openstrap-edge-makes-a-whoop-4-0-band-useful-without-a-subscription)
 covering it on the same day.
 
-<sub>Generated from the GitHub API and refreshed weekly
-([workflow](.github/workflows/star-history.yml)) rather than embedded from
-star-history.com or starchart.cc — the first refuses these repos outright, the
-second rate-limits, and neither should be making a request from a page about
-keeping your data to yourself. Charts this repo only: a workflow's built-in token
-can't read sibling repos. Set `STAR_HISTORY_REPOS` with a cross-repo PAT to add
-them.</sub>
+
 
 ## Support the work
 
