@@ -22,7 +22,7 @@
   <main>
 
     <h1>Privacy Policy — Edge / OpenStrap</h1>
-    <p class="updated">Last updated: July 20, 2026</p>
+    <p class="updated">Last updated: July 27, 2026</p>
 
     <p>Edge ("the App") is an independent, open-source project. It is not affiliated
       with, sponsored by, or endorsed by WHOOP, Inc.</p>
@@ -65,6 +65,42 @@
       security practices, not a system we built or operate ourselves — see
       Google's Firebase privacy &amp; security documentation:
       <a href="https://firebase.google.com/support/privacy">firebase.google.com/support/privacy</a>.</p>
+
+    <h2>Location and workout routes</h2>
+    <p>If you record a run, ride or walk, the App uses your device's location to
+      draw that workout's route. This is the most sensitive permission the App
+      asks for, so to be specific about it:</p>
+    <ul>
+      <li><strong>Only during a workout.</strong> Location is read only while a
+        run, ride or walk is actively recording. It stops the moment you finish.
+        The App never reads your location in the background at any other time.</li>
+      <li><strong>We never ask for "always" access.</strong> The App requests
+        <em>while-in-use</em> location only. Recording does continue while your
+        screen is locked or you switch apps — otherwise a workout would stop
+        being recorded the moment you put your phone in your pocket — but that
+        is scoped to the active workout, not a standing permission to follow
+        you.</li>
+      <li><strong>It is visible while it happens.</strong> On iOS the system's
+        blue location indicator is shown for the whole time the App is reading
+        location in the background. On Android the workout runs as a foreground
+        service with a visible, persistent notification.</li>
+      <li><strong>The App never sends your routes anywhere.</strong> A route is
+        written to a local database table on your phone and nowhere else. We do
+        not upload it, it is not included in anonymous diagnostics, and it is
+        not sent to your AI Coach provider — the coach is technically prevented
+        from reading route data, not merely asked not to.</li>
+      <li><strong>The one exception is you.</strong> If you tap Share on a
+        workout, the image you are shown includes a picture of your route, and
+        whatever you send it to receives it. That is your choice, you see the
+        image before it is sent, and it goes wherever you send it — not to
+        us.</li>
+      <li><strong>You can delete it.</strong> Deleting a workout deletes its
+        route with it, and uninstalling the App removes all of it
+        immediately.</li>
+    </ul>
+    <p>You can decline or revoke location access at any time in your device
+      settings. The App still records the workout — heart rate, duration, strain
+      and the rest — it simply has no map for it.</p>
 
     <h2>Optional, user-initiated integrations</h2>
     <p>If you choose to enable them, the App can also send data to services

@@ -62,6 +62,18 @@ Future<void> main() async {
   // freezing isn't a crash. See installJankWatchdog's doc for the threshold.
   TelemetryService.instance.installJankWatchdog();
 
+  // Cap the decoded-image cache. Flutter's default is 1000 entries / 100 MiB of
+  // DECODED bitmaps, which is sized for a photo feed, not for us. The only thing
+  // in this app that can fill it is map tiles: a retina 512² tile costs ~1 MiB
+  // decoded, so a long ride that pans continuously could sit on ~100 MiB of
+  // resident tile bitmaps — on top of the deliberately-persistent pre-warmed
+  // FlutterEngine — and push a 3–4 GB device into LMK/jetsam territory mid-
+  // workout. 40 MiB still covers several screens of tiles either side of the
+  // route; evicted tiles simply re-decode from the network layer.
+  PaintingBinding.instance.imageCache
+    ..maximumSizeBytes = 40 << 20
+    ..maximumSize = 200;
+
   // Android: Cancel the two legacy WorkManager tasks by unique name. A previous
   // version scheduled heavy derivation passes in the background, but they were
   // pulled due to isolate collisions/deadlocks with the main UI's database access.

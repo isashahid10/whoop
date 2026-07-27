@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:provider/provider.dart';
 
+import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/theme/theme.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/theme/tokens.dart';
@@ -329,14 +330,43 @@ void main() {
         t.view.physicalSize = const Size(390, 844);
         t.view.devicePixelRatio = 1.0;
         addTearDown(t.view.reset);
+
+        // The gallery now renders the real share card, which means real map
+        // tiles — and flutter_test's HTTP mock answers 400 for every request,
+        // so each tile throws through the image-resource service.
+        //
+        // Filtered rather than drained: this test exists to catch RenderFlex
+        // overflow across every section, so swallowing ALL exceptions would
+        // gut it. Only the image-resource library is dropped; everything else
+        // still fails the test. (Installed here in the body, not in setUp —
+        // the test binding replaces FlutterError.onError before the body runs.)
+        final previousOnError = FlutterError.onError;
+        FlutterError.onError = (details) {
+          if (details.library == 'image resource service') return;
+          if (details.exception.toString().contains('ClientException')) return;
+          previousOnError?.call(details);
+        };
+        addTearDown(() => FlutterError.onError = previousOnError);
+
         for (final (palette, choice) in [
           (kLightPalette, AppThemeChoice.light),
           (kDarkPalette, AppThemeChoice.dark),
         ]) {
           AppColors.active = palette;
           await t.pumpWidget(
-            ChangeNotifierProvider<ThemeController>.value(
-              value: ThemeController.seed(choice, Brightness.light),
+            MultiProvider(
+              providers: [
+                ChangeNotifierProvider<ThemeController>.value(
+                  value: ThemeController.seed(choice, Brightness.light),
+                ),
+                // The gallery's share-card demo formats distance and pace
+                // through UnitsController, exactly as the finish screen does.
+                // In the app this always sits above the gallery; the test host
+                // has to mirror that.
+                ChangeNotifierProvider<UnitsController>.value(
+                  value: UnitsController.seed(UnitSystem.metric),
+                ),
+              ],
               child: MaterialApp(
                 theme: buildOpenStrapTheme(palette),
                 home: const DesignGalleryScreen(),

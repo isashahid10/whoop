@@ -26,7 +26,6 @@ export 'motion.dart';
 export 'nav_pill.dart';
 export 'orbit_score.dart';
 export 'pressable.dart';
-export 'radial_heatmap.dart';
 export 'recap_card.dart';
 export 'ring_week.dart';
 export 'rows.dart';

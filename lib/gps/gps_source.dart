@@ -3,10 +3,15 @@
 // `GpsSample`s. Nothing here is uploaded: fixes flow only into the local
 // RouteTracker → workout_route table.
 //
-// v1 uses WHILE-IN-USE location. Continuous background ("always") location for
-// screen-off tracking is a documented follow-up (see Info.plist / manifest
-// notes); during a session the app is kept alive by the existing foreground
-// service, so fixes keep flowing while the app is foregrounded.
+// Authorization stays WHILE-IN-USE — "always" is never requested. Background
+// delivery during a workout does not need it: on iOS the "location"
+// UIBackgroundMode + allowsBackgroundLocationUpdates is enough (blue indicator
+// shown), and on Android the existing EdgeTrackingService claims the `location`
+// foreground-service type for the duration (EdgeTracking.start(location: true)).
+//
+// Both are armed ONLY while a route session is live. That is the difference
+// between a workout that survives a pocketed phone and one that silently dies
+// the moment the screen locks.
 
 import 'dart:io' show Platform;
 
@@ -92,12 +97,18 @@ class GpsSource {
         distanceFilter: distanceFilter,
         activityType: ActivityType.fitness,
         pauseLocationUpdatesAutomatically: false,
-        // Deliberately NOT enabling background location updates in v1 — the
-        // "location" UIBackgroundMode is intentionally absent. The live map UI
-        // shows a "keep the screen on" hint; RouteTracker's gap recovery starts
-        // a fresh segment when fixes resume after an unlock.
-        allowBackgroundLocationUpdates: false,
-        showBackgroundLocationIndicator: false,
+        // Background updates are the ONLY thing that keeps a workout alive
+        // across a screen lock or an app switch. Without this (and the
+        // matching "location" UIBackgroundMode) iOS suspends the process
+        // within seconds, the fix stream stops, and a suspended app is first
+        // in line for jetsam — which is what "the app closed mid-ride" was.
+        //
+        // Armed only for [stream], i.e. only while a route session is live,
+        // and torn down with the subscription when the workout ends. The blue
+        // background-location indicator stays ON for the whole session: if we
+        // are reading location with the app backgrounded, the user sees it.
+        allowBackgroundLocationUpdates: true,
+        showBackgroundLocationIndicator: true,
       );
     }
     return const LocationSettings(

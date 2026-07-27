@@ -1,13 +1,18 @@
-// StateChips — the mood/state chip row from the refs: a horizontally
-// scrollable set of pill chips (emoji or icon + word), single-select, calm.
-// Used for journal moods, coach intents ('Energize', 'Recover', 'Focus'),
-// filter rows. Selection is a soft accent fill — never a colour explosion.
+// State chips — the calm pill vocabulary: emoji-or-icon + word, soft accent
+// fill when on, never a colour explosion.
 //
-//   StateChips(
-//     chips: [StateChip('Energize', emoji: '⚡'), StateChip('Recover', …)],
-//     selected: 1,                    // null = nothing selected
-//     onSelect: (i) => …,
-//   )
+//  • [StateChipView] — ONE pill. Display-only (no onTap) or interactive.
+//    The Today readiness ring puts one under the score ('Push' / 'Focus' /
+//    'Recover'), tinted with the score colour.
+//  • [ToggleChip] — an independent on/off pill for multi-select rows
+//    (journal tags, cycle symptoms, notification kinds), painted from
+//    [StateChipView]'s tokens so both stay one look.
+//
+// There used to be a single-select `StateChips` row here too. Nothing in the
+// app single-selects a chip row (journal/cycle/profile all multi-select via
+// ToggleChip), so it was removed rather than kept as gallery-only scaffolding
+// — a Wrap of [StateChipView]s is the same thing in six lines if it's ever
+// wanted back.
 
 import 'package:flutter/material.dart';
 import '../kit/os_icons.dart';
@@ -24,9 +29,94 @@ class StateChip {
   const StateChip(this.label, {this.emoji, this.icon});
 }
 
-/// ToggleChip — the multi-select sibling of [StateChips]: one independent
-/// on/off pill (journal tags, cycle symptoms). Soft accent fill + tinted
-/// hairline when on; calm surface otherwise. Never a colour explosion.
+/// Soft fill for a chip in its ON state. With no [accent] this is the brand
+/// accent-soft token; with one, the accent is blended into the surface so a
+/// domain- or score-tinted chip reads as the same material, not as a second
+/// colour system.
+Color _chipFill(Color? accent) => accent == null
+    ? AppColors.accentSoft
+    : Color.alphaBlend(
+        accent.withValues(alpha: AppColors.isDark ? 0.18 : 0.13),
+        Elevation.surfaceAt(1),
+      );
+
+/// Ink for a chip in its ON state — the readable on-accent token by default,
+/// the accent itself when the caller tinted the chip.
+Color _chipInk(Color? accent) => accent ?? AppColors.onAccentSoft;
+
+/// StateChipView — ONE calm pill: icon/emoji + word, soft accent fill when on.
+///
+/// The single shared renderer behind every chip in the system, [ToggleChip]
+/// included. Pass [onTap] for an interactive chip; leave it null for a
+/// display-only badge (the Today readiness ring's status word).
+class StateChipView extends StatelessWidget {
+  final StateChip chip;
+  final bool selected;
+  final Color? accent;
+  final VoidCallback? onTap;
+
+  /// Slightly tighter padding for chips that sit inside a constrained
+  /// container (e.g. within the readiness ring).
+  final bool dense;
+
+  const StateChipView(
+    this.chip, {
+    super.key,
+    this.selected = false,
+    this.accent,
+    this.onTap,
+    this.dense = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final a = accent ?? AppColors.accent;
+    final ink = selected ? _chipInk(accent) : AppColors.inkSoft;
+    return Pressable(
+      pressedScale: 0.94,
+      borderRadius: BorderRadius.circular(R.pill),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: Motion.fast,
+        curve: Motion.curve,
+        padding: EdgeInsets.symmetric(
+          horizontal: dense ? Sp.x2 + 2 : Sp.x3 + 2,
+          vertical: dense ? 5 : 8,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? _chipFill(accent) : Elevation.surfaceAt(1),
+          borderRadius: BorderRadius.circular(R.pill),
+          border: Border.all(
+            color: selected ? a.withValues(alpha: 0.55) : AppColors.divider,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (chip.emoji != null) ...[
+              Text(chip.emoji!, style: const TextStyle(fontSize: 13)),
+              const SizedBox(width: Sp.x1 + 2),
+            ] else if (chip.icon != null) ...[
+              AppIcon(chip.icon!, size: dense ? 13 : 14, color: ink),
+              const SizedBox(width: Sp.x1 + 2),
+            ],
+            Text(
+              chip.label,
+              style: AppText.caption.copyWith(
+                fontWeight: FontWeight.w700,
+                color: ink,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ToggleChip — the multi-select pill: one independent on/off chip (journal
+/// tags, cycle symptoms). Soft accent fill + tinted hairline when on; calm
+/// surface otherwise. Same tokens as [StateChipView], label-only (no glyph).
 class ToggleChip extends StatelessWidget {
   final String label;
   final bool selected;
@@ -46,13 +136,6 @@ class ToggleChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final a = accent ?? AppColors.accent;
-    final ink = accent == null ? AppColors.onAccentSoft : a;
-    final fill = accent == null
-        ? AppColors.accentSoft
-        : Color.alphaBlend(
-            a.withValues(alpha: AppColors.isDark ? 0.18 : 0.13),
-            Elevation.surfaceAt(1),
-          );
     return Pressable(
       pressedScale: 0.94,
       borderRadius: BorderRadius.circular(R.pill),
@@ -62,7 +145,7 @@ class ToggleChip extends StatelessWidget {
         curve: Motion.curve,
         padding: const EdgeInsets.symmetric(horizontal: Sp.x3, vertical: Sp.x2),
         decoration: BoxDecoration(
-          color: selected ? fill : Elevation.surfaceAt(1),
+          color: selected ? _chipFill(accent) : Elevation.surfaceAt(1),
           borderRadius: BorderRadius.circular(R.pill),
           border: Border.all(
             color: selected ? a.withValues(alpha: 0.55) : AppColors.divider,
@@ -71,87 +154,9 @@ class ToggleChip extends StatelessWidget {
         child: Text(
           label,
           style: AppText.label.copyWith(
-            color: selected ? ink : AppColors.inkSoft,
+            color: selected ? _chipInk(accent) : AppColors.inkSoft,
             fontWeight: FontWeight.w700,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class StateChips extends StatelessWidget {
-  final List<StateChip> chips;
-  final int? selected;
-  final ValueChanged<int>? onSelect;
-  final Color? accent;
-
-  /// Scroll horizontally (default) or wrap to multiple lines.
-  final bool wrap;
-
-  const StateChips({
-    super.key,
-    required this.chips,
-    this.selected,
-    this.onSelect,
-    this.accent,
-    this.wrap = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final children = [
-      for (var i = 0; i < chips.length; i++)
-        _chip(context, i, chips[i], i == selected),
-    ];
-    if (wrap) {
-      return Wrap(spacing: Sp.x2, runSpacing: Sp.x2, children: children);
-    }
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: children.length,
-        separatorBuilder: (_, _) => const SizedBox(width: Sp.x2),
-        itemBuilder: (_, i) => Center(child: children[i]),
-      ),
-    );
-  }
-
-  Widget _chip(BuildContext context, int i, StateChip c, bool on) {
-    final a = accent ?? AppColors.accent;
-    return Pressable(
-      pressedScale: 0.94,
-      onTap: onSelect == null ? null : () => onSelect!(i),
-      child: AnimatedContainer(
-        duration: Motion.fast,
-        padding: const EdgeInsets.symmetric(horizontal: Sp.x3 + 2, vertical: 8),
-        decoration: BoxDecoration(
-          color: on ? AppColors.accentSoft : Elevation.surfaceAt(1),
-          borderRadius: BorderRadius.circular(R.pill),
-          border: Border.all(
-            color: on ? a.withValues(alpha: 0.55) : AppColors.divider,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (c.emoji != null) ...[
-              Text(c.emoji!, style: const TextStyle(fontSize: 13)),
-              const SizedBox(width: Sp.x1 + 2),
-            ] else if (c.icon != null) ...[
-              AppIcon(c.icon!, size: 14, color: on ? AppColors.onAccentSoft : AppColors.inkSoft),
-              const SizedBox(width: Sp.x1 + 2),
-            ],
-            Text(
-              c.label,
-              style: AppText.caption.copyWith(
-                fontWeight: FontWeight.w700,
-                color: on ? AppColors.onAccentSoft : AppColors.inkSoft,
-              ),
-            ),
-          ],
         ),
       ),
     );

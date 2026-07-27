@@ -68,15 +68,19 @@
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>OpenStrap connects to your WHOOP band over Bluetooth to sync your health data.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>OpenStrap records your route on a map during a run, ride or walk so you can see it, colored by heart-rate zone, when the workout ends. Your location stays on this device and is never uploaded.</string>
-	<!-- NSLocationAlwaysAndWhenInUseUsageDescription: not requested by app code
-	     (gps_source.dart sets allowBackgroundLocationUpdates: false, WhenInUse
-	     only — see the UIBackgroundModes comment below). geolocator_apple's
-	     PermissionHandler.m links [CLLocationManager requestAlwaysAuthorization]
-	     unconditionally, which App Store Connect's static binary scan (ITMS-90683)
-	     flags even though that path is never invoked at runtime. -->
+	<string>OpenStrap records your route during a run, ride or walk so you can see it, colored by heart-rate zone, when the workout ends. Recording continues while your screen is locked or you switch apps, but only while a workout is running — it stops the moment you finish. Your route stays on this device and is never uploaded.</string>
+	<!-- NSLocationAlwaysAndWhenInUseUsageDescription: STILL not requested by app
+	     code. gps_source.dart asks for WHEN-IN-USE only; background delivery
+	     during a workout comes from the "location" UIBackgroundMode plus
+	     allowsBackgroundLocationUpdates, which needs no "Always" grant.
+	     geolocator_apple's PermissionHandler.m links
+	     [CLLocationManager requestAlwaysAuthorization] unconditionally, which
+	     App Store Connect's static binary scan (ITMS-90683) flags even though
+	     that path is never invoked at runtime — hence this string exists.
+	     It must still describe the truth, because if it is ever shown, it is
+	     shown to a user deciding about location access. -->
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>OpenStrap does not track your location in the background. This permission is linked by a dependency but unused — the app only ever asks for location access while you're actively viewing a workout route.</string>
+	<string>OpenStrap never needs always-on location and does not ask for it. It records your route only while a run, ride or walk is actively running — including when your screen is locked — and stops as soon as you finish. Your route stays on this device and is never uploaded.</string>
 	<!-- NSPhotoLibraryUsageDescription: not used by app code — import_screen.dart's
 	     only FilePicker call uses FileType.any (Files app / UIDocumentPicker),
 	     never .image/.media. file_picker's iOS podspec unconditionally bundles
@@ -115,11 +119,22 @@
 	     BgSyncScheduler.swift for opportunistic headless sync + heavy derivation,
 	     plus the lighter BGAppRefreshTask (sync-only, no heavy derive) that uses
 	     the separate app-refresh budget iOS grants alongside processing tasks.
-	     NOTE: "location" is deliberately NOT in UIBackgroundModes. The workout
-	     route feature uses WHILE-IN-USE location only (foreground / active-session
-	     with the app alive), so continuous background-location updates aren't
-	     needed and "always"/background-location is a documented follow-up. Adding
-	     the background "location" mode without that need risks App Store rejection.
+	     NOTE: "location" IS in UIBackgroundModes, and is required — not optional.
+	     Without it iOS suspends the process within seconds of a screen lock or an
+	     app switch, which during a run or ride means the fix stream dies, the
+	     route is lost, and a suspended app is the first thing jetsam reclaims
+	     under memory pressure (the user just sees "the app closed mid-ride").
+	     The previous v1 stance — while-in-use only, plus a "keep the screen on"
+	     hint in the UI — could not survive a real 40-minute workout.
+	     Scope is kept tight so this stays honest and App-Store-defensible:
+	       • authorization stays WHEN-IN-USE (we never request "Always");
+	       • background updates are armed ONLY while a route session is live and
+	         disarmed the moment it ends (see lib/gps/gps_source.dart);
+	       • showBackgroundLocationIndicator is ON, so iOS shows the blue pill
+	         the entire time we are reading location in the background;
+	       • routes are written to the on-device workout_route table and are
+	         never uploaded — background mode changes WHEN we can read GPS, not
+	         where any of it goes.
 	     "processing" enables BGProcessingTask; "fetch" enables BGAppRefreshTask. -->
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
@@ -129,6 +144,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
+		<string>location</string>
 		<string>processing</string>
 		<string>fetch</string>
 	</array>

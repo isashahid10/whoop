@@ -4,16 +4,10 @@
 // an "in the red" streak, milestone bursts, and a playful line engine. Code-drawn
 // (CustomPaint), haptics-only, open-ended. Long-press to finish → breakdown.
 
-import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../models/payloads.dart';
 import '../../state/app_state.dart';
@@ -21,6 +15,7 @@ import '../../state/units_controller.dart';
 import '../../theme/theme.dart';
 import '../../theme/theme_switcher.dart';
 import '../../theme/tokens.dart';
+import 'workout_share_card.dart';
 import '../kit/kit.dart';
 import '../kit/charts.dart';
 import '../kit/route_map.dart';
@@ -52,14 +47,41 @@ class _ZoneMeta {
   const _ZoneMeta(this.label, this.name, this.color);
 }
 
-final List<_ZoneMeta> _zones = [
-  _ZoneMeta('Z0', 'Resting', AppColors.zone(0)),
-  _ZoneMeta('Z1', 'Warm-up', AppColors.zone(1)),
-  _ZoneMeta('Z2', 'Fat burn', AppColors.zone(2)),
-  _ZoneMeta('Z3', 'Aerobic', AppColors.zone(3)),
-  _ZoneMeta('Z4', 'Threshold', AppColors.zone(4)),
-  _ZoneMeta('Z5', 'Max effort', AppColors.zone(5)),
+/// Zone labels. Colours are NOT baked in here — see [_zones].
+const List<(String, String)> _zoneNames = [
+  ('Z0', 'Resting'),
+  ('Z1', 'Warm-up'),
+  ('Z2', 'Fat burn'),
+  ('Z3', 'Aerobic'),
+  ('Z4', 'Threshold'),
+  ('Z5', 'Max effort'),
 ];
+
+/// Zone metadata for the live session screen.
+///
+/// TWO bugs lived in the old `final List<_ZoneMeta> _zones = [...]` here:
+///
+///  1. It resolved `AppColors.zone(z)` from the ACTIVE palette, but this
+///     screen always paints on [AppColors.night] regardless of the app theme.
+///     In light mode that handed back hues tuned for a white background and
+///     painted them on near-black — the low zones were effectively invisible.
+///  2. Being a top-level `final`, it was initialised ONCE at first access and
+///     then never re-themed, so even switching themes could not fix it.
+///
+/// Now it is a function over the dark ramp, evaluated per build.
+_ZoneMeta _zoneAt(int z) {
+  final i = z.clamp(0, 5);
+  return _ZoneMeta(
+      _zoneNames[i].$1, _zoneNames[i].$2, AppColors.zoneOnDark(i));
+}
+
+/// Indexable shim so existing `_zones[z]` call sites keep reading naturally.
+class _ZoneTable {
+  const _ZoneTable();
+  _ZoneMeta operator [](int z) => _zoneAt(z);
+}
+
+const _zones = _ZoneTable();
 const _zonePct = [0.0, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]; // lower bound of z0..z5 then top
 
 // Playful + a little funny lines, by zone bucket.
@@ -88,7 +110,6 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
   int _lastZone = -1;
   DateTime? _redStart;                    // start of continuous time in zone ≥3
   Duration _redStreak = Duration.zero;
-  final Set<String> _milestones = {};
   String _line = '';
   int _lineSeed = 0;
   String? _callout;                       // ephemeral big banner ("ZONE 4")
@@ -120,7 +141,30 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
   void _onRoutePathTick() {
     if (_userToggledMap || !mounted) return;
     final hasRoute = _observedTracker?.path.value.isNotEmpty ?? false;
-    if (hasRoute != _showMap) setState(() => _showMap = hasRoute);
+    if (hasRoute != _showMap) {
+      setState(() => _showMap = hasRoute);
+      _syncDecorativeAnimations();
+    }
+  }
+
+  /// Park the purely decorative animations while the map is the primary view.
+  ///
+  /// `_beat` (HR pulse) and `_fx` (ember field) are `repeat()`-forever
+  /// controllers. Their painters are already gated behind `if (!mapOn)`, but a
+  /// running Ticker keeps requesting frames regardless — so a 90-minute ride
+  /// spent entirely on the map view still drove a 60 fps vsync loop the whole
+  /// time, burning battery and generating heat for pixels nobody was drawing.
+  /// Stopping the controllers stops the frame requests; they resume the moment
+  /// the athlete flips back to the ring view.
+  void _syncDecorativeAnimations() {
+    final onMap = _showMap;
+    if (onMap) {
+      if (_beat.isAnimating) _beat.stop();
+      if (_fx.isAnimating) _fx.stop();
+    } else {
+      if (!_beat.isAnimating) _beat.repeat(reverse: true);
+      if (!_fx.isAnimating) _fx.repeat();
+    }
   }
 
   @override
@@ -221,9 +265,15 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     _calloutUntil = DateTime.now().add(const Duration(seconds: 3));
   }
 
+  /// Announce a milestone ONCE per session.
+  ///
+  /// The dedup set lives on the workout, not on this State: leaving the screen
+  /// and coming back disposes and rebuilds this widget, which used to reset a
+  /// screen-local set and re-fire "5 MINUTES" (banner + haptic + confetti)
+  /// every single time the athlete returned to the live screen.
   void _milestone(String key, String big, String sub, Color c) {
-    if (_milestones.contains(key)) return;
-    _milestones.add(key);
+    final fired = _app?.activeWorkout?.firedMilestones;
+    if (fired == null || !fired.add(key)) return;
     _fireCallout(big, sub);
     _fireConfetti(c);
     HapticFeedback.mediumImpact();
@@ -298,280 +348,196 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     final gapBpm = zone < 5 ? (_zonePct[zone + 1] * _maxHr).ceil() - hr : 0;
     final almost = zone < 5 && hr > 0 && gapBpm > 0 && gapBpm <= 5;
     final calloutOn = _callout != null && DateTime.now().isBefore(_calloutUntil);
-
-    // GPS map mode is now a dedicated layout, not a small box floating over
-    // the ember/HR-reactive core: that layering (separate zone ladder, big
-    // timer, and HR circle all still rendering underneath a boxed map) is
-    // exactly what read as badly composed. When a route exists, the map IS
-    // the screen — BPM/zone/duration move into its own unified stat bar
-    // (GpsLiveMapView) instead of competing with a second UI system. The
-    // ember core stays untouched for non-GPS workouts, where it's the right
-    // default.
     final mapOn = _showMap && app.routeTracker != null;
 
+    // The map/heart view switch lives in the SHEET, next to the stats — not
+    // floating over the map. On the map it sat in the top-right corner, which
+    // is both the least reachable part of a phone one-handed mid-run and prime
+    // map real estate. Down here it reads as what it is: a control for what
+    // the panel above is showing.
+    final viewToggle = app.routeTracker == null
+        ? null
+        : _ViewToggle(
+            showingMap: _showMap,
+            onChanged: (wantMap) {
+              if (wantMap == _showMap) return;
+              setState(() {
+                _showMap = wantMap;
+                _userToggledMap = true;
+              });
+              _syncDecorativeAnimations();
+            },
+          );
+
+    // ── LAYOUT CONTRACT ──────────────────────────────────────────────────
+    // Two regions in a Column: a bounded HERO (map or heart-rate core) and a
+    // METRIC SHEET. They are siblings, so the sheet can never sit on top of
+    // the hero and the hero can never grow under the sheet.
+    //
+    // This screen used to be one flat Stack of absolutely-positioned layers
+    // with no layout relationship between them, and they collided on real
+    // devices: the map's re-centre button was pinned `bottom: 96` while the
+    // control panel is far taller than that, so it rendered UNDERNEATH the
+    // panel; the centred recording pill ran under the 44 px map toggle; and
+    // in ring mode the fixed 270 px core had nothing stopping it colliding
+    // with the timer above and the panel below on a shorter phone.
+    //
+    // Anything that genuinely floats (re-centre, callout, confetti) is now
+    // Positioned INSIDE the hero's own Stack, so it is clipped to the hero
+    // and anchored to the hero's edges — never the screen's.
     return Theme(
       data: ThemeData.dark().copyWith(scaffoldBackgroundColor: AppColors.night),
       child: Scaffold(
-        body: Stack(children: [
-          // 1. Zone-tinted studio background, intensity climbs with effort.
-          if (!mapOn)
-            Positioned.fill(child: AnimatedContainer(
-              duration: Motion.slow,
-              decoration: BoxDecoration(gradient: RadialGradient(
-                center: const Alignment(0, -0.15), radius: 1.4,
-                colors: [z.color.withValues(alpha: 0.12 + 0.30 * hrrPct), AppColors.night],
-              )),
-            )),
-
-          // 2. Ember field rising behind the core (count/heat ∝ effort).
-          if (!mapOn)
-            Positioned.fill(child: AnimatedBuilder(
-              animation: _fx,
-              builder: (context, _) => CustomPaint(painter: _EmberPainter(t: _fx.value, intensity: hrrPct, color: z.color)),
-            )),
-
-          // 3. Top: the big tabular timer (the refs' huge session clock) +
-          // in-the-red streak. Weight and space, no chrome. (Map mode shows
-          // duration in its own unified stat bar instead — see 5b.)
-          if (!mapOn)
-            SafeArea(child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: Sp.x4),
-              child: Column(children: [
-                Text(
-                  _fmt(w.elapsed),
-                  style: AppText.hero.copyWith(
-                    fontSize: 40,
-                    color: Colors.white,
-                    letterSpacing: 0,
-                  ),
-                ),
-                Text(
-                  'DURATION',
-                  style: AppText.overline.copyWith(
-                    color: Colors.white30,
-                    fontSize: 9,
-                    letterSpacing: 3,
-                  ),
-                ),
-                if (_redStreak.inSeconds >= 5) ...[
-                  const SizedBox(height: Sp.x2),
-                  _pill(AppIcon(OsIcon.calories, size: 14, color: AppColors.coral),
-                      '${_fmt(_redStreak)} in the red', tint: AppColors.coral),
-                ],
-              ]),
-            )),
-
-          // 4. The ember core (beats at your HR). Map mode shows BPM + zone
-          // in its own unified stat bar instead — see 5b.
-          if (!mapOn)
-            Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Stack(alignment: Alignment.center, children: [
-                SizedBox(width: 270, height: 270, child: CustomPaint(
-                  painter: _ZoneArcPainter(pct: hrrPct, color: z.color))),
-                AnimatedBuilder(
-                  animation: _beat,
-                  builder: (context, child) {
-                    final v = (hr > 160 ? Curves.elasticOut : Curves.easeInOut).transform(_beat.value);
-                    final scale = 1.0 + 0.08 * v;
-                    final glow = 0.4 + 0.6 * v;
-                    return Container(
-                      width: 210, height: 210,
-                      decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
-                        BoxShadow(color: z.color.withValues(alpha: 0.4 * glow), blurRadius: 40 * scale, spreadRadius: 2),
-                        BoxShadow(color: z.color.withValues(alpha: 0.15 * glow), blurRadius: 100 * scale, spreadRadius: 10),
-                      ]),
-                      child: Transform.scale(scale: scale, child: Container(
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.night,
-                            border: Border.all(color: z.color.withValues(alpha: 0.35), width: 1.5)),
-                        alignment: Alignment.center, child: child,
-                      )),
-                    );
-                  },
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text(hr > 0 ? '$hr' : '—', style: AppText.display.copyWith(
-                        fontSize: 88, color: Colors.white, height: 1, fontWeight: FontWeight.w900)),
-                    Text('BPM', style: AppText.overline.copyWith(
-                        color: Colors.white38, fontSize: 11, letterSpacing: 5, fontWeight: FontWeight.w800)),
-                  ]),
-                ),
-              ]),
-              const SizedBox(height: Sp.x8),
-              AnimatedDefaultTextStyle(
-                duration: Motion.med,
-                style: AppText.h2.copyWith(color: z.color, letterSpacing: 3, fontWeight: FontWeight.w900, fontSize: 22),
-                child: Text('${z.label} · ${z.name}'.toUpperCase()),
-              ),
-              const SizedBox(height: Sp.x2),
-              // "Almost there" nudge or the playful line.
-              SizedBox(height: 22, child: AnimatedSwitcher(
-                duration: Motion.med,
-                child: almost
-                    ? Text('$gapBpm bpm to ${_zones[zone + 1].label} — push',
-                        key: ValueKey('almost$gapBpm'),
-                        style: AppText.bodySoft.copyWith(color: _zones[zone + 1].color, fontWeight: FontWeight.w700))
-                    : Text(_line, key: ValueKey(_line),
-                        style: AppText.bodySoft.copyWith(color: Colors.white38)),
-              )),
-            ])),
-
-          // 5. Zone ladder (right edge). Redundant with map mode's own
-          // BPM/zone stat — suppressed there.
-          if (!mapOn)
-            Positioned(right: Sp.x4, top: 0, bottom: 0, child: Center(child: _zoneLadder(zone))),
-
-          // 5b. Live route map — for a GPS workout (run/ride/walk) this IS
-          // the screen now, full-bleed, not a small box over the ember core.
-          // showStatBar: false — the merged _GpsControlPanel below shows
-          // these same live stats in ONE glass card instead of a second,
-          // competing bar stacked on the map.
-          if (mapOn)
-            Positioned.fill(
-              child: _LiveRouteMap(
-                tracker: app.routeTracker!,
-                elapsed: w.elapsed,
-                hr: hr,
-                zoneIndex: zone,
-                showStatBar: false,
-              ),
-            ),
-
-          // 6. Stat panel + hold-to-finish. ONE glass card either way now —
-          // in map mode it also carries the live distance/duration/pace/BPM
-          // readout (via _GpsControlPanel), instead of a second stat bar
-          // floating separately on the map.
-          // Bottom offset adds the system gesture-nav inset — on Android the
-          // fixed Sp.x8 alone let the hold-to-finish control sit under/behind
-          // the nav bar on devices with a gesture bar.
-          Positioned(left: Sp.x6, right: Sp.x6,
-              bottom: Sp.x8 + MediaQuery.of(context).padding.bottom,
-              child: mapOn
-                  ? _GpsControlPanel(
-                      tracker: app.routeTracker!,
-                      elapsed: w.elapsed,
-                      hr: hr,
-                      zoneIndex: zone,
-                      workout: w,
-                      holdController: _hold,
-                      ending: _ending,
-                      onFinished: _finish,
+        body: Column(
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  if (mapOn)
+                    Positioned.fill(
+                      child: _LiveRouteMap(
+                        tracker: app.routeTracker!,
+                        elapsed: w.elapsed,
+                        hr: hr,
+                        zoneIndex: zone,
+                        showStatBar: false,
+                      ),
                     )
-                  : _ControlPanel(workout: w, holdController: _hold, ending: _ending, onFinished: _finish)),
+                  else
+                    Positioned.fill(
+                      child: _HeroCore(
+                        hr: hr,
+                        zone: zone,
+                        hrrPct: hrrPct,
+                        elapsed: w.elapsed,
+                        redStreak: _redStreak,
+                        line: _line,
+                        almostText: almost
+                            ? '$gapBpm bpm to ${_zones[zone + 1].label} — push'
+                            : null,
+                        almostColor:
+                            zone < 5 ? _zones[zone + 1].color : z.color,
+                        beat: _beat,
+                        fx: _fx,
+                        fmt: _fmt,
+                      ),
+                    ),
 
-          // 7. Celebration confetti (one-shot).
-          Positioned.fill(child: IgnorePointer(child: AnimatedBuilder(
-            animation: _burst,
-            builder: (context, _) => _burst.isAnimating
-                ? CustomPaint(painter: _ConfettiPainter(t: _burst.value, particles: _confetti))
-                : const SizedBox.shrink(),
-          ))),
-
-          // 8. Big ephemeral callout (zone-up / milestone).
-          if (calloutOn) Positioned.fill(child: IgnorePointer(child: Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Spacer(flex: 2),
-              Text(_callout!, style: AppText.display.copyWith(
-                  fontSize: 46, color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 2)),
-              if (_calloutSub != null)
-                Text(_calloutSub!, style: AppText.label.copyWith(color: z.color, letterSpacing: 3)),
-              const Spacer(flex: 3),
-            ]),
-          ))),
-
-          // 9b. Location denied/off for a route-eligible workout → say so and
-          // offer the fix, instead of silently running without a map.
-          if (app.routeTracker == null && app.routeLocationIssue != null)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 64,
-              left: Sp.x5,
-              right: Sp.x5,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () async {
-                  final issue = app.routeLocationIssue!;
-                  if (issue == GpsPermissionStatus.denied) {
-                    // Re-prompt is still possible — retry in place.
-                    await app.retryRouteTracking();
-                  } else {
-                    await GpsSource.openSettingsFor(issue);
-                  }
-                },
-                child: Center(
-                  child: _pill(
-                    const Icon(Icons.location_off_outlined,
-                        size: 15, color: Colors.white60),
-                    app.routeLocationIssue == GpsPermissionStatus.serviceOff
-                        ? 'Location off — turn it on to map your route'
-                        : 'Location off — allow it to map your route',
-                    tint: AppColors.warn,
+                  // Top rail — ONE row, space-between. The state chip and the
+                  // map toggle are laid out against each other, so no amount
+                  // of text can push one under the other (the chip is
+                  // Flexible and ellipsizes instead).
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                            Sp.x5, Sp.x3, Sp.x5, 0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Flexible(
+                              child: _SessionStateChip(
+                                locationIssue: app.routeTracker == null
+                                    ? app.routeLocationIssue
+                                    : null,
+                                onFixLocation: () async {
+                                  final issue = app.routeLocationIssue;
+                                  if (issue == null) return;
+                                  if (issue == GpsPermissionStatus.denied) {
+                                    await app.retryRouteTracking();
+                                  } else {
+                                    await GpsSource.openSettingsFor(issue);
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+
+                  // Ephemeral zone-up / milestone callout.
+                  if (calloutOn)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _callout!,
+                                textAlign: TextAlign.center,
+                                style: AppText.display.copyWith(
+                                  fontSize: 46,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 2,
+                                ),
+                              ),
+                              if (_calloutSub != null)
+                                Text(
+                                  _calloutSub!,
+                                  textAlign: TextAlign.center,
+                                  style: AppText.label.copyWith(
+                                      color: z.color, letterSpacing: 3),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // Confetti stays clipped to the hero.
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: AnimatedBuilder(
+                        animation: _burst,
+                        builder: (context, _) => _burst.isAnimating
+                            ? CustomPaint(
+                                painter: _ConfettiPainter(
+                                    t: _burst.value, particles: _confetti))
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
 
-          // 9. Map-mode toggle (run/ride/walk with a live route only).
-          if (app.routeTracker != null)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + Sp.x5,
-              right: Sp.x5,
-              child: GestureDetector(
-                onTap: () => setState(() {
-                  _showMap = !_showMap;
-                  _userToggledMap = true; // respect the explicit choice now
-                }),
-                behavior: HitTestBehavior.opaque,
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _showMap
-                        ? AppColors.coral.withValues(alpha: 0.9)
-                        : Colors.white.withValues(alpha: 0.10),
-                    border: Border.all(color: Colors.white24),
+            // The metric sheet. Owns the bottom safe area itself.
+            mapOn
+                ? _GpsControlPanel(
+                    tracker: app.routeTracker!,
+                    elapsed: w.elapsed,
+                    hr: hr,
+                    zoneIndex: zone,
+                    workout: w,
+                    holdController: _hold,
+                    ending: _ending,
+                    onFinished: _finish,
+                    viewToggle: viewToggle,
+                  )
+                : _SessionSheet(
+                    workout: w,
+                    holdController: _hold,
+                    ending: _ending,
+                    onFinished: _finish,
+                    hr: hr,
+                    zoneIndex: zone,
+                    elapsed: w.elapsed,
+                    viewToggle: viewToggle,
                   ),
-                  child: Icon(
-                    _showMap ? Icons.favorite : Icons.map_outlined,
-                    size: 20,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-        ]),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _pill(Widget icon, String text, {Color? tint}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: Sp.x4, vertical: Sp.x2),
-        decoration: BoxDecoration(
-          color: (tint ?? Colors.white).withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(R.pill),
-          border: Border.all(color: (tint ?? Colors.white).withValues(alpha: 0.18)),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          icon, const SizedBox(width: Sp.x2),
-          Text(text, style: AppText.metricSm.copyWith(
-              color: tint ?? Colors.white, fontSize: 15, letterSpacing: 0.5,
-              fontFeatures: [const FontFeature.tabularFigures()])),
-        ]),
-      );
-
-  Widget _zoneLadder(int zone) => Column(mainAxisSize: MainAxisSize.min, children: [
-        for (int z = 5; z >= 1; z--) ...[
-          AnimatedContainer(
-            duration: Motion.med,
-            width: z == zone ? 16 : 10,
-            height: 30,
-            decoration: BoxDecoration(
-              color: z <= zone ? _zones[z].color.withValues(alpha: z == zone ? 1 : 0.5) : Colors.white12,
-              borderRadius: BorderRadius.circular(6),
-              boxShadow: z == zone ? [BoxShadow(color: _zones[z].color.withValues(alpha: 0.6), blurRadius: 12)] : null,
-            ),
-          ),
-          if (z > 1) const SizedBox(height: 6),
-        ],
-      ]);
 }
 
 // ── Ember particle field ──────────────────────────────────────────────────────
@@ -653,142 +619,9 @@ class _ConfettiPainter extends CustomPainter {
 }
 
 // ── Stat panel + hold-to-finish (kept from the original, lightly adapted) ─────
-class _ControlPanel extends StatelessWidget {
-  final LiveWorkoutState workout;
-  final AnimationController holdController;
-  final bool ending;
-  final VoidCallback onFinished;
-  // GPS-mode live stats — ONE glass card with the map's live readout on top
-  // and the existing calories/strain/steps below, instead of two separate
-  // floating panels stacked on the map (that's what read as "bolted on").
-  // Null (via [gpsDistance]) when this isn't a GPS-tagged workout.
-  final String? gpsDistance;
-  final String? gpsDuration;
-  final String? gpsPace;
-  final int? gpsHr;
-  final Color? gpsZoneColor;
-  final String? gpsZoneLabel;
-  const _ControlPanel({
-    required this.workout,
-    required this.holdController,
-    required this.ending,
-    required this.onFinished,
-    this.gpsDistance,
-    this.gpsDuration,
-    this.gpsPace,
-    this.gpsHr,
-    this.gpsZoneColor,
-    this.gpsZoneLabel,
-  });
-
-  bool get _hasGpsStats => gpsDistance != null;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(mainAxisSize: MainAxisSize.min, children: [
-      ClipRRect(
-        borderRadius: BorderRadius.circular(R.card),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-          child: Container(
-            padding: const EdgeInsets.all(Sp.x6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(R.card),
-              border: Border.all(color: Colors.white10),
-            ),
-            child: Column(children: [
-              if (_hasGpsStats) ...[
-                // 2x2 grid, not 4-across — four full stats (icon+value+unit+
-                // label each) in one row left ~70px per stat on a real phone
-                // width, which crowded/crammed together. Two rows of two
-                // gives each stat roughly double the room.
-                Row(children: [
-                  Expanded(child: _Stat(icon: OsIcon.activity, label: 'DISTANCE', value: gpsDistance!, unit: '')),
-                  const SizedBox(width: Sp.x4),
-                  Expanded(child: _Stat(icon: OsIcon.activity, label: 'DURATION', value: gpsDuration!, unit: '')),
-                ]),
-                const SizedBox(height: Sp.x4),
-                Row(children: [
-                  Expanded(child: _Stat(icon: OsIcon.activity, label: 'PACE', value: gpsPace!, unit: '')),
-                  const SizedBox(width: Sp.x4),
-                  // BPM stays white like the other three stats — zone colour
-                  // on the number itself read as a bug ("why is heart rate
-                  // blue?"), not a signal. The zone name in the label below
-                  // it already conveys the zone.
-                  Expanded(child: _Stat(
-                    icon: OsIcon.heartRate,
-                    label: gpsZoneLabel ?? '',
-                    value: (gpsHr ?? 0) > 0 ? '$gpsHr' : '—',
-                    unit: '',
-                  )),
-                ]),
-                const SizedBox(height: Sp.x4),
-                const Divider(color: Colors.white10, height: 1),
-                const SizedBox(height: Sp.x4),
-              ],
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              _Stat(icon: OsIcon.activity, label: 'CALORIES', value: workout.calories.round().toString(), unit: 'kcal'),
-              _Stat(icon: OsIcon.activity, label: 'STRAIN', value: workout.strain.toStringAsFixed(1), unit: ''),
-              // Real steps counted on the live 100 Hz stream, scoped to THIS
-              // workout (resets at start, not at connection).
-              _Stat(icon: OsIcon.activity, label: 'STEPS',
-                  // select, not watch — this was subscribing the whole row to
-                  // every AppState notifyListeners(), not just workoutSteps.
-                  value: context.select<AppState, int>((a) => a.workoutSteps).toString(),
-                  unit: ''),
-              ]),
-            ]),
-          ),
-        ),
-      ),
-      const SizedBox(height: Sp.x5),
-      GestureDetector(
-        onLongPressStart: (_) { holdController.forward(); HapticFeedback.lightImpact(); },
-        onLongPressEnd: (_) {
-          if (holdController.value >= 1.0) { onFinished(); } else { holdController.reverse(); }
-        },
-        child: AnimatedBuilder(
-          animation: holdController,
-          builder: (context, child) {
-            final val = holdController.value;
-            return Transform.scale(
-              scale: 1.0 - 0.05 * val,
-              child: Container(
-                width: double.infinity, height: 72,
-                decoration: BoxDecoration(
-                  color: val > 0 ? Colors.white.withValues(alpha: 0.1) : AppColors.nightAlt,
-                  borderRadius: BorderRadius.circular(R.pill),
-                  border: Border.all(color: Color.lerp(Colors.white10, AppColors.coral, val)!, width: 1.5),
-                ),
-                child: Stack(alignment: Alignment.center, children: [
-                  Positioned.fill(child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft, widthFactor: val,
-                    child: Container(decoration: BoxDecoration(
-                        color: AppColors.coral.withValues(alpha: 0.2 + 0.2 * val),
-                        borderRadius: BorderRadius.circular(R.pill))),
-                  )),
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    AppIcon(OsIcon.cancel, size: 20, color: Color.lerp(Colors.white24, Colors.white, val)),
-                    const SizedBox(width: Sp.x3),
-                    Text(ending ? 'FINISHING…' : 'HOLD TO FINISH', style: AppText.label.copyWith(
-                        color: Color.lerp(Colors.white38, Colors.white, val),
-                        fontWeight: FontWeight.w900, letterSpacing: 3, fontSize: 13)),
-                  ]),
-                ]),
-              ),
-            );
-          },
-        ),
-      ),
-    ]);
-  }
-}
-
-/// Feeds the RouteTracker's live distance/speed into [_ControlPanel]'s merged
-/// GPS stat row — so it updates live without wrapping the whole ember-core
-/// Stack (confetti, callouts, etc.) in ValueListenableBuilders it doesn't
-/// need.
+/// Feeds the RouteTracker's live distance/speed into [_SessionSheet] without
+/// wrapping the whole hero (map, callouts, confetti) in ValueListenableBuilders
+/// it does not need.
 class _GpsControlPanel extends StatelessWidget {
   final RouteTracker tracker;
   final Duration elapsed;
@@ -798,6 +631,7 @@ class _GpsControlPanel extends StatelessWidget {
   final AnimationController holdController;
   final bool ending;
   final VoidCallback onFinished;
+  final Widget? viewToggle;
   const _GpsControlPanel({
     required this.tracker,
     required this.elapsed,
@@ -807,89 +641,49 @@ class _GpsControlPanel extends StatelessWidget {
     required this.holdController,
     required this.ending,
     required this.onFinished,
+    this.viewToggle,
   });
-
-  static const _zoneLabels = ['Rest', 'Warm', 'Fat', 'Aero', 'Thr', 'Max'];
-
-  String _fmtDuration(Duration d) {
-    final h = d.inHours;
-    final m = (d.inMinutes % 60).toString().padLeft(2, '0');
-    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
-    return h > 0 ? '$h:$m:$s' : '$m:$s';
-  }
 
   @override
   Widget build(BuildContext context) {
     final units = context.watch<UnitsController>();
-    final zone = zoneIndex.clamp(0, 5);
     return ValueListenableBuilder<double>(
       valueListenable: tracker.distanceMeters,
       builder: (context, meters, _) => ValueListenableBuilder<double?>(
         valueListenable: tracker.currentSpeedMps,
         builder: (context, speedMps, _) {
           final movingSec = tracker.movingSeconds;
-          final avgPace = units.pace(
-            meters,
-            movingSec > 0 ? movingSec : elapsed.inSeconds,
-          );
+          // MOVING pace, never elapsed pace.
+          //
+          // This used to fall back to `elapsed` whenever movingSec was 0, which
+          // produced the "40:32 /km even though I barely moved" reading: a
+          // couple of hundred metres divided by every second the athlete had
+          // also spent standing still is not a pace, it is an average of
+          // walking and waiting. Every serious run/ride app reports pace over
+          // moving time for exactly this reason. With no moving time yet,
+          // `units.pace` returns "—", which is the honest answer.
+          final avgPace = units.pace(meters, movingSec);
           final livePace = units.paceFromSpeed(speedMps);
-          return _ControlPanel(
+          // `units.distance` returns e.g. "2.41 km" — split it so the sheet can
+          // set the figure and its unit at different weights.
+          final distanceText = units.distance(meters);
+          final parts = distanceText.split(' ');
+          return _SessionSheet(
             workout: workout,
             holdController: holdController,
             ending: ending,
             onFinished: onFinished,
-            gpsDistance: units.distance(meters),
-            gpsDuration: _fmtDuration(elapsed),
-            gpsPace: livePace == '—' ? avgPace : livePace,
-            gpsHr: hr,
-            gpsZoneColor: AppColors.zone(zone),
-            gpsZoneLabel: _zoneLabels[zone],
+            hr: hr,
+            zoneIndex: zoneIndex,
+            elapsed: elapsed,
+            distance: parts.first,
+            distanceUnit: parts.length > 1 ? parts.sublist(1).join(' ') : '',
+            pace: livePace == '—' ? avgPace : livePace,
+            viewToggle: viewToggle,
           );
         },
       ),
     );
-  }
-}
-
-class _Stat extends StatelessWidget {
-  final String label, value, unit;
-  final OsIcon icon;
-  const _Stat({
-    required this.label,
-    required this.value,
-    required this.unit,
-    required this.icon,
-  });
-  @override
-  Widget build(BuildContext context) {
-    return Column(mainAxisSize: MainAxisSize.min, children: [
-      AppIcon(icon, size: 16, color: Colors.white38),
-      const SizedBox(height: Sp.x2),
-      // mainAxisSize.min + explicit centering: when this _Stat sits inside
-      // an Expanded (the merged GPS stat row), a bare default Row here
-      // fills the WIDER Expanded box and left-aligns within it — the icon
-      // and label above/below stay centered (plain leaf widgets), so the
-      // value+unit alone reads as shifted left relative to them. Shrink-
-      // wrapping fixes that mismatch.
-      Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Text(value, style: AppText.metric.copyWith(color: Colors.white, fontSize: 24)),
-          if (unit.isNotEmpty) ...[const SizedBox(width: 4), Text(unit, style: AppText.caption.copyWith(color: Colors.white38))],
-        ],
-      ),
-      const SizedBox(height: 4),
-      Text(
-        label,
-        style: AppText.overline.copyWith(color: Colors.white30, fontSize: 9, letterSpacing: 1),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
-      ),
-    ]);
   }
 }
 
@@ -956,7 +750,6 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
   );
   final _rand = math.Random();
   final List<_Particle> _particles = [];
-  final GlobalKey _cardKey = GlobalKey();
 
   Map<String, dynamic>? _detail;
   List<RouteVertex>? _routeVertices;
@@ -965,7 +758,6 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
   bool _prWorkout = false;
   bool _prSteps = false;
   bool _confettiFired = false;
-  bool _sharing = false;
 
   @override
   void initState() {
@@ -1082,6 +874,26 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
   double _seg(double a, double b) =>
       Interval(a, b, curve: Curves.easeOutCubic).transform(_reveal.value);
 
+  /// Stage a section into the reveal: fades and lifts [child] over the
+  /// [from]..[to] slice of the timeline. The child is built ONCE and handed to
+  /// AnimatedBuilder as its `child`, so per-frame work is a single Opacity +
+  /// Transform — never a subtree rebuild. Anything whose CONTENT counts up with
+  /// the animation (the hero numbers) uses its own builder instead.
+  Widget _reveals(double from, double to, Widget child) => AnimatedBuilder(
+        animation: _reveal,
+        child: child,
+        builder: (context, built) {
+          final p = _seg(from, to);
+          return Opacity(
+            opacity: p,
+            child: Transform.translate(
+              offset: Offset(0, 14 * (1 - p)),
+              child: built,
+            ),
+          );
+        },
+      );
+
   String _dur(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes % 60;
@@ -1108,61 +920,75 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
     // thumbnail buried at the end among the strain/zone/PR cards.
     final hasRoute = _route != null && _route!.hasPath;
 
+    // PERFORMANCE: the ListView is deliberately NOT wrapped in one big
+    // AnimatedBuilder any more. It used to be — which meant every frame of the
+    // 2.6 s reveal rebuilt the entire screen, including the FlutterMap and (via
+    // RouteCard) a full O(N) re-derivation of the route geometry. On an hour-long
+    // ride that was hundreds of thousands of trig ops and allocations per second,
+    // and it is the single reason this screen felt broken.
+    //
+    // Now each section owns a small [_Reveal] that animates only opacity and
+    // offset around an already-built `child`, so the expensive subtrees are
+    // constructed exactly once.
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
           SafeArea(
-            child: AnimatedBuilder(
-              animation: _reveal,
-              builder: (context, _) => ListView(
-                padding: const EdgeInsets.fromLTRB(
-                    Sp.screen, Sp.x6, Sp.screen, Sp.x10),
-                children: [
-                  // Opaque background so the shared PNG never captures
-                  // transparency.
-                  RepaintBoundary(
-                    key: _cardKey,
-                    child: Container(
-                      color: AppColors.background,
-                      padding: const EdgeInsets.symmetric(vertical: Sp.x2),
-                      child: Column(
-                        children: [
-                          _header(s),
-                          if (hasRoute) ...[
-                            const SizedBox(height: Sp.x5),
-                            _heroRoute(),
-                          ],
-                          const SizedBox(height: Sp.x6),
-                          _strainGauge(strain),
-                          const SizedBox(height: Sp.x7),
-                          _heroStats(peak, avg, kcal, steps),
-                          const SizedBox(height: Sp.x7),
-                          _zoneCard(bands),
-                          if (curve.isNotEmpty) ...[
-                            const SizedBox(height: Sp.x5),
-                            _hrrCard(curve),
-                          ],
-                          if (_prWorkout || _prSteps) ...[
-                            const SizedBox(height: Sp.x5),
-                            _prBadges(),
-                          ],
-                          // The old small map thumbnail only shows for
-                          // non-GPS workouts / no route (its own graceful
-                          // empty state) — a real route is already the hero
-                          // above, not duplicated down here.
-                          if (!hasRoute) ...[
-                            const SizedBox(height: Sp.x5),
-                            _mapSlot(),
-                          ],
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                  Sp.screen, Sp.x6, Sp.screen, Sp.x10),
+              children: [
+                // Kept as a RepaintBoundary purely to isolate this subtree's
+                // repaints — it is no longer a capture target. Sharing now
+                // composes its own image (workout_share_card.dart) instead of
+                // rasterising this screen.
+                RepaintBoundary(
+                  child: Container(
+                    color: AppColors.background,
+                    padding: const EdgeInsets.symmetric(vertical: Sp.x2),
+                    child: Column(
+                      children: [
+                        _header(s),
+                        if (hasRoute) ...[
+                          const SizedBox(height: Sp.x5),
+                          _heroRoute(),
+                          const SizedBox(height: Sp.x5),
+                          _routeStatRow(),
                         ],
-                      ),
+                        const SizedBox(height: Sp.x6),
+                        _strainGauge(strain),
+                        const SizedBox(height: Sp.x7),
+                        _heroStats(peak, avg, kcal, steps),
+                        const SizedBox(height: Sp.x7),
+                        _zoneCard(bands),
+                        if (hasRoute) ...[
+                          const SizedBox(height: Sp.x5),
+                          _splitsCard(),
+                        ],
+                        if (curve.isNotEmpty) ...[
+                          const SizedBox(height: Sp.x5),
+                          _hrrCard(curve),
+                        ],
+                        if (_prWorkout || _prSteps) ...[
+                          const SizedBox(height: Sp.x5),
+                          _prBadges(),
+                        ],
+                        // The old small map thumbnail only shows for
+                        // non-GPS workouts / no route (its own graceful
+                        // empty state) — a real route is already the hero
+                        // above, not duplicated down here.
+                        if (!hasRoute) ...[
+                          const SizedBox(height: Sp.x5),
+                          _mapSlot(),
+                        ],
+                      ],
                     ),
                   ),
-                  const SizedBox(height: Sp.x7),
-                  _actions(),
-                ],
-              ),
+                ),
+                const SizedBox(height: Sp.x7),
+                _actions(),
+              ],
             ),
           ),
           // Confetti — only after a PR pops.
@@ -1189,9 +1015,10 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
     final label = s.type.isEmpty
         ? 'Workout'
         : s.type[0].toUpperCase() + s.type.substring(1);
-    return Opacity(
-      opacity: _seg(0.0, 0.3),
-      child: Column(
+    return _reveals(
+      0.0,
+      0.3,
+      Column(
         children: [
           Text('$label complete', style: AppText.h1),
           const SizedBox(height: Sp.x1),
@@ -1201,58 +1028,65 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
     );
   }
 
-  Widget _strainGauge(double strain) {
-    final p = _seg(0.0, 0.5);
-    return Center(
-      child: ArcGauge(
-        value: (strain / 21).clamp(0.0, 1.0),
-        color: AppColors.accent,
-        size: 176,
-        stroke: 15,
-        sweepFraction: 0.75,
-        endDot: true,
-        center: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text((strain * p).toStringAsFixed(1), style: AppText.display),
-            Text('STRAIN', style: AppText.overline),
-          ],
+  Widget _strainGauge(double strain) => Center(
+        child: ArcGauge(
+          value: (strain / 21).clamp(0.0, 1.0),
+          color: AppColors.accent,
+          size: 176,
+          stroke: 15,
+          sweepFraction: 0.75,
+          endDot: true,
+          // Only the counting number rebuilds — not the gauge around it.
+          center: AnimatedBuilder(
+            animation: _reveal,
+            builder: (context, _) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text((strain * _seg(0.0, 0.5)).toStringAsFixed(1),
+                    style: AppText.display),
+                Text('STRAIN', style: AppText.overline),
+              ],
+            ),
+          ),
         ),
-      ),
-    );
-  }
+      );
 
+  /// These figures COUNT UP with the reveal, so unlike the other sections they
+  /// legitimately rebuild per frame — but it is a handful of Text widgets, not
+  /// a map or a route re-derivation.
   Widget _heroStats(int peak, int? avg, int kcal, int steps) {
-    final p = _seg(0.15, 0.6);
-    Widget stat(String v, String label) => Expanded(
-          child: Column(
-            children: [
-              Text(v, style: AppText.metric.copyWith(fontSize: 24)),
-              const SizedBox(height: 2),
-              Text(label, style: AppText.overline.copyWith(fontSize: 9)),
-            ],
+    Widget stat(String v, String label) =>
+        Expanded(child: _FinishStat(v, label));
+    return AnimatedBuilder(
+      animation: _reveal,
+      builder: (context, _) {
+        final p = _seg(0.15, 0.6);
+        return Opacity(
+          opacity: p,
+          child: Transform.translate(
+            offset: Offset(0, 14 * (1 - p)),
+            child: Row(
+              children: [
+                stat(peak > 0 ? '${(peak * p).round()}' : '—', 'PEAK BPM'),
+                stat(avg != null ? '${(avg * p).round()}' : '—', 'AVG BPM'),
+                stat('${(kcal * p).round()}', 'KCAL'),
+                if (steps > 0) stat('${(steps * p).round()}', 'STEPS'),
+              ],
+            ),
           ),
         );
-    return Opacity(
-      opacity: p,
-      child: Transform.translate(
-        offset: Offset(0, 14 * (1 - p)),
-        child: Row(
-          children: [
-            stat(peak > 0 ? '${(peak * p).round()}' : '—', 'PEAK BPM'),
-            stat(avg != null ? '${(avg * p).round()}' : '—', 'AVG BPM'),
-            stat('${(kcal * p).round()}', 'KCAL'),
-            if (steps > 0) stat('${(steps * p).round()}', 'STEPS'),
-          ],
-        ),
-      ),
+      },
     );
   }
 
-  Widget _zoneCard(List<Map> bands) {
+  Widget _zoneCard(List<Map> bands) => AnimatedBuilder(
+        animation: _reveal,
+        builder: (context, _) => _zoneCardBody(bands, _seg(0.4, 0.7)),
+      );
+
+  Widget _zoneCardBody(List<Map> bands, double wipe) {
     final vals = [for (final b in bands) (b['min'] as num?)?.toDouble() ?? 0];
     final colors = [for (int i = 0; i < bands.length; i++) AppColors.zone(i)];
-    final wipe = _seg(0.4, 0.7);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1305,8 +1139,12 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
     );
   }
 
-  Widget _hrrCard(List<Map> curve) {
-    final p = _seg(0.55, 0.85);
+  Widget _hrrCard(List<Map> curve) => AnimatedBuilder(
+        animation: _reveal,
+        builder: (context, _) => _hrrCardBody(curve, _seg(0.55, 0.85)),
+      );
+
+  Widget _hrrCardBody(List<Map> curve, double p) {
     // Build normalized points: x by sec, y by drop (more drop → higher).
     final pts = <Offset>[const Offset(0, 0)];
     var maxSec = 1.0, maxDrop = 1.0;
@@ -1338,7 +1176,9 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
         ),
         const SizedBox(height: Sp.x2),
         Opacity(
-          opacity: _seg(0.75, 0.9),
+          // Same timeline slice, read from the p already threaded in.
+          opacity: Interval(0.75, 0.9, curve: Curves.easeOutCubic)
+              .transform(_reveal.value),
           child: Row(
             children: [
               for (final c in curve)
@@ -1362,29 +1202,35 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
 
   /// PRs land as the refs' engraved medal cards (restrained metal on ink),
   /// with one slow celebrate pass — the confetti burst stays the only fanfare.
-  Widget _prBadges() {
-    final pop = Curves.easeOutBack.transform(_seg(0.75, 1.0).clamp(0.0, 1.0));
-    return Transform.scale(
-      scale: pop.clamp(0.0, 1.0),
-      child: Column(
-        children: [
-          if (_prWorkout)
-            const MedalCard(
-              medal: 'PR',
-              overline: 'Personal record',
-              title: 'Hardest workout yet',
-              subtitle: 'Your highest strain on record',
-            ).dsCelebrate(),
-          if (_prWorkout && _prSteps) const SizedBox(height: Sp.x3),
-          if (_prSteps)
-            const MedalCard(
-              medal: 'PR',
-              overline: 'Personal record',
-              title: 'Most steps in a workout',
-              subtitle: 'Your biggest step count on record',
-            ).dsCelebrate(),
-        ],
-      ),
+  Widget _prBadges() => AnimatedBuilder(
+        animation: _reveal,
+        child: _prBadgesBody(),
+        builder: (context, built) {
+          final pop =
+              Curves.easeOutBack.transform(_seg(0.75, 1.0).clamp(0.0, 1.0));
+          return Transform.scale(scale: pop.clamp(0.0, 1.0), child: built);
+        },
+      );
+
+  Widget _prBadgesBody() {
+    return Column(
+      children: [
+        if (_prWorkout)
+          const MedalCard(
+            medal: 'PR',
+            overline: 'Personal record',
+            title: 'Hardest workout yet',
+            subtitle: 'Your highest strain on record',
+          ).dsCelebrate(),
+        if (_prWorkout && _prSteps) const SizedBox(height: Sp.x3),
+        if (_prSteps)
+          const MedalCard(
+            medal: 'PR',
+            overline: 'Personal record',
+            title: 'Most steps in a workout',
+            subtitle: 'Your biggest step count on record',
+          ).dsCelebrate(),
+      ],
     );
   }
 
@@ -1393,26 +1239,65 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
   /// [RouteCard] (map + distance/pace stats) — same widget the workout
   /// detail screen already uses, so this stays visually consistent rather
   /// than reinventing the stat formatting.
-  Widget _heroRoute() {
-    return Opacity(
-      opacity: _seg(0.05, 0.4),
-      child: RouteCard(route: _route!, maxHr: _maxHr),
+  Widget _heroRoute() =>
+      _reveals(0.05, 0.4, RouteCard(route: _route!, maxHr: _maxHr));
+
+  /// The three numbers a runner or rider looks for FIRST, given the same
+  /// weight as the strain ring rather than buried in RouteCard's footer:
+  /// distance, moving time, and pace (runs/walks) or average speed (rides).
+  /// Garmin/Strava lead with exactly this row; we had it nowhere on the finish
+  /// screen at all.
+  Widget _routeStatRow() {
+    final route = _route!;
+    final units = context.watch<UnitsController>();
+    final isRide = _isRideType(widget.snapshot.type);
+    final moving = Duration(seconds: route.movingSec);
+    final paceText = units.pace(route.distanceMeters, route.movingSec);
+    final speeds = [
+      for (final p in route.points)
+        if (p.speed != null && p.speed! >= 0) p.speed!,
+    ];
+    final avgSpeed = speeds.isEmpty
+        ? null
+        : speeds.reduce((a, b) => a + b) / speeds.length;
+    final third = isRide && avgSpeed != null
+        ? (units.speed(avgSpeed), 'AVG SPEED')
+        : (paceText, 'AVG PACE');
+    return _reveals(
+      0.1,
+      0.45,
+      Row(
+        children: [
+          Expanded(
+            child: _FinishStat(units.distance(route.distanceMeters), 'DISTANCE'),
+          ),
+          Expanded(child: _FinishStat(_dur(moving), 'MOVING')),
+          Expanded(child: _FinishStat(third.$1, third.$2)),
+        ],
+      ),
     );
   }
+
+  static bool _isRideType(String t) =>
+      t == 'cycling' || t == 'ride' || t == 'bike' || t == 'biking';
+
+  /// Per-km/mi splits — the thing every serious run/ride app shows on the
+  /// summary and this screen simply did not have. [SplitsTable] already
+  /// existed and was only reachable from the workout detail screen.
+  Widget _splitsCard() =>
+      _reveals(0.55, 0.85, SplitsTable(route: _route!, maxHr: _maxHr));
 
   Widget _mapSlot() {
     final verts = _routeVertices;
     if (verts != null && verts.length >= 2) {
       // Real route recorded → static HR-zone-coloured thumbnail.
-      return Opacity(
-        opacity: _seg(0.6, 0.9),
-        child: RouteMapView(vertices: verts, height: 140),
-      );
+      return _reveals(0.6, 0.9, RouteMapView(vertices: verts, height: 140));
     }
     // No route (indoor / permission denied / non-GPS type) → graceful empty.
-    return Opacity(
-      opacity: _seg(0.6, 0.9),
-      child: Container(
+    return _reveals(
+      0.6,
+      0.9,
+      Container(
         height: 96,
         decoration: BoxDecoration(
           color: AppColors.surfaceAlt.withValues(alpha: 0.5),
@@ -1434,72 +1319,101 @@ class _WorkoutFinishScreenState extends State<WorkoutFinishScreen>
   }
 
   Widget _actions() {
-    return Opacity(
-      opacity: _seg(0.85, 1.0),
-      child: Row(
+    return _reveals(
+      0.85,
+      1.0,
+      // Share is the PRIMARY action here, not the secondary one it used to be.
+      // Finishing a workout you're proud of and wanting to post it is the most
+      // common thing to do from this screen; "full breakdown" is the
+      // considered, later action and reads fine as a quiet link.
+      Column(
         children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _sharing ? null : _share,
-              icon: _sharing
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.accent))
-                  : const Icon(Icons.ios_share_rounded, size: 18),
-              label: Text(_sharing ? 'Preparing…' : 'Share'),
+          SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: FilledButton.icon(
+              onPressed: _share,
+              icon: const Icon(Icons.ios_share_rounded, size: 19),
+              label: const Text('Share workout'),
             ),
           ),
-          const SizedBox(width: Sp.x3),
-          Expanded(
-            child: FilledButton(
-              onPressed: () => Navigator.of(context).pushReplacement(
-                themedRoute((_) => WorkoutDetailScreen(id: widget.id),
-                    name: 'WorkoutDetailScreen'),
-              ),
-              child: const Text('Full breakdown'),
+          const SizedBox(height: Sp.x3),
+          TextButton(
+            onPressed: () => Navigator.of(context).pushReplacement(
+              themedRoute((_) => WorkoutDetailScreen(id: widget.id),
+                  name: 'WorkoutDetailScreen'),
             ),
+            child: const Text('Full breakdown'),
           ),
         ],
       ),
     );
   }
 
+  /// Build the share composition and open the preview.
+  ///
+  /// This used to rasterise `_cardKey` — the entire finish card, header through
+  /// PR badges — and hand the PNG straight to the OS sheet. Two problems: it
+  /// was a screenshot of a dashboard rather than something worth posting, and
+  /// the athlete never saw it before it landed in the composer. Now the image
+  /// is composed for sharing (see workout_share_card.dart) and previewed first.
+  /// Compose the share image and open the preview.
+  ///
+  /// This used to rasterise `_cardKey` — the entire finish card, header through
+  /// PR badges — and hand the PNG straight to the OS sheet. Two problems: it
+  /// was a screenshot of a dashboard rather than something worth posting, and
+  /// the athlete never saw it before it landed in the composer.
+  ///
+  /// The composition itself lives in [buildWorkoutShareData] so this screen and
+  /// the workout DETAIL screen produce byte-identical cards for the same
+  /// workout — sharing the same run from two places must not give two results.
   Future<void> _share() async {
-    setState(() => _sharing = true);
-    try {
-      final box = context.findRenderObject() as RenderBox?;
-      final origin = (box != null && box.hasSize)
-          ? (box.localToGlobal(Offset.zero) & box.size)
-          : null;
-      final boundary =
-          _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) throw StateError('Card not ready');
-      final ui.Image image = await boundary.toImage(pixelRatio: 3);
-      final ByteData? bytes =
-          await image.toByteData(format: ui.ImageByteFormat.png);
-      if (bytes == null) throw StateError('Failed to encode image');
-      final dir = await getTemporaryDirectory();
-      final file = File(
-          '${dir.path}/openstrap_workout_${DateTime.now().millisecondsSinceEpoch}.png');
-      await file.writeAsBytes(bytes.buffer.asUint8List());
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: 'My OpenStrap workout',
-        sharePositionOrigin: origin,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Couldn't share: $e")));
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
+    final s = widget.snapshot;
+    final d = _detail;
+    final data = buildWorkoutShareData(
+      units: context.read<UnitsController>(),
+      type: s.type,
+      duration: s.duration,
+      when: DateTime.now(),
+      maxHr: _maxHr,
+      strain: (d?['strain'] as num?)?.toDouble() ?? s.strain,
+      calories: (d?['calories'] as num?)?.toInt() ?? s.calories.round(),
+      route: _route,
+      avgHr: (d?['avg_hr'] as num?)?.toInt(),
+    );
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      themedRoute((_) => WorkoutSharePreviewScreen(data: data),
+          name: 'WorkoutSharePreviewScreen'),
+    );
   }
+
 }
 
 /// Self-drawing HR-recovery polyline — draws up to [progress] of its length.
+/// One headline figure on the finish summary: the number in tabular metric
+/// type, the label whispered underneath. Same rhythm as the design system's
+/// [BigStat]/overline pairing, sized for a three-across row.
+class _FinishStat extends StatelessWidget {
+  final String value;
+  final String label;
+  const _FinishStat(this.value, this.label);
+
+  @override
+  Widget build(BuildContext context) => Column(
+        children: [
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.metric.copyWith(fontSize: 22),
+          ),
+          const SizedBox(height: 3),
+          Text(label, style: AppText.overline.copyWith(fontSize: 9)),
+        ],
+      );
+}
+
 class _HrrCurvePainter extends CustomPainter {
   final List<Offset> points; // normalized 0..1 (y already screen-oriented)
   final double progress; // 0..1
@@ -1557,10 +1471,11 @@ class _LiveRouteMap extends StatelessWidget {
   final Duration elapsed;
   final int hr;
   final int zoneIndex;
-  // False in the real live session — the merged _ControlPanel/_GpsControlPanel
-  // shows these same live stats in ONE glass card instead. True (the
-  // default) for the Design Gallery's standalone preview, which has no
-  // control panel of its own.
+  // False in the real live session — the metric sheet below the map shows
+  // these same live stats, so a second bar on the map would duplicate them.
+  // True (the default) for the Design Gallery's standalone preview, which has
+  // no sheet of its own; it also switches on the map's own recording pill and
+  // shifts the re-centre button up to clear the bar.
   final bool showStatBar;
   const _LiveRouteMap({
     required this.tracker,
@@ -1736,12 +1651,9 @@ class _GpsLiveMapViewState extends State<GpsLiveMapView> {
     final path = widget.vertices;
     if (path.isNotEmpty) _follow(path);
     final zone = widget.zoneIndex.clamp(0, 5);
-    final zoneColor = AppColors.zone(zone);
-    final movingSec = widget.movingSeconds;
-    final avgPace = units.pace(
-      widget.distanceMeters,
-      movingSec > 0 ? movingSec : widget.elapsed.inSeconds,
-    );
+    final zoneColor = AppColors.zoneOnDark(zone);
+    // Moving pace, not elapsed pace — see the note in _GpsControlPanel.
+    final avgPace = units.pace(widget.distanceMeters, widget.movingSeconds);
     final livePace = units.paceFromSpeed(widget.currentSpeedMps);
 
     return ClipRRect(
@@ -1792,9 +1704,12 @@ class _GpsLiveMapViewState extends State<GpsLiveMapView> {
           // design — it's a full-bleed background), so its OWN overlays
           // must add the safe-area top inset themselves or they render
           // under/behind the status bar / notch, unreadable.
+          // Sits BELOW the session screen's top rail (state chip + map
+          // toggle), which occupies roughly the first 56 px of safe area.
+          // At the rail's own offset these overlapped.
           if (path.isNotEmpty && (widget.stalled || widget.error != null))
             Positioned(
-              top: MediaQuery.of(context).padding.top + Sp.x3,
+              top: MediaQuery.of(context).padding.top + 64,
               left: Sp.x3,
               right: Sp.x3,
               child: Center(
@@ -1813,37 +1728,27 @@ class _GpsLiveMapViewState extends State<GpsLiveMapView> {
                 ),
               ),
             ),
-          // iOS v1 is while-in-use location only — fixes stop when the screen
-          // locks. Say so instead of silently producing a gappy route.
+          // Recording state. This slot used to carry "Keep the screen on to
+          // map your route" — an instruction that only existed because iOS
+          // suspended us the moment the screen locked. That is fixed (the
+          // `location` background mode + a session-scoped wake flag), so the
+          // banner would now be actively FALSE. It is replaced by a plain
+          // statement of what is happening, which is what the athlete
+          // actually wants to know at a glance.
           // Mutually exclusive with the stall/error banner above — they used
-          // to share the exact same top position unconditionally, so on iOS
-          // whenever BOTH applied (a stall, which is common while genuinely
-          // stationary/idle) they rendered directly on top of each other,
-          // unreadable.
-          if (Platform.isIOS && !(path.isNotEmpty && (widget.stalled || widget.error != null)))
-            Positioned(
-              top: MediaQuery.of(context).padding.top + Sp.x3,
-              left: Sp.x3,
-              right: Sp.x3,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: Sp.x3, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.45),
-                    borderRadius: BorderRadius.circular(R.chip),
-                  ),
-                  child: Text('Keep the screen on to map your route',
-                      style: AppText.captionMuted
-                          .copyWith(color: Colors.white70)),
-                ),
-              ),
-            ),
+          // to share the exact same top position unconditionally, so whenever
+          // BOTH applied (a stall is common while genuinely stationary) they
+          // rendered directly on top of each other, unreadable.
           // Re-centre button (appears once the user pans away).
           if (_userPanned)
             Positioned(
               right: Sp.x3,
-              bottom: 96,
+              // The map is bounded by the hero region now and the metric sheet
+              // is a SIBLING beneath it, not an overlay — so this only has to
+              // clear the map's own bottom edge. It used to be pinned at
+              // `bottom: 96` against the whole screen while the control panel
+              // was far taller than that, which put this button underneath it.
+              bottom: widget.showStatBar ? 96 : Sp.x4,
               child: GestureDetector(
                 onTap: () {
                   setState(() {
@@ -1853,13 +1758,14 @@ class _GpsLiveMapViewState extends State<GpsLiveMapView> {
                   _follow(path);
                 },
                 child: Container(
-                  padding: const EdgeInsets.all(Sp.x2),
+                  padding: const EdgeInsets.all(Sp.x3),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
+                    color: Colors.black.withValues(alpha: 0.62),
                     shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24),
                   ),
-                  child: const Icon(Icons.my_location,
-                      size: 18, color: Colors.white),
+                  child: const Icon(Icons.my_location_rounded,
+                      size: 20, color: Colors.white),
                 ),
               ),
             ),
@@ -1886,36 +1792,51 @@ class _GpsLiveMapViewState extends State<GpsLiveMapView> {
                     ],
                   ),
                 ),
-                child: Row(
+                // HIERARCHY: distance is the primary figure and is set two
+                // steps larger than the rest. Four equal-weight numbers (the
+                // old layout) give the eye nothing to land on at a glance —
+                // and a glance, mid-stride or on a bar mount, is all this
+                // screen ever gets. Heart rate is a zone-tinted pill rather
+                // than a fourth column, so the zone reads as colour before
+                // the number is even parsed.
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: _RouteLiveStat(
-                        value: units.distance(widget.distanceMeters),
-                        label: 'distance',
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: _RouteLiveStat(
+                            value: units.distance(widget.distanceMeters),
+                            label: 'distance',
+                            primary: true,
+                          ),
+                        ),
+                        _LiveHrPill(hr: widget.hr, zoneColor: zoneColor,
+                            zoneLabel: _zoneLabels[zone]),
+                      ],
                     ),
-                    Expanded(
-                      child: _RouteLiveStat(
-                        value: _fmtDuration(widget.elapsed),
-                        label: 'duration',
-                      ),
-                    ),
-                    Expanded(
-                      child: _RouteLiveStat(
-                        // Live (instantaneous) pace when we have a fresh
-                        // speed reading; falls back to the run's average
-                        // pace so the field is never blank.
-                        value: livePace == '—' ? avgPace : livePace,
-                        label: 'pace',
-                        valueColor: AppColors.coral,
-                      ),
-                    ),
-                    Expanded(
-                      child: _RouteLiveStat(
-                        value: widget.hr > 0 ? '${widget.hr}' : '—',
-                        label: _zoneLabels[zone],
-                        valueColor: zoneColor,
-                      ),
+                    const SizedBox(height: Sp.x3),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _RouteLiveStat(
+                            value: _fmtDuration(widget.elapsed),
+                            label: 'duration',
+                          ),
+                        ),
+                        Expanded(
+                          child: _RouteLiveStat(
+                            // Live (instantaneous) pace when we have a fresh
+                            // speed reading; falls back to the run's average
+                            // pace so the field is never blank.
+                            value: livePace == '—' ? avgPace : livePace,
+                            label: 'pace',
+                            valueColor: AppColors.coral,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1933,10 +1854,16 @@ class _RouteLiveStat extends StatelessWidget {
   final String value;
   final String label;
   final Color? valueColor;
+
+  /// The one figure that carries the glance (distance) — set larger so the
+  /// bar has a clear first read instead of four equal numbers.
+  final bool primary;
+
   const _RouteLiveStat({
     required this.value,
     required this.label,
     this.valueColor,
+    this.primary = false,
   });
 
   @override
@@ -1946,19 +1873,814 @@ class _RouteLiveStat extends StatelessWidget {
       children: [
         Text(
           value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: AppText.metric.copyWith(
             color: valueColor ?? Colors.white,
-            fontSize: 20,
+            fontSize: primary ? 34 : 20,
+            height: primary ? 1.05 : null,
             fontFeatures: [const FontFeature.tabularFigures()],
           ),
         ),
         const SizedBox(height: 2),
         Text(
           label.toUpperCase(),
-          style: AppText.overline
-              .copyWith(color: Colors.white38, fontSize: 9, letterSpacing: 1),
+          style: AppText.overline.copyWith(
+              color: AppColors.onNightMuted, fontSize: 9, letterSpacing: 1),
         ),
       ],
     );
   }
+}
+
+/// Live heart rate as a zone-tinted pill on the map's stat bar.
+///
+/// The zone is carried by COLOUR first — on a bar mount at speed the tint
+/// registers before any digit does, which is the whole point of the app's
+/// zone language. Sits beside the primary distance figure rather than as a
+/// fourth equal column.
+class _LiveHrPill extends StatelessWidget {
+  final int hr;
+  final Color zoneColor;
+  final String zoneLabel;
+  const _LiveHrPill({
+    required this.hr,
+    required this.zoneColor,
+    required this.zoneLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final has = hr > 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: Sp.x3, vertical: 6),
+      decoration: BoxDecoration(
+        color: zoneColor.withValues(alpha: has ? 0.22 : 0.10),
+        borderRadius: BorderRadius.circular(R.pill),
+        border: Border.all(
+          color: zoneColor.withValues(alpha: has ? 0.75 : 0.30),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            has ? '$hr' : '—',
+            style: AppText.metric.copyWith(
+              color: has ? zoneColor : AppColors.onNightSoft,
+              fontSize: 22,
+              height: 1.05,
+              fontFeatures: [const FontFeature.tabularFigures()],
+            ),
+          ),
+          Text(
+            has ? zoneLabel.toUpperCase() : 'NO BPM',
+            style: AppText.overline.copyWith(
+              color: has ? zoneColor : AppColors.onNightMuted,
+              fontSize: 8,
+              letterSpacing: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Live-session chrome ──────────────────────────────────────────────────────
+//
+// These four pieces replace what used to be a flat pile of absolutely-
+// positioned Stack layers on the session screen. Each one now owns a defined
+// slot in a real layout, which is what makes overlap impossible rather than
+// merely unlikely.
+
+/// The heart-rate hero for non-GPS sessions: session clock, the beating core,
+/// the zone name, and the zone ladder — composed as a COLUMN inside the
+/// bounded hero area, and scaled to whatever room it actually has.
+///
+/// The core used to be a fixed 270 px circle in a `Center` inside the screen's
+/// root Stack, with the clock absolutely positioned above it and the control
+/// panel absolutely positioned below. On a shorter phone all three collided.
+/// Here the ring takes its size from a LayoutBuilder, so it shrinks instead.
+class _HeroCore extends StatelessWidget {
+  final int hr;
+  final int zone;
+  final double hrrPct;
+  final Duration elapsed;
+  final Duration redStreak;
+  final String line;
+  final String? almostText;
+  final Color almostColor;
+  final AnimationController beat;
+  final AnimationController fx;
+  final String Function(Duration) fmt;
+
+  const _HeroCore({
+    required this.hr,
+    required this.zone,
+    required this.hrrPct,
+    required this.elapsed,
+    required this.redStreak,
+    required this.line,
+    required this.almostText,
+    required this.almostColor,
+    required this.beat,
+    required this.fx,
+    required this.fmt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final z = _zones[zone];
+    return LayoutBuilder(
+      builder: (context, box) {
+        // The ring is whatever the hero can spare, never a fixed 270.
+        final ring = math.min(box.maxWidth * 0.62, box.maxHeight * 0.46)
+            .clamp(150.0, 260.0);
+        final bpmSize = ring * 0.34;
+        return Stack(
+          children: [
+            // Zone-tinted studio wash, intensity climbing with effort.
+            Positioned.fill(
+              child: AnimatedContainer(
+                duration: Motion.slow,
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0, -0.15),
+                    radius: 1.4,
+                    colors: [
+                      z.color.withValues(alpha: 0.12 + 0.30 * hrrPct),
+                      AppColors.night,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: AnimatedBuilder(
+                  animation: fx,
+                  builder: (context, _) => CustomPaint(
+                    painter: _EmberPainter(
+                        t: fx.value, intensity: hrrPct, color: z.color),
+                  ),
+                ),
+              ),
+            ),
+            // The zone ladder gets its own reserved gutter on the right, so it
+            // can no longer sit on top of the ring on a narrow screen.
+            Positioned(
+              right: Sp.x4,
+              top: 0,
+              bottom: 0,
+              child: Center(child: _zoneLadder(zone)),
+            ),
+            Positioned.fill(
+              child: Padding(
+                // Left inset mirrors the ladder gutter so the ring stays
+                // optically centred between them.
+                padding: const EdgeInsets.fromLTRB(Sp.x8, Sp.x10, Sp.x8, Sp.x4),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      fmt(elapsed),
+                      style: AppText.hero.copyWith(
+                        fontSize: 40,
+                        color: Colors.white,
+                        letterSpacing: 0,
+                        fontFeatures: [const FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    Text(
+                      'DURATION',
+                      style: AppText.overline.copyWith(
+                        color: AppColors.onNightMuted,
+                        fontSize: 9,
+                        letterSpacing: 3,
+                      ),
+                    ),
+                    if (redStreak.inSeconds >= 5) ...[
+                      const SizedBox(height: Sp.x2),
+                      _LivePill(
+                        icon: AppIcon(OsIcon.calories,
+                            size: 14, color: AppColors.coral),
+                        text: '${fmt(redStreak)} in the red',
+                        tint: AppColors.coral,
+                      ),
+                    ],
+                    const Spacer(),
+                    SizedBox(
+                      width: ring,
+                      height: ring,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Positioned.fill(
+                            child: CustomPaint(
+                              painter:
+                                  _ZoneArcPainter(pct: hrrPct, color: z.color),
+                            ),
+                          ),
+                          AnimatedBuilder(
+                            animation: beat,
+                            builder: (context, child) {
+                              final v = (hr > 160
+                                      ? Curves.elasticOut
+                                      : Curves.easeInOut)
+                                  .transform(beat.value);
+                              final scale = 1.0 + 0.08 * v;
+                              final glow = 0.4 + 0.6 * v;
+                              return Container(
+                                width: ring * 0.78,
+                                height: ring * 0.78,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: z.color
+                                          .withValues(alpha: 0.4 * glow),
+                                      blurRadius: 40 * scale,
+                                      spreadRadius: 2,
+                                    ),
+                                    BoxShadow(
+                                      color: z.color
+                                          .withValues(alpha: 0.15 * glow),
+                                      blurRadius: 100 * scale,
+                                      spreadRadius: 10,
+                                    ),
+                                  ],
+                                ),
+                                child: Transform.scale(
+                                  scale: scale,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: AppColors.night,
+                                      border: Border.all(
+                                        color: z.color
+                                            .withValues(alpha: 0.35),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: child,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  hr > 0 ? '$hr' : '—',
+                                  style: AppText.display.copyWith(
+                                    fontSize: bpmSize,
+                                    color: Colors.white,
+                                    height: 1,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                Text(
+                                  'BPM',
+                                  style: AppText.overline.copyWith(
+                                    color: AppColors.onNightMuted,
+                                    fontSize: 11,
+                                    letterSpacing: 5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    AnimatedDefaultTextStyle(
+                      duration: Motion.med,
+                      style: AppText.h2.copyWith(
+                        color: z.color,
+                        letterSpacing: 3,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 20,
+                      ),
+                      child: Text('${z.label} · ${z.name}'.toUpperCase()),
+                    ),
+                    const SizedBox(height: Sp.x2),
+                    SizedBox(
+                      height: 22,
+                      child: AnimatedSwitcher(
+                        duration: Motion.med,
+                        child: almostText != null
+                            ? Text(
+                                almostText!,
+                                key: ValueKey(almostText),
+                                textAlign: TextAlign.center,
+                                style: AppText.bodySoft.copyWith(
+                                    color: almostColor,
+                                    fontWeight: FontWeight.w700),
+                              )
+                            : Text(
+                                line,
+                                key: ValueKey(line),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.bodySoft
+                                    .copyWith(color: AppColors.onNightSoft),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+Widget _zoneLadder(int zone) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (int z = 5; z >= 1; z--) ...[
+          AnimatedContainer(
+            duration: Motion.med,
+            width: z == zone ? 16 : 10,
+            height: 26,
+            decoration: BoxDecoration(
+              color: z <= zone
+                  ? _zones[z].color.withValues(alpha: z == zone ? 1 : 0.5)
+                  : Colors.white12,
+              borderRadius: BorderRadius.circular(6),
+              boxShadow: z == zone
+                  ? [
+                      BoxShadow(
+                          color: _zones[z].color.withValues(alpha: 0.6),
+                          blurRadius: 12)
+                    ]
+                  : null,
+            ),
+          ),
+          if (z > 1) const SizedBox(height: 6),
+        ],
+      ],
+    );
+
+/// Small translucent pill used for in-hero status text.
+class _LivePill extends StatelessWidget {
+  final Widget icon;
+  final String text;
+  final Color? tint;
+  const _LivePill({required this.icon, required this.text, this.tint});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = tint ?? Colors.white;
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(horizontal: Sp.x4, vertical: Sp.x2),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(R.pill),
+        border: Border.all(color: c.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          icon,
+          const SizedBox(width: Sp.x2),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.metricSm.copyWith(
+                color: c,
+                fontSize: 15,
+                letterSpacing: 0.5,
+                fontFeatures: [const FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The top rail's only occupant: a tappable warning when location is denied
+/// or off for a route-eligible workout.
+///
+/// There used to be a "Recording" pill here in the healthy case. It was
+/// removed — it stated something the athlete already knows (they started the
+/// workout, the timer is running) and cost a permanent breathing animation
+/// plus a chunk of the map's most valuable screen area to say it.
+class _SessionStateChip extends StatelessWidget {
+  final GpsPermissionStatus? locationIssue;
+  final Future<void> Function() onFixLocation;
+  const _SessionStateChip({
+    required this.locationIssue,
+    required this.onFixLocation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (locationIssue == null) return const SizedBox.shrink();
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onFixLocation,
+      child: _LivePill(
+        icon: const Icon(Icons.location_off_outlined,
+            size: 15, color: Colors.white60),
+        text: locationIssue == GpsPermissionStatus.serviceOff
+            ? 'Location off — turn it on'
+            : 'Location off — allow it',
+        tint: AppColors.warn,
+      ),
+    );
+  }
+}
+
+/// Switch between the map and the heart-rate core, centred in the metric sheet.
+///
+/// A two-up segmented control rather than a single circular icon button
+/// floating on the map: a segmented pair states BOTH available views and which
+/// one you are on, where a lone icon button only hinted at the other one.
+///
+/// Icons only. The words "Heart" and "Map" beside a heart and a map glyph were
+/// pure redundancy — the icons already say it, and dropping the labels keeps
+/// the control compact enough to centre without dominating the row above it.
+/// The accessible names live in [Semantics] instead, where screen readers need
+/// them and sighted users don't.
+class _ViewToggle extends StatelessWidget {
+  final bool showingMap;
+  final ValueChanged<bool> onChanged;
+  const _ViewToggle({required this.showingMap, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(R.pill),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _seg(
+              icon: Icons.favorite_rounded,
+              label: 'Heart',
+              selected: !showingMap,
+              onTap: () => onChanged(false),
+            ),
+            _seg(
+              icon: Icons.map_rounded,
+              label: 'Map',
+              selected: showingMap,
+              onTap: () => onChanged(true),
+            ),
+          ],
+        ),
+      );
+
+  Widget _seg({
+    required IconData icon,
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) =>
+      Semantics(
+        button: true,
+        selected: selected,
+        label: label,
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: Motion.fast,
+            curve: Motion.curve,
+            padding: const EdgeInsets.symmetric(
+                horizontal: Sp.x5, vertical: 8),
+            decoration: BoxDecoration(
+              color: selected
+                  ? Colors.white.withValues(alpha: 0.14)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(R.pill),
+            ),
+            child: Icon(
+              icon,
+              size: 18,
+              color: selected ? AppColors.onNight : AppColors.onNightSoft,
+            ),
+          ),
+        ),
+      );
+}
+
+/// The metric sheet — the bottom half of the session screen.
+///
+/// Production run/ride apps all converge on the same hierarchy, and this now
+/// follows it: ONE primary figure large enough to read at a glance mid-stride,
+/// a zone-tinted heart-rate pill beside it, then a row of secondary stats, then
+/// the finish control. The previous panel gave six stats identical weight in a
+/// 2×2-plus-3 grid, every one of them tagged with the SAME generic pulse icon,
+/// so nothing read first and the icons carried no information.
+///
+/// It is a sibling of the hero in a Column, so it cannot overlap anything.
+class _SessionSheet extends StatelessWidget {
+  final LiveWorkoutState workout;
+  final AnimationController holdController;
+  final bool ending;
+  final VoidCallback onFinished;
+  final int hr;
+  final int zoneIndex;
+  final Duration elapsed;
+
+  /// GPS sessions lead with distance and show pace; non-GPS lead with the
+  /// clock. Null distance ⇒ not a route workout.
+  final String? distance;
+  final String? distanceUnit;
+  final String? pace;
+
+  /// The map/heart switch, rendered in the sheet's footer beside the stats.
+  /// Null for a workout with no route to switch to.
+  final Widget? viewToggle;
+
+  const _SessionSheet({
+    required this.workout,
+    required this.holdController,
+    required this.ending,
+    required this.onFinished,
+    required this.hr,
+    required this.zoneIndex,
+    required this.elapsed,
+    this.distance,
+    this.distanceUnit,
+    this.pace,
+    this.viewToggle,
+  });
+
+  static String _fmtClock(Duration d) {
+    final m = (d.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return d.inHours > 0 ? '${d.inHours}:$m:$s' : '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final zone = zoneIndex.clamp(0, 5);
+    final zoneColor = AppColors.zoneOnDark(zone);
+    final isRoute = distance != null;
+    final steps = context.select<AppState, int>((a) => a.workoutSteps);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.nightAlt,
+        border: Border(top: BorderSide(color: Colors.white10)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(R.card)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Sp.x6, Sp.x5, Sp.x6, Sp.x5),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // The primary figure and the heart-rate pill appear ONLY on the
+              // map, where the hero is a map and carries neither. In heart
+              // mode the hero already shows the session clock at 40 px and the
+              // BPM at ring scale with its zone name — repeating both down
+              // here was the same number printed twice on one screen.
+              if (isRoute) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: _PrimaryMetric(
+                        value: distance!,
+                        unit: distanceUnit ?? '',
+                      ),
+                    ),
+                    _LiveHrPill(
+                      hr: hr,
+                      zoneColor: zoneColor,
+                      zoneLabel: _zones[zone].label,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: Sp.x5),
+                const Divider(color: Colors.white10, height: 1),
+                const SizedBox(height: Sp.x4),
+              ],
+              // Secondary stats — three across, evenly weighted and centred.
+              Row(
+                children: [
+                  Expanded(
+                    child: _SheetStat(
+                      isRoute ? _fmtClock(elapsed) : '${workout.calories.round()}',
+                      isRoute ? 'TIME' : 'KCAL',
+                    ),
+                  ),
+                  Expanded(
+                    child: _SheetStat(
+                      isRoute ? (pace ?? '—') : workout.strain.toStringAsFixed(1),
+                      isRoute ? 'PACE' : 'STRAIN',
+                    ),
+                  ),
+                  Expanded(
+                    child: _SheetStat(
+                      isRoute ? '${workout.calories.round()}' : '$steps',
+                      isRoute ? 'KCAL' : 'STEPS',
+                    ),
+                  ),
+                ],
+              ),
+              if (viewToggle != null) ...[
+                const SizedBox(height: Sp.x4),
+                Center(child: viewToggle!),
+              ],
+              const SizedBox(height: Sp.x5),
+              _HoldToFinish(
+                holdController: holdController,
+                ending: ending,
+                onFinished: onFinished,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The one figure the athlete reads at a glance. Sized so it survives being
+/// looked at from a bar mount at speed.
+class _PrimaryMetric extends StatelessWidget {
+  final String value;
+  final String unit;
+  const _PrimaryMetric({required this.value, required this.unit});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: AppText.display.copyWith(
+                fontSize: 52,
+                height: 1.0,
+                color: AppColors.onNight,
+                fontWeight: FontWeight.w900,
+                fontFeatures: [const FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            unit.toUpperCase(),
+            style: AppText.overline.copyWith(
+              color: AppColors.onNightMuted,
+              fontSize: 9,
+              letterSpacing: 3,
+            ),
+          ),
+        ],
+      );
+}
+
+/// One secondary stat in the sheet. No icon — six stats all carrying the same
+/// generic pulse glyph was noise, not information.
+class _SheetStat extends StatelessWidget {
+  final String value;
+  final String label;
+  const _SheetStat(this.value, this.label);
+
+  @override
+  Widget build(BuildContext context) => Column(
+        children: [
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.metric.copyWith(
+              color: AppColors.onNight,
+              fontSize: 22,
+              fontFeatures: [const FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: AppText.overline.copyWith(
+              color: AppColors.onNightMuted,
+              fontSize: 9,
+              letterSpacing: 2,
+            ),
+          ),
+        ],
+      );
+}
+
+/// Hold-to-finish. Deliberately kept as a HOLD rather than a tap: ending a
+/// session is destructive and a mis-tap mid-run costs the workout.
+class _HoldToFinish extends StatelessWidget {
+  final AnimationController holdController;
+  final bool ending;
+  final VoidCallback onFinished;
+  const _HoldToFinish({
+    required this.holdController,
+    required this.ending,
+    required this.onFinished,
+  });
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        label: 'Hold to finish workout',
+        child: GestureDetector(
+          onLongPressStart: (_) {
+            holdController.forward();
+            HapticFeedback.lightImpact();
+          },
+          onLongPressEnd: (_) {
+            if (holdController.value >= 1.0) {
+              onFinished();
+            } else {
+              holdController.reverse();
+            }
+          },
+          child: AnimatedBuilder(
+            animation: holdController,
+            builder: (context, child) {
+              final val = holdController.value;
+              return Transform.scale(
+                scale: 1.0 - 0.05 * val,
+                child: Container(
+                  width: double.infinity,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: val > 0
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : Colors.white.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(R.pill),
+                    border: Border.all(
+                      color: Color.lerp(Colors.white10, AppColors.coral, val)!,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Positioned.fill(
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: val,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.coral
+                                  .withValues(alpha: 0.2 + 0.2 * val),
+                              borderRadius: BorderRadius.circular(R.pill),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AppIcon(OsIcon.cancel,
+                              size: 20,
+                              color: Color.lerp(AppColors.onNightSoft,
+                                  AppColors.onNight, val)),
+                          const SizedBox(width: Sp.x3),
+                          Text(
+                            ending ? 'FINISHING…' : 'HOLD TO FINISH',
+                            style: AppText.label.copyWith(
+                              color: Color.lerp(
+                                  AppColors.onNightSoft, AppColors.onNight, val),
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 3,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
 }

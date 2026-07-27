@@ -112,7 +112,7 @@ void main() {
       );
       await t.pump(const Duration(milliseconds: 1200));
       expect(find.text('READINESS'), findsOneWidget);
-      expect(find.text('Primed'), findsOneWidget); // 82 → primed
+      expect(find.text('Push'), findsOneWidget); // 82 → good band → 'Push' chip
       expect(find.text('48'), findsWidgets); // HRV value
       expect(find.text('52'), findsWidgets); // RHR value
       expect(find.text('12.4'), findsOneWidget); // strain — quick-stats row

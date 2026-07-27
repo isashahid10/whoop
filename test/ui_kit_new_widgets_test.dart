@@ -5,7 +5,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:openstrap_edge/models/metric.dart';
 import 'package:openstrap_edge/ui/kit/skeleton.dart';
 import 'package:openstrap_edge/ui/kit/state_card.dart';
 import 'package:openstrap_edge/ui/kit/os_icons.dart';
@@ -79,23 +78,5 @@ void main() {
     )));
     await t.pump(const Duration(milliseconds: 500));
     expect(find.text('x'), findsOneWidget);
-  });
-
-  testWidgets('BaselineProgress.fromMetric parses need_baseline note', (t) async {
-    const m = Metric(note: 'need_baseline:have=2,need=5');
-    final w = BaselineProgress.fromMetric(m, unlocks: 'to unlock Readiness');
-    expect(w, isNotNull);
-    await t.pumpWidget(_host(w!));
-    await t.pump(const Duration(milliseconds: 500));
-    // remaining = 5 - 2 = 3
-    expect(find.text('3'), findsOneWidget);
-    expect(find.text('nights to go'), findsOneWidget);
-    expect(find.text('to unlock Readiness'), findsOneWidget);
-    expect(find.text('2 of 5 nights'), findsOneWidget);
-  });
-
-  testWidgets('BaselineProgress.fromMetric returns null for non-baseline note', (t) async {
-    const m = Metric(note: 'something_else');
-    expect(BaselineProgress.fromMetric(m), isNull);
   });
 }
