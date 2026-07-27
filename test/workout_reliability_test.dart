@@ -79,12 +79,21 @@ void main() {
     });
 
     test(
-      'a live workout never runs a derive pass, even once the settle elapses',
+      'a queued job stays parked for the session, then runs on release',
       () async {
+        // This MUST enqueue real work. An earlier version asserted runs == 0
+        // without queueing anything, so it passed even with the gate deleted —
+        // CodeRabbit caught it on the PR, and it was right.
         s.setWorkoutActive(true);
-        // Long enough that an unheld scheduler would have drained twice over.
-        await Future<void>.delayed(const Duration(milliseconds: 60));
-        expect(runs, 0, reason: 'derivation must stay parked for the session');
+        s.markStoredData(); // enqueues a durable derive_light job
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(runs, 0,
+            reason: 'a queued job must not run while a workout is live');
+
+        s.setWorkoutActive(false);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        expect(runs, 1,
+            reason: 'and it must drain once the session ends, not be dropped');
       },
     );
   });
@@ -95,6 +104,10 @@ void main() {
     setUp(() {
       calls.clear();
       ScreenWake.resetForTest();
+      // Platform.isAndroid/isIOS are BOTH false on the host VM, so without this
+      // the dispatch short-circuits and these mocks are never reached — the
+      // call-count and failure assertions below asserted nothing at all.
+      ScreenWake.platformOverride = 'android';
       for (final ch in const [
         MethodChannel('openstrap/edge_tracking'),
         MethodChannel('openstrap/ios_config'),
@@ -107,12 +120,39 @@ void main() {
       }
     });
 
-    test('enable then release round-trips the flag', () async {
+    test('enable then release round-trips the flag and hits the channel',
+        () async {
       expect(ScreenWake.isHeld, isFalse);
       await ScreenWake.enable();
       expect(ScreenWake.isHeld, isTrue);
+      expect(calls.single.method, 'keepAwake');
+      expect((calls.single.arguments as Map)['on'], isTrue);
       await ScreenWake.release();
       expect(ScreenWake.isHeld, isFalse);
+      expect((calls.last.arguments as Map)['on'], isFalse);
+    });
+
+    test('a platform that refuses does NOT latch, so a retry can succeed',
+        () async {
+      // Android answers false when no activity is attached. Latching the
+      // requested value there left Dart believing the screen was held and
+      // suppressed every later attempt.
+      var refuse = true;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('openstrap/edge_tracking'),
+        (c) async {
+          calls.add(c);
+          return !refuse;
+        },
+      );
+      await ScreenWake.enable();
+      expect(ScreenWake.isHeld, isFalse, reason: 'refusal must not latch');
+
+      refuse = false;
+      await ScreenWake.enable();
+      expect(ScreenWake.isHeld, isTrue, reason: 'the retry must go through');
+      expect(calls.length, 2);
     });
 
     test(
@@ -147,6 +187,8 @@ void main() {
       // Losing the wake flag degrades to "the screen sleeps" — it must never
       // propagate and interrupt a session.
       await expectLater(ScreenWake.enable(), completes);
+      expect(ScreenWake.isHeld, isFalse,
+          reason: 'a throwing channel must not latch either');
     });
   });
 

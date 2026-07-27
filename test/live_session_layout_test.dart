@@ -178,4 +178,28 @@ void main() {
     // scale down rather than overflow its row.
     expect(t.takeException(), isNull);
   });
+
+  testWidgets('the almost-there nudge interpolates its values', (t) async {
+    t.view.physicalSize = _sizes['iPhone 15']!;
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+
+    // The nudge only appears within 5 bpm of the next zone, which is why no
+    // test ever hit it — and an escaped `\$` in the template shipped, rendering
+    // the literal text `$gapBpm bpm to ${_zones[zone + 1].label} — push` to the
+    // athlete. Default maxHr is 190 (age 30), Z4 starts at 0.8 => 152 bpm, so
+    // 148 sits 4 bpm short of it.
+    final app = liveApp(hr: 148);
+    addTearDown(app.dispose);
+
+    await t.pumpWidget(_host(const LiveSessionScreen(), app));
+    await t.pump(const Duration(milliseconds: 300));
+
+    expect(find.textContaining('bpm to'), findsOneWidget);
+    expect(find.textContaining(r'$gapBpm'), findsNothing,
+        reason: 'the template must be interpolated, not printed');
+    expect(find.textContaining(r'${'), findsNothing,
+        reason: 'no raw interpolation syntax may reach the screen');
+    expect(find.text('4 bpm to Z4 — push'), findsOneWidget);
+  });
 }

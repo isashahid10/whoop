@@ -374,8 +374,11 @@ class _WorkoutSharePreviewScreenState extends State<WorkoutSharePreviewScreen> {
       if (bytes == null) throw StateError('Failed to encode image');
 
       final dir = await getTemporaryDirectory();
-      final file = File(
-          '${dir.path}/openstrap_${DateTime.now().millisecondsSinceEpoch}.png');
+      // ONE reused filename, not a timestamped file per share. Each capture is
+      // a ~1080 px PNG; a unique name per tap left every one of them sitting in
+      // the temp directory until the OS felt like reclaiming it. The share
+      // sheet has finished reading the file before the next share overwrites.
+      final file = File('${dir.path}/openstrap_share.png');
       await file.writeAsBytes(bytes.buffer.asUint8List());
 
       if (!mounted) return;
@@ -387,10 +390,15 @@ class _WorkoutSharePreviewScreenState extends State<WorkoutSharePreviewScreen> {
       // "My OpenStrap workout" string is exactly the kind of filler that makes
       // a share feel automated.
       await Share.shareXFiles([XFile(file.path)], sharePositionOrigin: origin);
-    } catch (e) {
+    } catch (e, st) {
+      // Log the detail; show the athlete a fixed sentence. "Couldn't share:
+      // PlatformException(...)" puts an internal error string in front of
+      // someone who just finished a workout and can do nothing with it.
+      debugPrint('[share] failed: $e\n$st');
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Couldn't share: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't prepare the image — try again")),
+      );
     } finally {
       if (mounted) setState(() => _sharing = false);
     }

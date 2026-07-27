@@ -166,6 +166,8 @@ class RouteMapView extends StatefulWidget {
 /// Now the work is redone only when the path actually changes.
 class _RouteMapViewState extends State<RouteMapView> {
   List<RouteVertex>? _builtFrom;
+  Object? _builtPalette;
+  bool? _builtInteractive;
   List<LatLng> _points = const [];
   List<Polyline> _glow = const [];
   List<Polyline> _crisp = const [];
@@ -185,9 +187,22 @@ class _RouteMapViewState extends State<RouteMapView> {
   /// Identity check, not a deep compare: RouteTracker publishes a NEW
   /// unmodifiable list per accepted fix, so identity changes exactly when the
   /// path really grew. A deep compare would cost as much as the rebuild.
+  ///
+  /// The key includes the palette and `interactive` because the cached
+  /// polylines bake BOTH in: `_colorFor` resolves AppColors.zone() from the
+  /// active palette, and the stroke width comes from `interactive`. Keying on
+  /// the vertex list alone meant a theme switch left a finished route drawn in
+  /// the old palette's colours until the route object itself changed — and the
+  /// design gallery toggles the theme with exactly this widget on screen.
   void _rebuildIfNeeded() {
-    if (identical(_builtFrom, widget.vertices)) return;
+    if (identical(_builtFrom, widget.vertices) &&
+        identical(_builtPalette, AppColors.active) &&
+        _builtInteractive == widget.interactive) {
+      return;
+    }
     _builtFrom = widget.vertices;
+    _builtPalette = AppColors.active;
+    _builtInteractive = widget.interactive;
     _points = [for (final v in widget.vertices) v.pos];
     _glow = _polylines(glow: true);
     _crisp = _polylines();
@@ -252,6 +267,11 @@ class _RouteMapViewState extends State<RouteMapView> {
 
   @override
   Widget build(BuildContext context) {
+    // Also checked here, not only in didUpdateWidget: the palette is a global
+    // static, so a theme switch that leaves this widget instance untouched
+    // would otherwise never invalidate the cache. Three identity comparisons
+    // when nothing changed.
+    _rebuildIfNeeded();
     // Drop any non-finite GPS coordinate (a bad fix can carry NaN/Inf lat/lng).
     // Left in, it makes LatLngBounds + camera-fit NaN and crashes the tile layer
     // at build (NaN.toInt in flutter_map's _clampToNativeZoom) — a real FATAL.

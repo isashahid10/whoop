@@ -413,7 +413,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                         redStreak: _redStreak,
                         line: _line,
                         almostText: almost
-                            ? '\$gapBpm bpm to \${_zones[zone + 1].label} — push'
+                            ? '$gapBpm bpm to ${_zones[zone + 1].label} — push'
                             : null,
                         almostColor:
                             zone < 5 ? _zones[zone + 1].color : z.color,

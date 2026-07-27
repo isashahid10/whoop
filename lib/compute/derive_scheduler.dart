@@ -171,6 +171,18 @@ class DeriveScheduler {
       return;
     }
     final id = job['id']?.toString();
+    // RE-CHECK THE GATES AFTER ACQUISITION. The checks above happened before a
+    // DB round-trip, and a workout can start (or an offload/background flip can
+    // land) inside it — at which point running the pass is exactly what the
+    // gate exists to prevent. The job is already marked `running` by
+    // takeNextComputeJob, so hand it back rather than leaving it claimed.
+    if (_offloadActive || _background || _workoutActive) {
+      if (id != null && id.isNotEmpty) {
+        await LocalDb.requeueComputeJob(id);
+      }
+      await _refreshSnapshot();
+      return;
+    }
     final kind = _parseKind(job['type']?.toString());
     _running = true;
     await _refreshSnapshot();

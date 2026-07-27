@@ -63,6 +63,15 @@ Map<String, Object> _quietAllDay() => {
       'notif_quiet_end': 1440,
     };
 
+/// The mirror of [_quietAllDay], for the cases that expect a present to SUCCEED.
+///
+/// These used to pass `{}` and inherit the DEFAULT quiet window of 22:00–07:00.
+/// Since nothing here stubs the clock, every "returns true on a real present"
+/// assertion failed for nine hours a night on a developer machine and passed on
+/// CI purely because CI happened to run at a different hour. Pin the window off
+/// so the outcome depends on the code under test, not on what time it is.
+Map<String, Object> _quietNever() => {'notif_quiet_enabled': false};
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -84,14 +93,14 @@ void main() {
 
     test('returns false when the OS present is refused (permission denied)',
         () async {
-      SharedPreferences.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues(_quietNever());
       final sink = _Sink(grant: false);
       NotificationCenter.instance.presentSink = sink.call;
       expect(await NotificationCenter.instance.emit(_recoveryReady()), isFalse);
     });
 
     test('returns true on a real present', () async {
-      SharedPreferences.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues(_quietNever());
       final sink = _Sink();
       NotificationCenter.instance.presentSink = sink.call;
       expect(await NotificationCenter.instance.emit(_recoveryReady()), isTrue);
@@ -132,7 +141,7 @@ void main() {
 
     test('a permission-denied no-op does NOT burn the day guard either',
         () async {
-      SharedPreferences.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues(_quietNever());
       final sink = _Sink(grant: false);
       NotificationCenter.instance.presentSink = sink.call;
 
@@ -155,7 +164,7 @@ void main() {
 
     test('a real present consumes the guard, and the same day never re-fires',
         () async {
-      SharedPreferences.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues(_quietNever());
       final sink = _Sink();
       NotificationCenter.instance.presentSink = sink.call;
 
@@ -173,7 +182,10 @@ void main() {
     });
 
     test('a NEW day is a fresh guard', () async {
-      SharedPreferences.setMockInitialValues({kGuardKey: kDay});
+      SharedPreferences.setMockInitialValues({
+        ..._quietNever(),
+        kGuardKey: kDay,
+      });
       final sink = _Sink();
       NotificationCenter.instance.presentSink = sink.call;
 

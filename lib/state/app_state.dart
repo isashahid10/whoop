@@ -749,6 +749,21 @@ class AppState extends ChangeNotifier {
     if (route != null) _handleTapRoute(route);
   }
 
+  /// Central disposal guard.
+  ///
+  /// Setting `_disposed` and checking it at each await point only covers the
+  /// paths someone remembered to guard. Several notifications reach here from
+  /// places that never see that flag — the derive scheduler's `onChanged`
+  /// callback, in-flight `_afterDrain()` continuations, BLE engine callbacks —
+  /// and notifying a disposed ChangeNotifier throws in release. Overriding the
+  /// single funnel every one of them goes through makes the guard total instead
+  /// of a list of remembered sites.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   @override
   void dispose() {
     _disposed = true;
@@ -3209,6 +3224,11 @@ class AppState extends ChangeNotifier {
     // competes with GPS, the live map and the BLE drain (see
     // DeriveScheduler.setWorkoutActive).
     _deriveScheduler.setWorkoutActive(true);
+    // Hold the display for EVERY live session, not just route-eligible ones.
+    // Arming this from _maybeStartRouteTracking meant an indoor workout, a
+    // location-denied run, and a resumed non-route session all watched the
+    // screen sleep mid-set. Released unconditionally on both teardown paths.
+    ScreenWake.enable();
     activeWorkout = LiveWorkoutState(
       startTime: start,
       targetKcal: targetKcal,
@@ -3304,8 +3324,6 @@ class AppState extends ChangeNotifier {
     // Android: retype the already-running FGS to connectedDevice|location so
     // the OS keeps delivering fixes while a route session is live.
     EdgeTracking.start(location: true);
-    // Hold the display for the session (released on every teardown path below).
-    ScreenWake.enable();
     notifyListeners();
     _log('Route tracking started for $type.');
   }
@@ -3415,6 +3433,7 @@ class AppState extends ChangeNotifier {
           // kept and the gap shows honestly as a segment break.
           unawaited(_maybeStartRouteTracking(id, activeWorkout!.type));
           _deriveScheduler.setWorkoutActive(true);
+          ScreenWake.enable();
         } else {
           await LocalDb.putSession({...row, 'status': 'done'});
           _log('[workout] finalized a stale live-session row from a previous run (id=${row['id']}).');

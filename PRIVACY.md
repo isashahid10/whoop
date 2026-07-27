@@ -60,10 +60,15 @@ so to be specific about it:
   indicator is shown for the whole time the App is reading location in the
   background. On Android the workout runs as a foreground service with a
   visible, persistent notification.
-- **Routes never leave your device.** A route is written to a local database
-  table on your phone and nowhere else. It is not uploaded, not included in
-  anonymous diagnostics, and not sent to your AI Coach provider — the coach is
-  technically prevented from reading route data, not merely asked not to.
+- **The App never sends your routes anywhere.** A route is written to a local
+  database table on your phone and nowhere else. We do not upload it, it is not
+  included in anonymous diagnostics, and it is not sent to your AI Coach
+  provider — the coach is technically prevented from reading route data, not
+  merely asked not to.
+- **The one exception is you.** If you tap Share on a workout, the image you
+  are shown includes a picture of your route, and whatever you send it to
+  receives it. That is your choice, you see the image before it is sent, and it
+  goes wherever you send it — not to us.
 - **You can delete it.** Deleting a workout deletes its route with it, and
   uninstalling the App removes all of it immediately.
 
