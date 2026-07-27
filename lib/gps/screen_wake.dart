@@ -53,6 +53,17 @@ class ScreenWake {
   @visibleForTesting
   static bool get isHeld => _on;
 
+  /// Serializes transitions so each one sees the state the previous one left.
+  ///
+  /// Without this, `_on` is only updated AFTER the platform await, so a
+  /// `release()` arriving while an `enable()` is still in flight reads the
+  /// stale `false`, decides it has nothing to do, and returns — then the
+  /// in-flight enable latches `_on = true` and the display stays held for the
+  /// rest of the app's life. Both call sites are fire-and-forget from
+  /// AppState, so a short workout (start then immediately stop) is enough to
+  /// hit it.
+  static Future<void> _chain = Future<void>.value();
+
   /// Keep the display awake. Safe to call repeatedly.
   static Future<void> enable() => _set(true);
 
@@ -60,7 +71,15 @@ class ScreenWake {
   /// the error/abort paths, or the screen stays awake until the app is killed.
   static Future<void> release() => _set(false);
 
-  static Future<void> _set(bool on) async {
+  static Future<void> _set(bool on) {
+    final next = _chain.then((_) => _apply(on));
+    // Keep the chain alive even if a link fails; _apply already swallows, this
+    // is belt-and-braces so one bad transition can't wedge every later one.
+    _chain = next.catchError((_) {});
+    return next;
+  }
+
+  static Future<void> _apply(bool on) async {
     if (on == _on) return;
     try {
       if (_isAndroid) {
@@ -83,5 +102,6 @@ class ScreenWake {
   static void resetForTest() {
     _on = false;
     platformOverride = null;
+    _chain = Future<void>.value();
   }
 }

@@ -120,6 +120,68 @@ void main() {
     );
   });
 
+  group('requeueComputeJob (the post-claim gate race)', () {
+    // `_drain()` clears the gate, then awaits takeNextComputeJob(). A workout
+    // starting inside that window leaves a job already marked `running` that
+    // must be handed back rather than run — otherwise it sits claimed until
+    // the next recoverComputeJobs().
+    //
+    // Deliberately tests the PRIMITIVE rather than simulating the interleaving.
+    // Hitting that window means racing a real DB round-trip, which is a coin
+    // flip dressed up as a test — the kind that passes locally and fails on a
+    // loaded runner (this file already had one of those). What is worth
+    // pinning is the guarantee the drain path depends on: a claimed job comes
+    // back claimable, and being deferred does not burn an attempt.
+    setUp(() async {
+      // Leave no jobs behind from an earlier group.
+      for (var i = 0; i < 8; i++) {
+        final j = await LocalDb.takeNextComputeJob();
+        if (j == null) break;
+        await LocalDb.completeComputeJob(j['id'].toString());
+      }
+    });
+
+    test('a claimed job returns to the queue and stays runnable', () async {
+      await LocalDb.enqueueDeriveJob(type: 'derive_light', reason: 'test');
+
+      final claimed = await LocalDb.takeNextComputeJob();
+      expect(claimed, isNotNull, reason: 'the job should be claimable');
+      expect(claimed!['state'], 'running');
+      final id = claimed['id'].toString();
+      // NOTE: takeNextComputeJob returns the row as it was BEFORE its own
+      // update, so `attempts` here is the pre-increment value. That makes the
+      // comparison below the meaningful one: if the requeue failed to undo the
+      // increment, the second claim would report a higher number than the
+      // first.
+      final attemptsAtFirstClaim = (claimed['attempts'] as num).toInt();
+
+      // While claimed, nothing else can take it.
+      expect(await LocalDb.takeNextComputeJob(), isNull,
+          reason: 'a running job must not be handed out twice');
+
+      await LocalDb.requeueComputeJob(id);
+
+      final again = await LocalDb.takeNextComputeJob();
+      expect(again, isNotNull,
+          reason: 'a requeued job must be claimable again, not stranded');
+      expect(again!['id'].toString(), id);
+      expect(
+        (again['attempts'] as num).toInt(),
+        attemptsAtFirstClaim,
+        reason: 'the requeue undid the increment, so the second claim starts '
+            'from the same count as the first — a deferral is not a retry',
+      );
+
+      await LocalDb.completeComputeJob(id);
+      expect(await LocalDb.takeNextComputeJob(), isNull);
+    });
+
+    test('requeueing an unknown id is harmless', () async {
+      await LocalDb.requeueComputeJob('no-such-job');
+      expect(await LocalDb.takeNextComputeJob(), isNull);
+    });
+  });
+
   group('ScreenWake', () {
     final calls = <MethodCall>[];
 
@@ -191,6 +253,36 @@ void main() {
         );
       },
     );
+
+    test('a release fired while an enable is in flight still wins', () async {
+      // `_on` only updates AFTER the platform await, so a release arriving
+      // mid-enable used to read the stale `false`, decide it had nothing to do,
+      // and return — then the in-flight enable latched true and the display
+      // stayed held for the rest of the app's life. Both call sites in
+      // AppState are fire-and-forget, so starting a workout and immediately
+      // stopping it was enough to hit this.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('openstrap/edge_tracking'),
+        (c) async {
+          calls.add(c);
+          // A real channel hop is not instantaneous; this is the window the
+          // race lived in.
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          return true;
+        },
+      );
+
+      await Future.wait([ScreenWake.enable(), ScreenWake.release()]);
+
+      expect(ScreenWake.isHeld, isFalse,
+          reason: 'the release must win — the screen cannot stay held');
+      expect(
+        [for (final c in calls) (c.arguments as Map)['on']],
+        [true, false],
+        reason: 'both transitions must reach the platform, in order',
+      );
+    });
 
     test('a release with nothing held is a no-op', () async {
       await ScreenWake.release();
