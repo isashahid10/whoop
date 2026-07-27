@@ -16,6 +16,22 @@ import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+/// Wait until [condition] holds, or give up after [timeout].
+///
+/// Returns as soon as the condition is met, so the generous timeout costs
+/// nothing on a fast machine — it only buys headroom on a loaded CI runner.
+/// Deliberately does NOT assert; the caller asserts afterwards so the failure
+/// message names the real expectation rather than "timed out".
+Future<void> _until(
+  bool Function() condition, {
+  Duration timeout = const Duration(seconds: 5),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (!condition() && DateTime.now().isBefore(deadline)) {
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -86,12 +102,18 @@ void main() {
         // CodeRabbit caught it on the PR, and it was right.
         s.setWorkoutActive(true);
         s.markStoredData(); // enqueues a durable derive_light job
-        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        // A fixed wait is correct HERE and only here: you cannot poll for
+        // "this never happens". Comfortably past the 10 ms settle.
+        await Future<void>.delayed(const Duration(milliseconds: 150));
         expect(runs, 0,
             reason: 'a queued job must not run while a workout is live');
 
         s.setWorkoutActive(false);
-        await Future<void>.delayed(const Duration(milliseconds: 120));
+        // But the positive direction MUST poll. The drain does several DB
+        // round-trips, and a fixed 120 ms sleep here passed locally and failed
+        // on a slower CI runner — a flake I introduced in the previous commit.
+        await _until(() => runs == 1);
         expect(runs, 1,
             reason: 'and it must drain once the session ends, not be dropped');
       },
