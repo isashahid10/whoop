@@ -195,7 +195,35 @@ class AppColors {
   //    device card, the live-workout screen, splash overlays). ──
   static const night = Color(0xFF181613);
   static const nightAlt = Color(0xFF24211D);
+
+  // ── Ink ramp for permanently-dark surfaces (the live session screen) ──
+  //
+  // These exist because that screen was written with ad-hoc `Colors.white30` /
+  // `white38` values, and MEASURED against [nightAlt] they do not clear the
+  // WCAG AA floor for small text (4.5:1):
+  //
+  //     white24 → 2.20:1     white30 → 2.72:1     white38 → 3.49:1
+  //
+  // Its labels are 9 px overlines, so that is squarely small text — the
+  // "labels are invisible on the dark panel" report. Opacity is a convenient
+  // knob but it is not a contrast decision; picking one requires knowing the
+  // backdrop, which is exactly what a token can encode and a call site cannot.
+  //
+  // Ratios below are against [nightAlt] (the sheet); every one is higher
+  // against the darker [night]. Guarded by test/zone_contrast_test.dart.
+  /// Muted ink (overline labels, units) — 5.77:1. The FLOOR for small text on
+  /// this surface; do not reach for a lower opacity instead.
+  ///
+  /// [onNight] (14.23:1) and [onNightSoft] (6.21:1) below already existed and
+  /// already pass — the live session screen simply wasn't using them, and
+  /// reached for raw `Colors.whiteNN` instead. This adds the third step that
+  /// was missing so there is a token for every role and no reason to.
+  static const onNightMuted = Color(0xFF9C9B99);
+
+  /// Primary ink on a dark session surface — 14.23:1.
   static const onNight = Color(0xFFF4F1EC);
+
+  /// Secondary ink (values, unselected controls) — 6.21:1.
   static const onNightSoft = Color(0xFFA8A096);
 
   // ── Accent — ember coral (mode-varying). Alert/urgent semantics ONLY —
@@ -253,22 +281,51 @@ class AppColors {
   // ── HR zone palette (Z0..Z5) — the single source for zone colours. Reads the
   //    active palette at call time, so it re-themes for free. Both the live
   //    session ladder and the workouts zone bars source their colours here. ──
-  static Color zone(int z) {
+  static Color zone(int z) => zoneIn(active, z);
+
+  /// The zone ramp resolved against a SPECIFIC palette rather than whatever is
+  /// active. Needed because not every surface follows the app theme.
+  static Color zoneIn(Palette p, int z) {
     switch (z.clamp(0, 5)) {
       case 0:
-        return cool; // resting / below zone 1
+        return p.cool; // resting / below zone 1
       case 1:
-        return loadDetraining; // warm-up
+        return p.loadDetraining; // warm-up
       case 2:
-        return good; // fat burn
+        return p.good; // fat burn
       case 3:
-        return warn; // aerobic
+        return p.warn; // aerobic
       case 4:
-        return coral; // threshold
+        return p.coral; // threshold
       default:
-        return coralDeep; // max effort (Z5)
+        return p.coralDeep; // max effort (Z5)
     }
   }
+
+  /// Zone colour for a surface that is ALWAYS dark, regardless of the user's
+  /// theme — today that means the live workout session screen, which paints on
+  /// [night]/[nightAlt] whether the app is in light or dark mode.
+  ///
+  /// Two separate legibility bugs are fixed here, both measured rather than
+  /// eyeballed (WCAG relative-luminance contrast against [nightAlt]):
+  ///
+  ///  1. Plain [zone] resolves the ACTIVE palette. With the app in LIGHT mode
+  ///     that returned hues tuned for contrast against white and painted them
+  ///     on near-black.
+  ///  2. Even on the dark palette, Z0 mapped to `cool` — which is a SURFACE
+  ///     token (a dark cool-grey panel), not an ink. As a foreground it
+  ///     measured **1.03:1** against nightAlt: literally invisible. And Z0 is
+  ///     the resting zone, i.e. exactly what is on screen at the start of
+  ///     every workout and whenever heart rate is low or absent.
+  ///
+  /// Z0 therefore uses `coolInk` — the token that already exists as "ink on
+  /// the cool surface" — measuring 9.76:1. The rest of the ramp was already
+  /// clear (5.7:1 – 8.9:1) and is unchanged.
+  ///
+  /// Guarded by a test that asserts every zone clears 3:1 on this surface, so
+  /// a future palette edit cannot silently reintroduce an invisible zone.
+  static Color zoneOnDark(int z) =>
+      z.clamp(0, 5) == 0 ? kDarkPalette.coolInk : zoneIn(kDarkPalette, z);
 
   /// A soft tint of a zone colour — for faint backfills / legend swatches.
   static Color zoneSoft(int z) => zone(z).withValues(alpha: 0.16);

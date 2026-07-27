@@ -68,6 +68,35 @@ const String _kUserAgent = 'wtf.openstrap.edge';
 /// in" even though it's technically "fitting" correctly.
 const double kRouteMapMaxAutoZoom = 17.0;
 
+/// Deepest zoom the tile SOURCE serves, and the camera's hard ceiling.
+///
+/// The grey-map bug lived here, and the first fix treated the symptom. The
+/// distinction that matters is flutter_map's own:
+///
+///   • `TileLayer.maxZoom`       — above this the layer is NOT DRAWN AT ALL.
+///     Its docs say to leave it infinite "so that there are tiles always
+///     displayed"; it exists for swapping in a different layer when zoomed in.
+///   • `TileLayer.maxNativeZoom` — above this, tiles at THIS level are
+///     displayed and SCALED. This is the one that describes a tile source.
+///
+/// The layer was setting `maxZoom: 19`, so past z19 it drew nothing and our
+/// luminance-inverting ColorFilter rendered that void as a flat grey slab
+/// rather than something obviously blank. Capping the camera hid it at the
+/// extreme but left the same cliff in place. Now `maxZoom` is left at its
+/// default (infinite) and `maxNativeZoom` describes the source, so every
+/// reachable zoom has pixels — slightly soft past the native level, never
+/// blank.
+///
+/// Note flutter_map subtracts 1 from `maxNativeZoom` when it SIMULATES retina
+/// (tile_layer.dart:312). We request native retina tiles instead (see
+/// `retinaMode` below), so that subtraction does not apply here.
+const double kRouteMapMaxTileZoom = 19.0;
+
+/// Floor for the camera. Below roughly this the basemap is continents and the
+/// route is a dot — zooming further out is never useful here and only risks
+/// the same empty-tile washout at the other end.
+const double kRouteMapMinZoom = 3.0;
+
 /// Desaturate + invert-luminance + warm-tint every tile pixel in one pass:
 /// each output channel is `-(0.2126R + 0.7152G + 0.0722B) + offset`, with the
 /// offset solved so a typical OSM land/background luminance (~240) lands on
@@ -82,7 +111,7 @@ const List<double> _kMapTileMatrix = [
   0, 0, 0, 1, 0,
 ];
 
-class RouteMapView extends StatelessWidget {
+class RouteMapView extends StatefulWidget {
   /// Route vertices in order, each already tagged with its HR zone (0..5) or
   /// null (drawn neutral).
   final List<RouteVertex> vertices;
@@ -116,7 +145,53 @@ class RouteMapView extends StatelessWidget {
     this.borderRadius = const BorderRadius.all(Radius.circular(R.cardSm)),
   });
 
-  List<LatLng> get _points => [for (final v in vertices) v.pos];
+  @override
+  State<RouteMapView> createState() => _RouteMapViewState();
+}
+
+/// PERFORMANCE — why this is stateful and memoized.
+///
+/// Polyline building is O(N) over the whole route AND allocates fresh
+/// `Polyline` + `List<LatLng>` objects. flutter_map keys its projection and
+/// simplification caches on element identity, so handing it new instances
+/// forces a full LatLng→Mercator projection plus a Douglas-Peucker pass over
+/// every point, for BOTH the glow and the crisp layer, on the UI thread.
+///
+/// As a StatelessWidget this ran on every single build. On the live map that
+/// meant once per 1 Hz session tick (~3,600 vertices an hour ⇒ ~10k point
+/// projections/second by minute 90), and on the finish screen it ran once per
+/// FRAME of the reveal animation. That is the jank, the heat, and a large part
+/// of the "app closed mid-ride" ANR.
+///
+/// Now the work is redone only when the path actually changes.
+class _RouteMapViewState extends State<RouteMapView> {
+  List<RouteVertex>? _builtFrom;
+  List<LatLng> _points = const [];
+  List<Polyline> _glow = const [];
+  List<Polyline> _crisp = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _rebuildIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(RouteMapView old) {
+    super.didUpdateWidget(old);
+    _rebuildIfNeeded();
+  }
+
+  /// Identity check, not a deep compare: RouteTracker publishes a NEW
+  /// unmodifiable list per accepted fix, so identity changes exactly when the
+  /// path really grew. A deep compare would cost as much as the rebuild.
+  void _rebuildIfNeeded() {
+    if (identical(_builtFrom, widget.vertices)) return;
+    _builtFrom = widget.vertices;
+    _points = [for (final v in widget.vertices) v.pos];
+    _glow = _polylines(glow: true);
+    _crisp = _polylines();
+  }
 
   Color _colorFor(int? zone) =>
       zone == null ? AppColors.inkMuted : AppColors.zone(zone);
@@ -140,11 +215,11 @@ class RouteMapView extends StatelessWidget {
   }
 
   List<Polyline> _polylines({bool glow = false}) {
-    final v = vertices;
+    final v = widget.vertices;
     if (v.length < 2) return const [];
     final out = <Polyline>[];
     Color edgeColor(int i) => _colorFor(v[i + 1].zone);
-    final width = interactive ? 5.0 : 4.0;
+    final width = widget.interactive ? 5.0 : 4.0;
     var i = 0;
     while (i < v.length - 1) {
       if (v[i + 1].gapBefore || !_validPos(v, i) || !_validPos(v, i + 1)) {
@@ -188,7 +263,7 @@ class RouteMapView extends StatelessWidget {
 
     // Detect gesture-driven camera moves so a live map can stop auto-following.
     void onPositionChanged(MapCamera camera, bool hasGesture) {
-      if (hasGesture) onUserPan?.call();
+      if (hasGesture) widget.onUserPan?.call();
     }
 
     // Only bounds-fit when the box has real area. A zero-area box (every point
@@ -216,21 +291,27 @@ class RouteMapView extends StatelessWidget {
               maxZoom: kRouteMapMaxAutoZoom,
             ),
             onPositionChanged: onPositionChanged,
+            minZoom: kRouteMapMinZoom,
+            maxZoom: kRouteMapMaxTileZoom,
             interactionOptions: InteractionOptions(
-              flags: interactive ? InteractiveFlag.all : InteractiveFlag.none,
+              flags:
+                  widget.interactive ? InteractiveFlag.all : InteractiveFlag.none,
             ),
           )
         : MapOptions(
             initialCenter: pts.first,
             initialZoom: 15,
             onPositionChanged: onPositionChanged,
+            minZoom: kRouteMapMinZoom,
+            maxZoom: kRouteMapMaxTileZoom,
             interactionOptions: InteractionOptions(
-              flags: interactive ? InteractiveFlag.all : InteractiveFlag.none,
+              flags:
+                  widget.interactive ? InteractiveFlag.all : InteractiveFlag.none,
             ),
           );
 
     final map = FlutterMap(
-      mapController: controller,
+      mapController: widget.controller,
       options: options,
       children: [
         // Our own look, not stock OSM — see the file header + _kMapTileMatrix.
@@ -240,19 +321,30 @@ class RouteMapView extends StatelessWidget {
             urlTemplate: _kOsmTileUrl,
             subdomains: _kTileSubdomains,
             userAgentPackageName: _kUserAgent,
-            maxZoom: 19,
+            // NOT `maxZoom` — see kRouteMapMaxTileZoom. Leaving the display
+            // ceiling at its default keeps tiles on screen at every zoom.
+            maxNativeZoom: kRouteMapMaxTileZoom.round(),
+            // The URL carries the `{r}` retina placeholder, but flutter_map
+            // only substitutes it when retinaMode is ON — left unset (the
+            // default is false) it silently resolved to "" and we fetched
+            // standard-resolution tiles on every device, then scaled them up
+            // on a 3× display. That is a soft, slightly muddy basemap
+            // everywhere, and it shows most in the shared image where the map
+            // is the whole point. flutter_map logs a warning about exactly
+            // this; it was being missed in the test noise.
+            retinaMode: RetinaMode.isHighDensity(context),
           ),
         ),
         // Glow pass BEHIND the crisp line — the route is the only colour
         // against the monochrome basemap; it needs to read unmistakably as
         // "the route" at a glance, not a thin GPS-app line.
-        PolylineLayer(polylines: _polylines(glow: true)),
-        PolylineLayer(polylines: _polylines()),
-        if (current != null)
+        PolylineLayer(polylines: _glow),
+        PolylineLayer(polylines: _crisp),
+        if (widget.current != null)
           MarkerLayer(
             markers: [
               Marker(
-                point: current!,
+                point: widget.current!,
                 width: 34,
                 height: 34,
                 child: const _PulseDot(),
@@ -264,10 +356,15 @@ class RouteMapView extends StatelessWidget {
     );
 
     final clipped = ClipRRect(
-      borderRadius: borderRadius,
-      child: map,
+      borderRadius: widget.borderRadius,
+      // The map paints continuously (tile fades, the live pulse dot) and sits
+      // inside screens that rebuild at 1 Hz — isolate it so those repaints
+      // never dirty the surrounding stats/cards.
+      child: RepaintBoundary(child: map),
     );
-    return height == null ? clipped : SizedBox(height: height, child: clipped);
+    return widget.height == null
+        ? clipped
+        : SizedBox(height: widget.height, child: clipped);
   }
 
   /// A minimal, tucked-away credit — required by both the OSM data licence
@@ -369,15 +466,70 @@ class RouteZoneLegend extends StatelessWidget {
 
 /// A ProCard with a static route thumbnail + distance / pace summary; tapping
 /// opens the full interactive map. Render only when `route.hasPath`.
-class RouteCard extends StatelessWidget {
+class RouteCard extends StatefulWidget {
   final WorkoutRoute route;
   final int maxHr;
   const RouteCard({super.key, required this.route, required this.maxHr});
 
   @override
+  State<RouteCard> createState() => _RouteCardState();
+}
+
+/// PERFORMANCE — see the note on [_RouteMapViewState] too.
+///
+/// `buildVertices` is O(N) over the route with a binary search into the HR
+/// series and a haversine per point, and it allocates a `RouteVertex` for each
+/// one. The per-point speed scan below is another full pass.
+///
+/// This used to sit directly in a StatelessWidget's build. The workout finish
+/// screen wraps its whole list in an `AnimatedBuilder`, so for a 60-minute ride
+/// (~3,600 points) that was roughly 200k trig ops and allocations PER SECOND
+/// for the duration of the reveal animation — which is exactly why the finish
+/// screen felt broken. Hoisted into state and recomputed only when the route or
+/// max-HR actually changes.
+class _RouteCardState extends State<RouteCard> {
+  WorkoutRoute? _builtFrom;
+  int? _builtMaxHr;
+  List<RouteVertex> _vertices = const [];
+  double? _avgSpeedMps;
+  double? _maxSpeedMps;
+
+  @override
+  void initState() {
+    super.initState();
+    _rebuildIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(RouteCard old) {
+    super.didUpdateWidget(old);
+    _rebuildIfNeeded();
+  }
+
+  void _rebuildIfNeeded() {
+    final route = widget.route;
+    if (identical(_builtFrom, route) && _builtMaxHr == widget.maxHr) return;
+    _builtFrom = route;
+    _builtMaxHr = widget.maxHr;
+    _vertices = rmath.buildVertices(route.points, route.hr, widget.maxHr);
+    // Avg/max speed from the per-point recorded speeds — a Strava-style stat
+    // distinct from pace (more natural for cycling, and "max speed" a
+    // descent/sprint peak that avg-pace/best-split don't surface at all).
+    final speeds = [
+      for (final p in route.points)
+        if (p.speed != null && p.speed! >= 0) p.speed!,
+    ];
+    _avgSpeedMps = speeds.isEmpty
+        ? null
+        : speeds.reduce((a, b) => a + b) / speeds.length;
+    _maxSpeedMps = speeds.isEmpty ? null : speeds.reduce((a, b) => a > b ? a : b);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final units = context.watch<UnitsController>();
-    final vertices = rmath.buildVertices(route.points, route.hr, maxHr);
+    final route = widget.route;
+    final vertices = _vertices;
     final avgPace = units.pace(route.distanceMeters, route.movingSec);
     // Best pace = the fastest FULL split (partial trailing split excluded).
     final unitMeters = units.distanceUnitMeters;
@@ -390,18 +542,8 @@ class RouteCard extends StatelessWidget {
     }
     final bestPaceText =
         bestPace == null ? '—' : '${units.formatPace(bestPace)} ${units.paceUnit}';
-    // Avg/max speed from the per-point recorded speeds — a Strava-style stat
-    // distinct from pace (more natural for cycling, and "max speed" a
-    // descent/sprint peak that avg-pace/best-split don't surface at all).
-    final speeds = [
-      for (final p in route.points)
-        if (p.speed != null && p.speed! >= 0) p.speed!,
-    ];
-    final avgSpeedMps = speeds.isEmpty
-        ? null
-        : speeds.reduce((a, b) => a + b) / speeds.length;
-    final maxSpeedMps =
-        speeds.isEmpty ? null : speeds.reduce((a, b) => a > b ? a : b);
+    final avgSpeedMps = _avgSpeedMps;
+    final maxSpeedMps = _maxSpeedMps;
     return ProCard(
       padding: const EdgeInsets.all(Sp.x4),
       child: Column(
@@ -440,7 +582,7 @@ class RouteCard extends StatelessWidget {
           // Speed is only meaningful when the platform actually reported it
           // for this route (older recordings / some Android devices may
           // have none) — omit the row entirely rather than show a row of "—".
-          if (speeds.isNotEmpty) ...[
+          if (avgSpeedMps != null) ...[
             const SizedBox(height: Sp.x4),
             Row(
               children: [
