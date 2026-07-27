@@ -341,9 +341,9 @@ class LocalRepositoryImpl extends LocalRepository {
           : const {'value': null},
       // Stress (Baevsky SI → 0–100 score block) + relative SpO₂ (desat index),
       // both emitted by the pipeline. The Today tiles + stress screen read these.
-      // Same readiness-inverse fallback as getDayStress: without it the Today
-      // stress tile rendered "—" whenever SI abstained while the stress screen
-      // showed a number (the "stress pill has no number" bug).
+      // No imputation: stressSummaryForToday returns the SI block verbatim (null
+      // when absent), so the Today tile shows "—" whenever the real SI abstained.
+      // The old `100 - readiness` fallback that fabricated a number was removed.
       if (sleepBundle != null)
         'stress': ?stressSummaryForToday(sleepBundle, _scalar(sleepBundle, 'readiness')),
       if (sleepBundle != null && sleepBundle['spo2'] is Map)
@@ -713,8 +713,9 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<Map<String, dynamic>> getDayStress(String date) async {
     // Stress = the pipeline's Baevsky Stress Index block (resting autonomic
-    // tension; transparent RR-histogram metric → 0–100 score). Falls back to the
-    // readiness inverse only if SI is absent. Nocturnal arousal isn't computed,
+    // tension; transparent RR-histogram metric → 0–100 score). No fallback: the
+    // score stays null when the SI is absent, so the screen renders "—" (the old
+    // `100 - readiness` imputation was removed). Nocturnal arousal isn't computed,
     // so `sleep_stress` is intentionally absent (the screen handles it).
     final b = await _bundleForDate(date);
     if (b == null) return const {};
