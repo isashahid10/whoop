@@ -17,6 +17,7 @@ import '../../models/payloads.dart';
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../activity/live_session_screen.dart';
+import '../activity/workout_share_card.dart';
 import '../../theme/theme_switcher.dart';
 import '../design/design.dart';
 import '../kit/route_map.dart';
@@ -904,9 +905,39 @@ class WorkoutFeedCard extends StatelessWidget {
 }
 
 /// Post-workout breakdown (also the tap target from the list).
-class WorkoutDetailScreen extends StatelessWidget {
+class WorkoutDetailScreen extends StatefulWidget {
   final String id;
   const WorkoutDetailScreen({super.key, required this.id});
+
+  @override
+  State<WorkoutDetailScreen> createState() => _WorkoutDetailScreenState();
+}
+
+class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
+  /// Published by the body once the workout (and its route) have loaded.
+  ///
+  /// The share action lives in the scaffold's action row but the data it needs
+  /// is loaded by the body below it, so the body hands it up here. Held as a
+  /// notifier rather than lifted into setState so a load doesn't rebuild the
+  /// whole screen just to enable one button.
+  final ValueNotifier<WorkoutShareData?> _shareData = ValueNotifier(null);
+
+  String get id => widget.id;
+
+  @override
+  void dispose() {
+    _shareData.dispose();
+    super.dispose();
+  }
+
+  Future<void> _share() async {
+    final data = _shareData.value;
+    if (data == null) return;
+    await Navigator.of(context).push(
+      themedRoute((_) => WorkoutSharePreviewScreen(data: data),
+          name: 'WorkoutSharePreviewScreen'),
+    );
+  }
 
   Future<void> _delete(BuildContext context) async {
     final ok = await showDialog<bool>(
@@ -954,16 +985,32 @@ class WorkoutDetailScreen extends StatelessWidget {
       title: 'Workout',
       largeTitle: false,
       actions: [
+        // Sharing a past workout is the same action as sharing one you just
+        // finished, and produces the same card — it was only reachable from
+        // the finish screen, so the moment you left that screen the workout
+        // became unshareable. Appears once there is something to share.
+        ValueListenableBuilder<WorkoutShareData?>(
+          valueListenable: _shareData,
+          builder: (context, data, _) => data == null
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(right: Sp.x2),
+                  child: RoundIconButton(OsIcon.share, onTap: _share),
+                ),
+        ),
         RoundIconButton(OsIcon.trash, onTap: () => _delete(context)),
       ],
-      body: _WorkoutDetailBody(id: id),
+      body: _WorkoutDetailBody(id: id, shareData: _shareData),
     );
   }
 }
 
 class _WorkoutDetailBody extends StatefulWidget {
   final String id;
-  const _WorkoutDetailBody({required this.id});
+
+  /// Filled in once loaded, so the scaffold above can offer a share action.
+  final ValueNotifier<WorkoutShareData?> shareData;
+  const _WorkoutDetailBody({required this.id, required this.shareData});
   @override
   State<_WorkoutDetailBody> createState() => _WorkoutDetailBodyState();
 }
@@ -994,12 +1041,50 @@ class _WorkoutDetailBodyState extends State<_WorkoutDetailBody> {
           _route = route;
           _loading = false;
         });
+        _publishShareData();
       }
     } catch (_) {
       if (mounted) {
         setState(() => _loading = false);
       }
     }
+  }
+
+  /// Hand the scaffold a ready-to-share composition.
+  ///
+  /// Built through [buildWorkoutShareData] — the same function the finish
+  /// screen uses — so sharing a run from here and from the finish screen
+  /// produce identical cards rather than two subtly different ones.
+  void _publishShareData() {
+    final d = _d;
+    if (d == null || d.isEmpty) {
+      widget.shareData.value = null;
+      return;
+    }
+    // A still-running workout has no final numbers yet; sharing one would post
+    // a half-finished card.
+    if (d['status'] == 'live') {
+      widget.shareData.value = null;
+      return;
+    }
+    final startTs = d['start_ts'] as int?;
+    final endTs = d['end_ts'] as int?;
+    final durationSec = (startTs != null && endTs != null && endTs > startTs)
+        ? endTs - startTs
+        : ((d['duration_min'] as num?)?.toDouble() ?? 0) * 60;
+    widget.shareData.value = buildWorkoutShareData(
+      units: context.read<UnitsController>(),
+      type: (d['type'] as String?) ?? '',
+      duration: Duration(seconds: durationSec.round()),
+      when: startTs != null && startTs > 0
+          ? DateTime.fromMillisecondsSinceEpoch(startTs * 1000).toLocal()
+          : DateTime.now(),
+      maxHr: context.read<AppState>().maxHr,
+      strain: (d['strain'] as num?)?.toDouble() ?? 0,
+      calories: (d['calories'] as num?)?.toInt() ?? 0,
+      route: _route,
+      avgHr: (d['avg_hr'] as num?)?.toInt(),
+    );
   }
 
   Future<void> _correctType() async {

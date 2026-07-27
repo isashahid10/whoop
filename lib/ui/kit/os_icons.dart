@@ -115,6 +115,7 @@ enum OsIcon {
   battery,
   bluetooth,
   settings,
+  share,
   privacy,
   sync,
   info,
@@ -229,6 +230,8 @@ const Map<OsIcon, IconData> _glyphs = {
   OsIcon.battery: Iconsax.battery_full,
   OsIcon.bluetooth: Iconsax.bluetooth,
   OsIcon.settings: FluentIcons.settings_24_regular,
+  // Utility chrome → Fluent, per the pack policy in this file's header.
+  OsIcon.share: FluentIcons.share_24_regular,
   OsIcon.privacy: PhosphorIconsDuotone.shield,
   OsIcon.sync: PhosphorIconsDuotone.arrowsClockwise,
   OsIcon.info: FluentIcons.info_24_regular,

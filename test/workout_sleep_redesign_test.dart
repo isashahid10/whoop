@@ -365,7 +365,9 @@ void main() {
         expect(find.text('PEAK BPM'), findsOneWidget);
         expect(find.text('TIME IN ZONES'), findsOneWidget);
         expect(find.text('Full breakdown'), findsOneWidget);
-        expect(find.text('Share'), findsOneWidget);
+        // Share is the PRIMARY action now (filled, full-width), and it
+        // opens a composed preview rather than rasterising this screen.
+        expect(find.text('Share workout'), findsOneWidget);
         expect(t.takeException(), isNull);
         await t.pump(const Duration(milliseconds: 1600)); // settle shimmers
       }
@@ -419,7 +421,9 @@ void main() {
       // TestWidgetsFlutterBinding, a sandboxing limitation, not a product
       // bug. Verify the actual share output manually on a real
       // device/simulator via the Design Gallery's "Workout preview" section.
-      expect(find.text('Share'), findsOneWidget);
+      // Share is the PRIMARY action now (filled, full-width), and it
+        // opens a composed preview rather than rasterising this screen.
+        expect(find.text('Share workout'), findsOneWidget);
     });
   });
 }
