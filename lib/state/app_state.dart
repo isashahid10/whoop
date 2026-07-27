@@ -44,6 +44,7 @@ import '../data/live_coverage_policy.dart';
 import '../data/local_repository.dart';
 import '../gps/gps_source.dart';
 import '../gps/route_tracker.dart';
+import '../gps/screen_wake.dart';
 import '../data/local_repository_impl.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
@@ -750,6 +751,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     // EVERY timer this object owns, not just three of them. _spotTimer,
     // _breathingRecomputeTimer and _workoutTimer used to survive dispose, and
     // each of their callbacks ends in notifyListeners() on a disposed
@@ -3203,6 +3205,10 @@ class AppState extends ChangeNotifier {
       unawaited(engine.retryFullLiveStreams());
     }
     _workoutRawBase = _liveRaw;
+    // Hold heavy derivation for the session — an isolate spawn mid-ride
+    // competes with GPS, the live map and the BLE drain (see
+    // DeriveScheduler.setWorkoutActive).
+    _deriveScheduler.setWorkoutActive(true);
     activeWorkout = LiveWorkoutState(
       startTime: start,
       targetKcal: targetKcal,
@@ -3248,6 +3254,13 @@ class AppState extends ChangeNotifier {
   /// off" affordance instead of silently skipping the map.
   GpsPermissionStatus? routeLocationIssue;
 
+  /// Set in [dispose]. Async work that resumes AFTER teardown must not touch
+  /// state or call notifyListeners() — see dispose()'s own note about
+  /// notifying a disposed ChangeNotifier (which throws in release). Timers are
+  /// cancelled there, but an already-suspended `await` cannot be, so every
+  /// continuation past an await in this class needs to re-check this.
+  bool _disposed = false;
+
   /// Start recording the route if the type is eligible and location permission
   /// is granted. Denial is surfaced (routeLocationIssue) — the workout still
   /// runs without a map, but the user is told why and how to fix it.
@@ -3261,6 +3274,9 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       perm = GpsPermissionStatus.error;
     }
+    // The permission round-trip can outlive the whole AppState (a resumed
+    // workout kicks this off unawaited during startup), so re-check both.
+    if (_disposed) return;
     // The session may have ended while we awaited the permission dialog.
     if (activeWorkout?.workoutId != id) return;
     if (perm != GpsPermissionStatus.granted) {
@@ -3288,6 +3304,8 @@ class AppState extends ChangeNotifier {
     // Android: retype the already-running FGS to connectedDevice|location so
     // the OS keeps delivering fixes while a route session is live.
     EdgeTracking.start(location: true);
+    // Hold the display for the session (released on every teardown path below).
+    ScreenWake.enable();
     notifyListeners();
     _log('Route tracking started for $type.');
   }
@@ -3388,6 +3406,15 @@ class AppState extends ChangeNotifier {
             (_) => _tickWorkout(),
           );
           _log('[workout] resumed a live session still running after restart (id=$id).');
+          // Re-arm GPS for the REST of the session. Without this a resumed
+          // workout recorded no further route at all: the timer/calories/strain
+          // all came back, the map silently never did, and the athlete only
+          // found out at the finish screen. `_maybeStartRouteTracking` is a
+          // no-op for non-route types and re-appends to the SAME workout_route
+          // rows (`id` is unchanged), so the pre-restart part of the route is
+          // kept and the gap shows honestly as a segment break.
+          unawaited(_maybeStartRouteTracking(id, activeWorkout!.type));
+          _deriveScheduler.setWorkoutActive(true);
         } else {
           await LocalDb.putSession({...row, 'status': 'done'});
           _log('[workout] finalized a stale live-session row from a previous run (id=${row['id']}).');
@@ -3416,6 +3443,12 @@ class AppState extends ChangeNotifier {
       // Android: drop the FGS back to connectedDevice-only now the route ended.
       EdgeTracking.start(location: false);
     }
+    // Release the display unconditionally — not inside the `rt != null` branch.
+    // A session that never got a tracker (permission denied) still armed
+    // nothing, but a session whose tracker was already cleared by another path
+    // would otherwise leave the screen pinned awake until the app is killed.
+    ScreenWake.release();
+    _deriveScheduler.setWorkoutActive(false);
     final w = activeWorkout!;
     final finalKcal = w.calories.round();
     final wSteps = workoutSteps; // real steps taken during this workout
@@ -3479,6 +3512,8 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
       EdgeTracking.start(location: false);
     }
+    ScreenWake.release();
+    _deriveScheduler.setWorkoutActive(false);
     activeWorkout = null;
     _workoutRawBase = null;
     LiveActivity.end();
@@ -3648,6 +3683,15 @@ class LiveWorkoutState {
   double strain = 0.0;
   int currentHr = 0;
   int maxHrSeen = 0; // spike-suppressed peak live HR this session (issue #127)
+
+  /// Milestone keys already announced this SESSION ("t5", "k200", "mhr178"…).
+  ///
+  /// Lives here, not on the live-session screen's State, because the screen is
+  /// disposed and rebuilt every time the athlete navigates away and back — so
+  /// a screen-local set forgot everything and re-fired the same milestone
+  /// (banner, haptic and confetti) on every return. The workout is the thing
+  /// a milestone belongs to, so the workout remembers it.
+  final Set<String> firedMilestones = {};
 
   /// Rolling-median accumulator behind [maxHrSeen] — smooths the live 1 Hz HR
   /// at accrual so a transient PPG motion spike can't set the session max (or

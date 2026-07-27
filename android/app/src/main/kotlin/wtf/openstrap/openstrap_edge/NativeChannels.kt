@@ -20,6 +20,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
 import android.view.KeyEvent
+import android.view.WindowManager
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -68,6 +69,32 @@ object NativeChannels {
                     "stop" -> {
                         app.stopService(Intent(app, EdgeTrackingService::class.java))
                         result.success(null)
+                    }
+                    // Hold the screen on for the duration of a live workout, the
+                    // way every run/ride app does — the athlete is glancing at a
+                    // handlebar/armband, not tapping to keep the display awake.
+                    // FLAG_KEEP_SCREEN_ON is scoped to this window and released
+                    // automatically if the activity goes away, so it can never
+                    // leak into a permanent wakelock.
+                    "keepAwake" -> {
+                        val on = call.argument<Boolean>("on") == true
+                        val activity = CompanionBridge.currentActivity
+                        if (activity == null) {
+                            result.success(false)
+                        } else {
+                            activity.runOnUiThread {
+                                if (on) {
+                                    activity.window.addFlags(
+                                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                                    )
+                                } else {
+                                    activity.window.clearFlags(
+                                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                                    )
+                                }
+                            }
+                            result.success(true)
+                        }
                     }
                     "consumeHeadlessBootPending" -> {
                         val prefs = app.getSharedPreferences(

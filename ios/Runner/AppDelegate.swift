@@ -111,6 +111,15 @@ enum ConfigBridge {
         // the paired Apple Watch. Best-effort, never fails the Dart caller.
         WatchBridge.shared.pushCurrentState()
         result(true)
+      case "keepAwake":
+        // Hold the display awake for a live workout, the way every run/ride app
+        // does. Scoped strictly to the session: Dart clears it on finish, and
+        // iOS drops it anyway if the app is terminated, so it cannot leak into
+        // a permanently-awake screen.
+        let args = call.arguments as? [String: Any] ?? [:]
+        let on = args["on"] as? Bool ?? false
+        UIApplication.shared.isIdleTimerDisabled = on
+        result(true)
       default:
         result(FlutterMethodNotImplemented)
       }

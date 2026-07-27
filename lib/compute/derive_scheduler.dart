@@ -26,6 +26,19 @@ class DeriveScheduler {
   final Duration heavySettle;
 
   bool _offloadActive = false;
+
+  /// True while a live workout is running. Held exactly like [_offloadActive].
+  ///
+  /// Heavy derivation spawns an isolate (roughly doubling peak heap) and hits
+  /// the DB hard. Nothing used to stop that landing in the middle of a run or
+  /// ride — and the existing foreground/background gate is INVERTED for this
+  /// case: with the phone mounted on the bars and the screen awake the app IS
+  /// foregrounded, so derives ran at their most expensive possible moment,
+  /// competing with the GPS stream, the live map and the BLE drain. A workout
+  /// is minutes long and its own results are derived at the end anyway, so
+  /// deferring costs nothing.
+  bool _workoutActive = false;
+
   // While the app is backgrounded we must NOT run derivation: a derive pass
   // decodes the whole retained substrate + runs the metric compute, and doing
   // that on a short background BLE wake trips iOS's CPU watchdog
@@ -54,6 +67,7 @@ class DeriveScheduler {
 
   Map<String, dynamic> snapshot() => {
         'offload_active': _offloadActive,
+        'workout_active': _workoutActive,
         'background': _background,
         'running': _running,
         'pending_light': _pendingLight,
@@ -66,6 +80,23 @@ class DeriveScheduler {
 
   void requestHeavy() {
     unawaited(_enqueue(type: 'derive_heavy', reason: 'capture_settled'));
+  }
+
+  /// Hold derivation for the duration of a live workout (see [_workoutActive]).
+  /// Queued jobs stay durable and drain the moment the session ends.
+  void setWorkoutActive(bool active) {
+    if (_workoutActive == active) return;
+    _workoutActive = active;
+    if (active) {
+      _timer?.cancel();
+      _timer = null;
+      log('[derive-scheduler] workout live — holding derive work');
+      onChanged();
+      return;
+    }
+    log('[derive-scheduler] workout ended — derive may run');
+    onChanged();
+    _arm();
   }
 
   void setOffloadActive(bool active) {
@@ -118,7 +149,7 @@ class DeriveScheduler {
   }
 
   void _arm() {
-    if (_running || _offloadActive || _background) return;
+    if (_running || _offloadActive || _background || _workoutActive) return;
     if (!_pendingLight && !_pendingHeavy) {
       unawaited(_refreshSnapshot());
       return;
@@ -131,7 +162,7 @@ class DeriveScheduler {
   }
 
   Future<void> _drain() async {
-    if (_running || _offloadActive || _background) return;
+    if (_running || _offloadActive || _background || _workoutActive) return;
     _timer?.cancel();
     _timer = null;
     final job = await LocalDb.takeNextComputeJob();
