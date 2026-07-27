@@ -153,7 +153,7 @@ String partOfDay(DateTime now) {
 ///
 /// THE single source of truth for readiness-score banding — also used by
 /// the Today ring's status word (`TodayVitals._orbitHero` in
-/// today_screen.dart maps good/moderate/low → Primed/Steady/Run easy).
+/// today_screen.dart maps good/moderate/low → Push/Focus/Recover).
 /// These cuts (40/66) MUST match the ring's own thresholds: a briefing band
 /// computed from different cuts than the ring's word is exactly the
 /// tone-vs-score contradiction this function exists to prevent, just moved

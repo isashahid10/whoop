@@ -1,131 +1,16 @@
-// RecapCard + MedalCard — the "weekly recap" and "achievement medal"
-// compositions from the refs.
+// MedalCard — an inverted (ink) achievement card with an engraved medal disc:
+// personal records, streak milestones. Restrained metal, no confetti.
 //
-//  • [RecapCard] — a headline period recap: title, one highlight sentence in
-//    a soft banner, a big average figure, and a quiet bar strip of the week.
-//    The whole card taps through to the full recap screen.
-//  • [MedalCard] — an inverted (ink) achievement card with an engraved medal
-//    disc: personal records, streak milestones. Restrained metal, no confetti.
+// This file also held RecapCard (a headline period recap with a bar strip).
+// The recap screen builds its own composition, so RecapCard never had a call
+// site outside the gallery and was removed.
 
 import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
 import '../../theme/tokens.dart';
-import '../kit/charts.dart' show MiniBars;
 import '../kit/kit.dart' show AppIcon, OsIcon;
 import 'bento.dart';
-import 'big_stat.dart';
-
-class RecapCard extends StatelessWidget {
-  /// 'Weekly recap', 'January'…
-  final String title;
-
-  /// One highlight sentence ('You slept 40 min more than usual').
-  final String? highlight;
-
-  /// The headline figure ('7h 12m', '11 840').
-  final String? value;
-  final String? unit;
-
-  /// Label under the value ('daily average').
-  final String? caption;
-
-  /// A small bar strip (e.g. 7 daily values; nulls = gaps).
-  final List<double?>? bars;
-
-  final Color? accent;
-  final VoidCallback? onTap;
-
-  const RecapCard({
-    super.key,
-    required this.title,
-    this.highlight,
-    this.value,
-    this.unit,
-    this.caption,
-    this.bars,
-    this.accent,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final a = accent ?? AppColors.accent;
-    // Nulls go THROUGH to MiniBars, which keeps their slots empty. Stripping
-    // them here compacted the strip: a week missing Wednesday drew six bars
-    // with Thu–Sun shifted a day left, silently re-dating every value after
-    // the gap.
-    final barStrip = bars ?? const <double?>[];
-    return BentoTile(
-      tone: BentoTone.paper,
-      accent: a,
-      padding: const EdgeInsets.all(Sp.x4),
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TileHeader(
-            title,
-            trailing: onTap == null
-                ? null
-                : AppIcon(OsIcon.arrowRight, size: 14, color: AppColors.inkMuted),
-          ),
-          if (highlight != null) ...[
-            const SizedBox(height: Sp.x3),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: Sp.x3,
-                vertical: Sp.x2 + 2,
-              ),
-              decoration: BoxDecoration(
-                color: a.withValues(alpha: AppColors.isDark ? 0.16 : 0.10),
-                borderRadius: BorderRadius.circular(R.chip),
-              ),
-              child: Text(
-                highlight!,
-                style: AppText.caption.copyWith(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w700,
-                  height: 1.35,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-          if (value != null) ...[
-            const SizedBox(height: Sp.x3),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: BigStat(
-                    value: value,
-                    unit: unit,
-                    caption: caption,
-                    size: BigStatSize.md,
-                  ),
-                ),
-                // Gate on how many slots actually CARRY a value (a strip of
-                // one real bar plus six gaps isn't a trend), but draw the
-                // full-length strip so the bars keep their days.
-                if (barStrip.whereType<double>().length >= 2) ...[
-                  const SizedBox(width: Sp.x3),
-                  SizedBox(
-                    width: 96,
-                    child: MiniBars(barStrip, color: a, height: 34),
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
 
 /// An inverted achievement card with an engraved medal disc.
 class MedalCard extends StatelessWidget {

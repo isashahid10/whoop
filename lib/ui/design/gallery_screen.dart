@@ -9,8 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../gps/route_math.dart' as rmath;
+import '../../gps/route_models.dart' show RouteVertex, WorkoutRoute;
 import '../../theme/theme_controller.dart';
 import '../../theme/theme_switcher.dart';
+import '../../state/units_controller.dart';
+import '../activity/workout_share_card.dart';
 import '../activity/live_session_screen.dart'
     show GpsLiveMapView, WorkoutFinishScreen, WorkoutFinishSnapshot;
 import 'design.dart';
@@ -28,6 +31,9 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
   int _nav = 0;
   int _chip = 0;
 
+  static const _tags = ['Caffeine', 'Alcohol', 'Late meal', 'Travel'];
+  final _tagsOn = <int>{1};
+
   static const _spark = <double?>[
     62,
     58,
@@ -44,6 +50,75 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
     48,
     51,
   ];
+
+  // The fake route and its vertices are built ONCE. `fakeRunRoute()` generates
+  // 140 points and `buildVertices` is O(n) with a binary search and a haversine
+  // per point — cheap individually, but the gallery rebuilds on every theme
+  // toggle and this is the exact per-build recomputation that made the finish
+  // screen janky. Only the formatted strings below depend on units, and those
+  // are just string formatting.
+  late final WorkoutRoute _shareRoute = fakeRunRoute();
+  late final List<RouteVertex> _shareVertices =
+      rmath.buildVertices(_shareRoute.points, _shareRoute.hr, 190);
+
+  /// Build the share composition from the fake run, exactly the way the finish
+  /// screen does — same units controller, same three stats — so what the
+  /// gallery shows is what ships, not a hand-written mock that can drift.
+  WorkoutShareData _fakeShareData(BuildContext context) {
+    final units = context.watch<UnitsController>();
+    final route = _shareRoute;
+    final parts = units.distance(route.distanceMeters).split(' ');
+    return WorkoutShareData(
+      title: 'Morning Run',
+      subtitle: '27 Jul 2026',
+      vertices: _shareVertices,
+      heroValue: parts.first,
+      heroUnit: parts.length > 1 ? parts.sublist(1).join(' ') : '',
+      stats: [
+        ('20:06', 'Time'),
+        (units.pace(route.distanceMeters, route.movingSec), 'Pace'),
+        ('11.6', 'Strain'),
+      ],
+      accent: AppColors.coral,
+    );
+  }
+
+  /// Both formats side by side, scaled to fit the gallery column. Scaled — not
+  /// re-laid-out at a smaller width — so the proportions and type hierarchy are
+  /// exactly what a real post gets.
+  Widget _shareCardDemo(BuildContext context) {
+    final data = _fakeShareData(context);
+    Widget shrunk(ShareFormat f) => Expanded(
+          child: Column(
+            children: [
+              GestureDetector(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => WorkoutSharePreviewScreen(data: data),
+                  ),
+                ),
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: WorkoutShareCard(data: data, format: f),
+                ),
+              ),
+              const SizedBox(height: Sp.x2),
+              Text(
+                '${f.label} · ${f == ShareFormat.feed ? '4:5' : '9:16'}',
+                style: AppText.captionMuted,
+              ),
+            ],
+          ),
+        );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        shrunk(ShareFormat.feed),
+        const SizedBox(width: Sp.x4),
+        shrunk(ShareFormat.story),
+      ],
+    );
+  }
 
   void _toggleTheme(ThemeController ctrl) {
     final next = ctrl.isDark ? AppThemeChoice.light : AppThemeChoice.dark;
@@ -198,39 +273,11 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
         OrbitScore(
           score: 82,
           label: 'Readiness',
-          word: 'Primed',
+          word: 'Push',
+          wordIcon: OsIcon.intensity,
           color: AppColors.scoreColor(0.82),
+          glow: true,
           onTap: () {},
-          satellites: [
-            OrbitSatellite(
-              icon: OsIcon.sleep,
-              label: 'Sleep',
-              value: '7h 42m',
-              color: DomainAccent.sleep,
-              onTap: () {},
-            ),
-            OrbitSatellite(
-              icon: OsIcon.heart,
-              label: 'Heart',
-              value: '48 ms',
-              color: DomainAccent.heart,
-              onTap: () {},
-            ),
-            OrbitSatellite(
-              icon: OsIcon.bodyStrain,
-              label: 'Strain',
-              value: '12.4',
-              color: DomainAccent.strain,
-              onTap: () {},
-            ),
-            OrbitSatellite(
-              icon: OsIcon.stress,
-              label: 'Stress',
-              value: '34',
-              color: DomainAccent.stress,
-              onTap: () {},
-            ),
-          ],
         ),
         const SizedBox(height: Sp.x6),
 
@@ -363,29 +410,6 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
         ),
         const SizedBox(height: Sp.x6),
 
-        // ── RadialHeatmap ─────────────────────────────────────────────
-        const SectionHeader('RadialHeatmap'),
-        SurfaceCard(
-          child: Column(
-            children: [
-              Text('STRAIN BY HOUR', style: AppText.overline),
-              const SizedBox(height: Sp.x3),
-              RadialHeatmap(
-                values: const [
-                  0.05, 0.02, 0.0, null, 0.0, 0.1, 0.35, 0.8,
-                  0.95, 0.6, 0.3, 0.4, 0.5, 0.3, 0.2, 0.25,
-                  0.45, 0.85, 0.7, 0.4, 0.2, 0.1, 0.05, 0.02,
-                ],
-                color: DomainAccent.strain,
-                size: 190,
-                labels: const ['12a', '6a', '12p', '6p'],
-                startAngle: -1.5707963267948966,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: Sp.x6),
-
         // ── RingWeek ──────────────────────────────────────────────────
         const SectionHeader('RingWeek'),
         SurfaceCard(
@@ -397,33 +421,66 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
         ),
         const SizedBox(height: Sp.x6),
 
-        // ── StateChips ────────────────────────────────────────────────
-        const SectionHeader('StateChips'),
-        StateChips(
-          chips: const [
-            StateChip('Energize', emoji: '⚡'),
-            StateChip('Recover', emoji: '🛌'),
-            StateChip('Focus', emoji: '🎯'),
-            StateChip('Calm', emoji: '🫧'),
-            StateChip('Push', emoji: '🔥'),
+        // ── StateChipView + ToggleChip ────────────────────────────────
+        const SectionHeader('StateChipView · ToggleChip'),
+        // Display-only, accent-tinted — the exact pill the Today readiness
+        // ring puts under the score, at each of the three bands.
+        Row(
+          children: [
+            for (final (w, i, t) in const [
+              ('Push', OsIcon.intensity, 0.82),
+              ('Focus', OsIcon.activity, 0.55),
+              ('Recover', OsIcon.calm, 0.28),
+            ]) ...[
+              StateChipView(
+                StateChip(w, icon: i),
+                selected: true,
+                accent: AppColors.scoreColor(t),
+                dense: true,
+              ),
+              const SizedBox(width: Sp.x2),
+            ],
           ],
-          selected: _chip,
-          onSelect: (i) => setState(() => _chip = i),
+        ),
+        const SizedBox(height: Sp.x3),
+        // Interactive variant (onTap) — a Wrap of chips, single-select.
+        Wrap(
+          spacing: Sp.x2,
+          runSpacing: Sp.x2,
+          children: [
+            for (final (i, c) in const [
+              (0, StateChip('Push', icon: OsIcon.intensity)),
+              (1, StateChip('Focus', icon: OsIcon.activity)),
+              (2, StateChip('Recover', icon: OsIcon.calm)),
+              (3, StateChip('Sleep', icon: OsIcon.sleep)),
+            ])
+              StateChipView(
+                c,
+                selected: _chip == i,
+                onTap: () => setState(() => _chip = i),
+              ),
+          ],
+        ),
+        const SizedBox(height: Sp.x3),
+        // ToggleChip — the multi-select sibling (journal tags, cycle symptoms).
+        Wrap(
+          spacing: Sp.x2,
+          runSpacing: Sp.x2,
+          children: [
+            for (var i = 0; i < _tags.length; i++)
+              ToggleChip(
+                _tags[i],
+                selected: _tagsOn.contains(i),
+                onTap: () => setState(
+                  () => _tagsOn.contains(i) ? _tagsOn.remove(i) : _tagsOn.add(i),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: Sp.x6),
 
-        // ── RecapCard + MedalCard ─────────────────────────────────────
-        const SectionHeader('RecapCard · MedalCard'),
-        RecapCard(
-          title: 'Weekly recap',
-          highlight: 'You slept 40 min more than your usual this week.',
-          value: '7h 12m',
-          caption: 'daily average',
-          bars: const [6.2, 7.5, 8.1, 6.9, 7.2, 8.4, 7.1],
-          accent: DomainAccent.sleep,
-          onTap: () {},
-        ),
-        const SizedBox(height: Sp.x3),
+        // ── MedalCard ─────────────────────────────────────────────────
+        const SectionHeader('MedalCard'),
         MedalCard(
           medal: '5K',
           overline: 'Personal record',
@@ -787,6 +844,21 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
             ),
           ],
         ),
+        const SizedBox(height: Sp.x6),
+
+        // ── Share card ────────────────────────────────────────────────
+        const SectionHeader('Share card'),
+        const SizedBox(height: Sp.x2),
+        Text(
+          'What actually gets posted — composed for a feed, not a capture of '
+          'the finish screen. Map full-bleed, one headline figure, three '
+          'supporting stats, nothing else. Both cards below are the REAL '
+          'widget with the fake run\'s data and your current units; tap either '
+          'to open the live preview screen with its format switcher.',
+          style: AppText.captionMuted,
+        ),
+        const SizedBox(height: Sp.x4),
+        _shareCardDemo(context),
         const SizedBox(height: Sp.x6),
 
         // ── Nav pill ──────────────────────────────────────────────────

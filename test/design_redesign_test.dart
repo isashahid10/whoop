@@ -14,10 +14,8 @@ import 'package:openstrap_edge/theme/tokens.dart';
 import 'package:openstrap_edge/ui/design/ai_hero.dart';
 import 'package:openstrap_edge/ui/design/bento.dart';
 import 'package:openstrap_edge/ui/design/big_stat.dart';
-import 'package:openstrap_edge/ui/design/domains.dart';
 import 'package:openstrap_edge/ui/design/hypnogram.dart';
 import 'package:openstrap_edge/ui/design/orbit_score.dart';
-import 'package:openstrap_edge/ui/design/radial_heatmap.dart';
 import 'package:openstrap_edge/ui/design/recap_card.dart';
 import 'package:openstrap_edge/ui/design/ring_week.dart';
 import 'package:openstrap_edge/ui/design/state_chips.dart';
@@ -62,47 +60,33 @@ void main() {
   tearDown(() => AppColors.active = kLightPalette);
 
   group('OrbitScore', () {
-    testWidgets('score, word, label render; core + satellite taps fire', (
+    testWidgets('score, label + word chip render; core tap fires', (
       t,
     ) async {
       _phone(t);
       var core = 0;
-      final opened = <String>[];
       await t.pumpWidget(
         _host(
           OrbitScore(
             score: 82,
             label: 'Readiness',
-            word: 'Primed',
+            word: 'Push',
+            wordIcon: OsIcon.intensity,
             onTap: () => core++,
-            satellites: [
-              OrbitSatellite(
-                icon: OsIcon.sleep,
-                label: 'Sleep',
-                onTap: () => opened.add('sleep'),
-              ),
-              OrbitSatellite(
-                icon: OsIcon.heart,
-                label: 'Heart',
-                onTap: () => opened.add('heart'),
-              ),
-            ],
           ),
         ),
       );
       await t.pump(const Duration(milliseconds: 1200));
       expect(find.text('READINESS'), findsOneWidget);
       expect(find.text('82'), findsOneWidget);
-      expect(find.text('Primed'), findsOneWidget);
-      expect(find.text('Sleep'), findsOneWidget);
+      // The status word renders as a StateChipView pill, not bare text.
+      expect(find.text('Push'), findsOneWidget);
+      expect(find.byType(StateChipView), findsOneWidget);
       expect(t.takeException(), isNull);
 
       await t.tap(find.text('82'));
       await t.pump(const Duration(milliseconds: 250));
       expect(core, 1);
-      await t.tap(find.text('Sleep'));
-      await t.pump(const Duration(milliseconds: 250));
-      expect(opened, ['sleep']);
     });
 
     testWidgets('null score with ringFill + custom center stays honest', (
@@ -282,24 +266,7 @@ void main() {
     });
   });
 
-  group('RadialHeatmap + RingWeek', () {
-    testWidgets('RadialHeatmap handles nulls + labels without throwing', (
-      t,
-    ) async {
-      _phone(t);
-      await t.pumpWidget(
-        _host(
-          RadialHeatmap(
-            values: const [0.1, null, 0.8, 1.0, 0.4, 0.0, null, 0.6],
-            color: DomainAccent.strain,
-            labels: const ['12a', '6a', '12p', '6p'],
-          ),
-        ),
-      );
-      await t.pump(const Duration(milliseconds: 1100));
-      expect(t.takeException(), isNull);
-    });
-
+  group('RingWeek', () {
     testWidgets('RingWeek renders custom labels + null days', (t) async {
       _phone(t);
       await t.pumpWidget(
@@ -318,65 +285,60 @@ void main() {
     });
   });
 
-  group('StateChips + RecapCard + MedalCard + AiHero', () {
-    testWidgets('StateChips selects on tap', (t) async {
+  group('StateChipView + MedalCard + AiHero', () {
+    testWidgets('StateChipView fires onTap; display-only chip does not', (
+      t,
+    ) async {
       _phone(t);
-      var sel = 0;
+      var taps = 0;
       await t.pumpWidget(
         _host(
-          StatefulBuilder(
-            builder: (context, setState) => StateChips(
-              chips: const [
-                StateChip('Energize', emoji: '⚡'),
-                StateChip('Recover', emoji: '🛌'),
-              ],
-              selected: sel,
-              onSelect: (i) => setState(() => sel = i),
-            ),
+          Column(
+            children: [
+              StateChipView(
+                const StateChip('Recover', icon: OsIcon.calm),
+                selected: true,
+                onTap: () => taps++,
+              ),
+              // No onTap → a display badge. Tapping it must stay inert.
+              const StateChipView(
+                StateChip('Push', icon: OsIcon.intensity),
+                selected: true,
+              ),
+            ],
           ),
         ),
       );
       await t.pump(const Duration(milliseconds: 300));
       await t.tap(find.text('Recover'));
       await t.pump(const Duration(milliseconds: 300));
-      expect(sel, 1);
+      expect(taps, 1);
+      await t.tap(find.text('Push'));
+      await t.pump(const Duration(milliseconds: 300));
+      expect(taps, 1);
+      expect(t.takeException(), isNull);
     });
 
-    testWidgets('RecapCard + MedalCard render and tap through', (t) async {
+    testWidgets('MedalCard renders and taps through', (t) async {
       for (final p in [kLightPalette, kDarkPalette]) {
         _phone(t);
         var taps = 0;
         await t.pumpWidget(
           _host(
-            Column(
-              children: [
-                RecapCard(
-                  title: 'Weekly recap',
-                  highlight: 'You slept 40 min more than usual.',
-                  value: '7h 12m',
-                  caption: 'daily average',
-                  bars: const [6.2, 7.5, 8.1, 6.9, 7.2, 8.4, 7.1],
-                  onTap: () => taps++,
-                ),
-                const SizedBox(height: Sp.x3),
-                MedalCard(
-                  medal: '5K',
-                  overline: 'Personal record',
-                  title: 'Fastest 5k — 24:31',
-                  subtitle: 'Tuesday morning run',
-                  onTap: () {},
-                ),
-              ],
+            MedalCard(
+              medal: '5K',
+              overline: 'Personal record',
+              title: 'Fastest 5k — 24:31',
+              subtitle: 'Tuesday morning run',
+              onTap: () => taps++,
             ),
             palette: p,
           ),
         );
         await t.pump(const Duration(milliseconds: 500));
-        expect(find.text('WEEKLY RECAP'), findsOneWidget);
-        expect(find.text('7h 12m'), findsOneWidget);
         expect(find.text('Fastest 5k — 24:31'), findsOneWidget);
         expect(t.takeException(), isNull);
-        await t.tap(find.text('7h 12m'));
+        await t.tap(find.text('Fastest 5k — 24:31'));
         await t.pump(const Duration(milliseconds: 250));
         expect(taps, 1);
       }
@@ -451,7 +413,7 @@ void main() {
           // Hero (no floating satellites anymore) + the demoted quick-stats
           // row underneath it.
           expect(find.text('READINESS'), findsOneWidget);
-          expect(find.text('Primed'), findsOneWidget);
+          expect(find.text('Push'), findsOneWidget);
           expect(find.text('Sleep'), findsOneWidget); // quick-stats row route
           // Bento numbers. RHR also appears in the quick-stats row (Heart),
           // so it matches >1; HRV is bento-only (shown as an AI-briefing

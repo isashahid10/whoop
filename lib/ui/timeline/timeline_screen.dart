@@ -17,12 +17,14 @@
 // HONESTY: only continuously-recorded vitals are drawn — HR, HRV, resp (rolling
 // RSA) and a RELATIVE skin-temp trend (no absolute °C). HRV/resp are movement-
 // confounded by day (explained behind the (i)).
+//
+// This file is presentation only: [TimelineContent] takes an already-loaded day
+// bundle. It used to also carry a standalone `TimelineScreen` that fetched the
+// bundle itself, but the timeline is only ever reached embedded in the Journey
+// screen (which does its own loading), so that wrapper was removed.
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
-import '../../data/local_repository.dart';
-import '../../state/app_state.dart';
 import '../design/design.dart';
 
 // Strong, opposite, nature-matched vital colours (deliberately NOT the light
@@ -109,77 +111,6 @@ class _Band {
   final double end;
   final OsIcon icon;
   const _Band(this.label, this.color, this.start, this.end, this.icon);
-}
-
-class TimelineScreen extends StatefulWidget {
-  final String date;
-  const TimelineScreen({super.key, required this.date});
-  @override
-  State<TimelineScreen> createState() => _TimelineScreenState();
-}
-
-enum _Phase { loading, ready, empty, error }
-
-class _TimelineScreenState extends State<TimelineScreen> {
-  _Phase _phase = _Phase.loading;
-  Map<String, dynamic> _data = const {};
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _phase = _Phase.loading);
-    try {
-      final LocalRepository? repo = context.read<AppState>().repo;
-      final d = await repo?.getDayTimeline(widget.date);
-      if (!mounted) return;
-      setState(() {
-        _data = d ?? const {};
-        _phase = TimelineContent.hasVitals(_data)
-            ? _Phase.ready
-            : _Phase.empty;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _phase = _Phase.error);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AppScaffold(
-      title: 'Your timeline',
-      subtitle: 'Every vital, one day',
-      children: [
-        if (_phase == _Phase.loading) ...[
-          Skeleton.tileRow(rows: 1),
-          const SizedBox(height: Sp.x4),
-          Skeleton.chart(height: 280),
-        ] else if (_phase == _Phase.empty)
-          StateCard(
-            icon: OsIcon.heartRate,
-            title: 'No timeline yet',
-            message:
-                'Wear the strap through the day and your merged vitals '
-                'timeline will appear here.',
-            actionLabel: 'Try again',
-            onAction: _load,
-          )
-        else if (_phase == _Phase.error)
-          StateCard(
-            icon: OsIcon.sync,
-            title: "Couldn't load your timeline",
-            message: 'Please try again.',
-            actionLabel: 'Try again',
-            onAction: _load,
-          )
-        else
-          TimelineContent(data: _data),
-      ],
-    );
-  }
 }
 
 /// Pure presentation for the merged-vitals board (render-testable without a

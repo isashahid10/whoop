@@ -223,27 +223,6 @@ class GlowCard extends StatelessWidget {
   }
 }
 
-/// Dark hero card (device, splash overlays).
-class NightCard extends StatelessWidget {
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-  final VoidCallback? onTap;
-  const NightCard({
-    super.key,
-    required this.child,
-    this.padding = const EdgeInsets.all(Sp.x6),
-    this.onTap,
-  });
-  @override
-  Widget build(BuildContext context) => ProCard(
-    padding: padding,
-    onTap: onTap,
-    color: AppColors.night,
-    shadow: Shadows.lift,
-    child: child,
-  );
-}
-
 /// Wrap each non-spacer widget in a hand-built list with a staggered [Entrance]
 /// (delay by list position), for a one-time fade-up reveal of a ListView's
 /// children. Bare [SizedBox] spacers pass through untouched so gaps don't move.

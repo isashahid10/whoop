@@ -960,12 +960,15 @@ class TodayVitals extends StatelessWidget {
     // uses (40/66) — the ring's word and the AI briefing's band must always
     // agree, or the app can tell the user two different things about the
     // same score again (exactly the bug this shared source of truth fixes).
-    final word = score == null
-        ? null
+    //
+    // The word is a state you're in, phrased as what today's training should
+    // be, and renders as a state chip inside the ring (see OrbitScore.word).
+    final (word, wordIcon) = score == null
+        ? (null, null)
         : switch (readinessBand(score)) {
-            'good' => 'Primed',
-            'moderate' => 'Steady',
-            _ => 'Run easy',
+            'good' => ('Push', OsIcon.intensity),
+            'moderate' => ('Focus', OsIcon.activity),
+            _ => ('Recover', OsIcon.calm),
           };
 
     // Honest "still learning you" center: nights-to-go over a dashed
@@ -997,6 +1000,7 @@ class TodayVitals extends StatelessWidget {
       score: score,
       label: 'Readiness',
       word: word,
+      wordIcon: wordIcon,
       color: accent,
       confidence: score == null ? 0.3 : r.confidence,
       ringFill: (score == null && fill != null) ? fill.$1 / fill.$2 : null,

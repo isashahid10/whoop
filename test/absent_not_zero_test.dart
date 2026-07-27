@@ -11,7 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:openstrap_edge/theme/theme.dart';
 import 'package:openstrap_edge/theme/tokens.dart';
-import 'package:openstrap_edge/ui/design/recap_card.dart' show RecapCard;
 import 'package:openstrap_edge/ui/kit/charts.dart'
     show HrReplayOverlay, LabeledBars, MiniBars, TimeSeriesPoint;
 import 'package:openstrap_edge/ui/kit/kit.dart' show OsIcon;
@@ -435,16 +434,16 @@ void main() {
     });
   });
 
-  // ── recap strip gaps ──────────────────────────────────────────────────────
-  group('RecapCard week strip', () {
+  // ── week-strip gaps ───────────────────────────────────────────────────────
+  // This used to go through RecapCard (now deleted — it had no call site
+  // outside the gallery). The invariant it guarded is MiniBars' own: a null
+  // day holds its slot instead of sliding the rest of the week left.
+  group('MiniBars week strip', () {
     testWidgets('keeps a missing day in place instead of shifting the week '
         'left', (t) async {
       _phone(t);
-      await t.pumpWidget(_host(const RecapCard(
-        title: 'Weekly recap',
-        value: '7h 12m',
-        caption: 'daily average',
-        bars: [420.0, 430.0, null, 445.0, 455.0, 460.0, 470.0],
+      await t.pumpWidget(_host(const MiniBars(
+        [420.0, 430.0, null, 445.0, 455.0, 460.0, 470.0],
       )));
       await t.pump(const Duration(milliseconds: 700));
       final bars = t.widget<MiniBars>(find.byType(MiniBars));
