@@ -1,6 +1,6 @@
 # Privacy Policy — Edge / OpenStrap
 
-_Last updated: July 20, 2026_
+_Last updated: July 27, 2026_
 
 Edge ("the App") is an independent, open-source project. It is not affiliated
 with, sponsored by, or endorsed by WHOOP, Inc.
@@ -42,6 +42,34 @@ device info (OS/model/app version), and coarse performance timing. This data
 is handled under Firebase's own privacy and security practices, not a system
 we built or operate ourselves — see Google's Firebase privacy & security
 documentation: https://firebase.google.com/support/privacy.
+
+**Location and workout routes**
+If you record a run, ride or walk, the App uses your device's location to draw
+that workout's route. This is the most sensitive permission the App asks for,
+so to be specific about it:
+
+- **Only during a workout.** Location is read only while a run, ride or walk is
+  actively recording. It stops the moment you finish. The App never reads your
+  location in the background at any other time.
+- **We never ask for "always" access.** The App requests *while-in-use*
+  location only. Recording does continue while your screen is locked or you
+  switch apps — otherwise a workout would stop being recorded the moment you
+  put your phone in your pocket — but that is scoped to the active workout, not
+  a standing permission to follow you.
+- **It is visible while it happens.** On iOS the system's blue location
+  indicator is shown for the whole time the App is reading location in the
+  background. On Android the workout runs as a foreground service with a
+  visible, persistent notification.
+- **Routes never leave your device.** A route is written to a local database
+  table on your phone and nowhere else. It is not uploaded, not included in
+  anonymous diagnostics, and not sent to your AI Coach provider — the coach is
+  technically prevented from reading route data, not merely asked not to.
+- **You can delete it.** Deleting a workout deletes its route with it, and
+  uninstalling the App removes all of it immediately.
+
+You can decline or revoke location access at any time in your device settings.
+The App still records the workout — heart rate, duration, strain and the rest —
+it simply has no map for it.
 
 **Optional, user-initiated integrations**
 If you choose to enable them, the App can also send data to services *you*
