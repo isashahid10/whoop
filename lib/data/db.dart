@@ -91,7 +91,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 26;
+  static const int schemaVersion = 27;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -165,6 +165,7 @@ class LocalDb {
         await _createSleepOverride(db);
         await _createWorkoutRoute(db);
         await _createNotifFired(db);
+        await _createHevy(db);
         await _ensureCoachViews(db);
       },
       onUpgrade: (db, oldV, newV) async {
@@ -391,11 +392,22 @@ class LocalDb {
           // use by FiredKeyStore, so nothing is lost on upgrade.
           await _createNotifFired(db);
         }
+        if (oldV < 27) {
+          // Hevy resistance-training import. Purely additive — two new tables,
+          // nothing existing is touched, so this cannot fail an upgrade for a
+          // user who never links Hevy.
+          await _createHevy(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
       },
-      version: 26,
+      // Was a hardcoded literal, which silently drifted from [schemaVersion]
+      // when the ladder gained a rung: openDatabase compares the FILE's version
+      // against THIS number, so a bumped constant with a stale literal here
+      // means onUpgrade never fires and the new tables never get created — with
+      // no error anywhere. Bind it to the constant so they cannot diverge again.
+      version: schemaVersion,
     );
   }
 
@@ -584,6 +596,67 @@ class LocalDb {
         fired_at INTEGER NOT NULL
       )
     ''');
+  }
+
+  /// Resistance training pulled from Hevy (see integrations/hevy_client.dart).
+  ///
+  /// Two tables rather than one JSON blob: the coach's whole value here is
+  /// asking set-level questions ("has my squat top set moved in 6 weeks",
+  /// "did volume drop the week my HRV fell"), and that needs real rows to
+  /// aggregate over, not JSON the model has to parse in its head.
+  ///
+  /// `day` is the LOCAL calendar label (dayLabelOf) so these JOIN cleanly to
+  /// metric_series / v_daily, which are keyed the same way.
+  static Future<void> _createHevy(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS hevy_workout (
+        id TEXT PRIMARY KEY,
+        idx INTEGER NOT NULL,
+        day TEXT NOT NULL,
+        name TEXT,
+        description TEXT,
+        start_ts INTEGER NOT NULL,
+        end_ts INTEGER NOT NULL,
+        duration_s INTEGER NOT NULL,
+        total_volume_kg REAL,
+        set_count INTEGER NOT NULL,
+        synced_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_hevy_workout_day ON hevy_workout(day)');
+    // idx is Hevy's own monotonic cursor — the incremental-sync high-water mark.
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_hevy_workout_idx ON hevy_workout(idx)');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS hevy_set (
+        workout_id TEXT NOT NULL,
+        exercise_idx INTEGER NOT NULL,
+        set_idx INTEGER NOT NULL,
+        day TEXT NOT NULL,
+        exercise_title TEXT NOT NULL,
+        template_id TEXT,
+        exercise_type TEXT,
+        equipment TEXT,
+        muscle_group TEXT,
+        superset_id TEXT,
+        indicator TEXT,
+        weight_kg REAL,
+        reps INTEGER,
+        rpe REAL,
+        distance_m REAL,
+        duration_s INTEGER,
+        volume_kg REAL,
+        PRIMARY KEY (workout_id, exercise_idx, set_idx)
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_hevy_set_day ON hevy_set(day)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_hevy_set_ex ON hevy_set(exercise_title)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_hevy_set_muscle ON hevy_set(muscle_group)');
   }
 
   /// Atomically claim [key] for a one-time OS notification fire.
@@ -1300,6 +1373,8 @@ class LocalDb {
       'v_sessions',
       'v_baselines',
       'v_insights',
+      'v_lifts',
+      'v_lift_sessions',
     ];
     for (final v in views) {
       await db.execute('DROP VIEW IF EXISTS $v');
@@ -1338,8 +1413,62 @@ class LocalDb {
         MAX(CASE WHEN key='worn_min' THEN value END)       AS worn_min,
         MAX(CASE WHEN key='hrr_bpm' THEN value END)        AS hrr_bpm,
         MAX(CASE WHEN key='brv_cv' THEN value END)         AS brv_cv,
-        MAX(CASE WHEN key='irregular_rhythm_flag' THEN value END) AS irregular_flag
+        MAX(CASE WHEN key='irregular_rhythm_flag' THEN value END) AS irregular_flag,
+        -- Imported from the platform health store (health_import.dart). The
+        -- `hk_` prefix keeps these disjoint from the DerivationEngine's own
+        -- keys so neither can clobber the other on re-derive/re-import.
+        -- These are the cross-domain columns the band cannot measure: what was
+        -- eaten, body mass, and movement logged before the band existed.
+        MAX(CASE WHEN key='hk_kcal_in' THEN value END)     AS calories_in,
+        MAX(CASE WHEN key='hk_protein_g' THEN value END)   AS protein_g,
+        MAX(CASE WHEN key='hk_carbs_g' THEN value END)     AS carbs_g,
+        MAX(CASE WHEN key='hk_fat_g' THEN value END)       AS fat_g,
+        MAX(CASE WHEN key='hk_water_l' THEN value END)     AS water_l,
+        MAX(CASE WHEN key='hk_weight_kg' THEN value END)   AS weight_kg,
+        MAX(CASE WHEN key='hk_steps' THEN value END)       AS phone_steps,
+        -- Weather (wx_) and calendar (cal_) context. The band cannot measure
+        -- either, and both plausibly move recovery: heat drives cardiac load,
+        -- schedule density drives stress and cuts sleep. Calendar is COUNTS
+        -- ONLY — event titles are never stored (see calendar_client.dart).
+        MAX(CASE WHEN key='wx_temp_max_c' THEN value END)      AS temp_max_c,
+        MAX(CASE WHEN key='wx_feels_max_c' THEN value END)     AS feels_max_c,
+        MAX(CASE WHEN key='wx_humidity_pct' THEN value END)    AS humidity_pct,
+        MAX(CASE WHEN key='wx_precip_mm' THEN value END)       AS precip_mm,
+        MAX(CASE WHEN key='cal_events' THEN value END)         AS cal_events,
+        MAX(CASE WHEN key='cal_busy_min' THEN value END)       AS cal_busy_min,
+        MAX(CASE WHEN key='cal_first_start_min' THEN value END) AS cal_first_start_min
       FROM metric_series GROUP BY date
+    ''');
+    // ── Resistance training (Hevy) ────────────────────────────────────────
+    // The thing no commercial tracker can answer, because none of them hold
+    // lifting and biometrics together. `day` is the local calendar label, so
+    // these JOIN directly to v_daily for "did volume move recovery" questions.
+    //
+    // One row per SET. Deliberately not pre-aggregated: the useful questions
+    // are set-level ("has my top-set squat moved", "how many working sets hit
+    // chest last week"), and an aggregate would foreclose them.
+    await db.execute('''
+      CREATE VIEW v_lifts AS
+      SELECT s.day, s.exercise_title, s.muscle_group, s.equipment,
+             s.exercise_type, s.indicator, s.set_idx,
+             s.weight_kg, s.reps, s.rpe, s.volume_kg,
+             s.distance_m, s.duration_s,
+             w.name AS workout_name, w.id AS workout_id
+      FROM hevy_set s JOIN hevy_workout w ON w.id = s.workout_id
+    ''');
+    // One row per SESSION — the natural granularity for correlating a whole
+    // workout against that day's recovery/strain.
+    await db.execute('''
+      CREATE VIEW v_lift_sessions AS
+      SELECT w.day, w.name, w.description,
+             w.start_ts, w.end_ts,
+             w.duration_s / 60.0            AS duration_min,
+             w.total_volume_kg, w.set_count,
+             (SELECT COUNT(DISTINCT exercise_title) FROM hevy_set
+                WHERE workout_id = w.id)    AS exercise_count,
+             (SELECT GROUP_CONCAT(DISTINCT muscle_group) FROM hevy_set
+                WHERE workout_id = w.id)    AS muscle_groups
+      FROM hevy_workout w
     ''');
     // Intra-day curves UNNESTED from the latest day_result bundle. HEAVY — always
     // filter by date AND series. zone_timeline uses 'z'; activity_curve is root.

@@ -32,7 +32,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Edge</string>
+	<string>Whoop</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -40,7 +40,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>OpenStrap Edge</string>
+	<string>Whoop</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -67,6 +67,14 @@
 	<string>OpenStrap writes your sleep, resting heart rate, HRV, respiratory rate, energy and workouts into Apple Health.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>OpenStrap connects to your WHOOP band over Bluetooth to sync your health data.</string>
+	<!-- Calendar is READ-ONLY and event titles are never stored: only per-day
+	     counts and durations reach the database, so schedule load can be
+	     correlated against recovery without keeping a record of what the events
+	     were. Missing this key is a hard CRASH on first access, not a denial. -->
+	<key>NSCalendarsUsageDescription</key>
+	<string>Reads your calendar to measure how busy each day was, so recovery and sleep can be compared against schedule load. Event titles are never stored — only how many events and how long they ran.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Reads your calendar to measure how busy each day was, so recovery and sleep can be compared against schedule load. Event titles are never stored — only how many events and how long they ran.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>OpenStrap records your route during a run, ride or walk so you can see it, colored by heart-rate zone, when the workout ends. Recording continues while your screen is locked or you switch apps, but only while a workout is running — it stops the moment you finish. Your route stays on this device and is never uploaded.</string>
 	<!-- NSLocationAlwaysAndWhenInUseUsageDescription: STILL not requested by app

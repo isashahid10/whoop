@@ -195,7 +195,7 @@ class _TodayScreenState extends State<TodayScreen>
     return AppScaffold(
       // Brand wordmark — a confident title, not a greeting.
       titleWidget: Text(
-        'Edge',
+        'Whoop',
         style: AppText.h1.copyWith(
           fontWeight: FontWeight.w800,
           letterSpacing: -0.9,

@@ -18,6 +18,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../data/db.dart';
 import '../../health/health_export.dart';
 import '../../platform/tasker_bridge.dart';
+import '../../integrations/hevy_login_screen.dart';
+import '../../notify/profile_nudges.dart';
+import '../../integrations/hevy_store.dart';
 import '../../state/app_state.dart';
 import '../../state/units_controller.dart';
 import '../../debug/debug_mode.dart';
@@ -270,6 +273,8 @@ class ProfileScreen extends StatelessWidget {
           // ── Apple Health (iOS) / Health Connect (Android) ─────────────
           SectionHeader(app.healthStoreName),
           _HealthSection(app: app),
+          const SizedBox(height: Sp.x5),
+          _HevySection(app: app),
 
           const SizedBox(height: Sp.x6),
 
@@ -1624,6 +1629,11 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
         'weight_kg': _units.weightToKg(_weight.text),
         if (_sex != null) 'sex': _sex,
       });
+      // Saving the editor is the ONLY thing that counts as confirming the
+      // weight — merely opening the profile screen must not silence the
+      // 2-monthly re-check, or a stale weight quietly biases Keytel calories
+      // and TRIMP forever with no visible symptom.
+      await ProfileNudges.markWeightConfirmed();
       if (mounted) {
         Navigator.pop(context);
         _snack(context, 'Profile saved.');
@@ -1771,4 +1781,167 @@ void _snack(BuildContext context, String msg) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(msg)));
+}
+
+/// Hevy resistance-training link. One-time WebView sign-in (their `/login` is
+/// reCAPTCHA-gated, so a real browser is the only honest way through it), then
+/// every later sync is plain HTTP via `/refresh_token`.
+///
+/// An expired sign-in is shown LOUDLY rather than logged: a silently stale
+/// lifting log would have the coach reasoning about workouts that never
+/// happened, which is worse than showing no lifting data at all.
+class _HevySection extends StatefulWidget {
+  final AppState app;
+  const _HevySection({required this.app});
+
+  @override
+  State<_HevySection> createState() => _HevySectionState();
+}
+
+class _HevySectionState extends State<_HevySection> {
+  bool _busy = false;
+  bool _linked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshLinked();
+  }
+
+  Future<void> _refreshLinked() async {
+    final l = await widget.app.hevyLinked;
+    if (mounted) setState(() => _linked = l);
+  }
+
+  Future<void> _signIn() async {
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const HevyLoginScreen()),
+    );
+    if (ok != true) return;
+    setState(() => _busy = true);
+    final r = await widget.app.hevyInitialSync();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await _refreshLinked();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(r.isError
+          ? (r.message ?? 'Hevy sync failed')
+          : 'Imported ${r.workouts} workouts (${r.sets} sets)'),
+    ));
+  }
+
+  Future<void> _syncNow() async {
+    setState(() => _busy = true);
+    final r = await widget.app.hevySyncNow();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await _refreshLinked();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(r.isError
+          ? (r.message ?? 'Hevy sync failed')
+          : r.workouts == 0
+              ? 'Already up to date'
+              : 'Imported ${r.workouts} workouts (${r.sets} sets)'),
+    ));
+  }
+
+  Future<void> _unlink() async {
+    setState(() => _busy = true);
+    await widget.app.hevyUnlink();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await _refreshLinked();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final last = widget.app.lastHevySync;
+    final expired = last?.outcome == HevySyncOutcome.authExpired;
+
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(Sp.x2),
+                decoration: BoxDecoration(
+                  color: AppColors.accentSoft,
+                  borderRadius: BorderRadius.circular(R.chip),
+                ),
+                child: AppIcon(OsIcon.activity,
+                    size: 18, color: AppColors.onAccentSoft),
+              ),
+              const SizedBox(width: Sp.x3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Hevy', style: AppText.title),
+                    const SizedBox(height: 1),
+                    Text(
+                      _linked
+                          ? 'Sets, reps, load and RPE — the coach can see your lifts.'
+                          : 'Sign in once to pull your resistance training in.',
+                      style: AppText.captionMuted,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (expired) ...[
+            const SizedBox(height: Sp.x3),
+            Row(children: [
+              AppIcon(OsIcon.info, size: 16, color: AppColors.bad),
+              const SizedBox(width: Sp.x2),
+              Expanded(
+                child: Text(
+                  last?.message ?? 'Hevy sign-in expired — sign in again.',
+                  style: AppText.captionMuted.copyWith(color: AppColors.bad),
+                ),
+              ),
+            ]),
+          ] else if (last != null && last.isError) ...[
+            const SizedBox(height: Sp.x3),
+            Text(last.message ?? 'Last Hevy sync failed.',
+                style: AppText.captionMuted.copyWith(color: AppColors.bad)),
+          ],
+          const SizedBox(height: Sp.x4),
+          if (_busy)
+            const Center(child: Padding(
+              padding: EdgeInsets.symmetric(vertical: Sp.x2),
+              child: SizedBox(
+                  width: 18, height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2)),
+            ))
+          else if (!_linked || expired)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _signIn,
+                child: const Text('Sign in to Hevy'),
+              ),
+            )
+          else
+            Row(children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: _syncNow,
+                  child: const Text('Sync now'),
+                ),
+              ),
+              const SizedBox(width: Sp.x3),
+              OutlinedButton(
+                onPressed: _unlink,
+                child: const Text('Unlink'),
+              ),
+            ]),
+        ],
+      ),
+    );
+  }
 }

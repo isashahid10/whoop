@@ -11,6 +11,26 @@ import '../../theme/theme.dart';
 import '../../theme/tokens.dart';
 import '../kit/kit.dart';
 
+/// One-tap base-URL presets. Deliberately NOT hardcoding a provider anywhere
+/// else in the app — upstream's whole BYOK design is that switching is cheap,
+/// and this decision should stay cheap to reverse.
+///
+/// Every entry below speaks the same wire protocol: an `Authorization: Bearer`
+/// header against `{base}/chat/completions`, which is exactly what
+/// [CoachEngine.postChat] already sends. Gemini reaches it through its
+/// OpenAI-compatibility endpoint, so no transport change is needed.
+///
+/// Anthropic is listed for completeness, but note its compatibility shim gives
+/// up prompt caching control and extended thinking versus the native Messages
+/// API. Fine for a low-volume on-demand coach; not the path for heavy use.
+const Map<String, String> _kProviderPresets = {
+  'Gemini': 'https://generativelanguage.googleapis.com/v1beta/openai',
+  'OpenAI': 'https://api.openai.com/v1',
+  'Anthropic': 'https://api.anthropic.com/v1',
+  'OpenRouter': 'https://openrouter.ai/api/v1',
+  'Ollama': 'http://localhost:11434/v1',
+};
+
 class CoachSettingsScreen extends StatefulWidget {
   const CoachSettingsScreen({super.key});
   @override
@@ -173,11 +193,43 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
             const SizedBox(height: Sp.x5),
 
             const SectionHeader('Provider'),
+            // One-tap presets. The base URL is the only thing that differs
+            // between providers here — auth is `Authorization: Bearer <key>`
+            // and the path is `/chat/completions` in every case, which is why
+            // Gemini works through its OpenAI-compatibility endpoint with no
+            // transport changes. Keep this list short; anything else can still
+            // be typed by hand below.
+            Wrap(
+              spacing: Sp.x2,
+              runSpacing: Sp.x2,
+              children: _kProviderPresets.entries
+                  .map((e) => GestureDetector(
+                        onTap: () => setState(() {
+                          _base.text = e.value;
+                          _models = const [];
+                          _msg = 'Base URL set for ${e.key}. '
+                              'Paste your key, then tap Fetch.';
+                        }),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: Sp.x3, vertical: Sp.x2),
+                          decoration: BoxDecoration(
+                            color: _base.text.trim() == e.value
+                                ? AppColors.accent.withValues(alpha: 0.16)
+                                : AppColors.surfaceSunk,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(e.key, style: AppText.caption),
+                        ),
+                      ))
+                  .toList(),
+            ),
+            const SizedBox(height: Sp.x3),
             TextField(
               controller: _base,
               decoration: const InputDecoration(
                 labelText: 'Base URL',
-                hintText: 'https://api.openai.com/v1',
+                hintText: 'https://generativelanguage.googleapis.com/v1beta/openai',
               ),
             ),
             const SizedBox(height: Sp.x3),
@@ -193,8 +245,10 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
               ),
             ),
             const SizedBox(height: Sp.x3),
-            Text('Works with OpenAI, OpenRouter, Groq, Together, local Ollama / LM Studio, '
-                'and anything OpenAI-compatible.', style: AppText.captionMuted),
+            Text('Works with Gemini, OpenAI, Anthropic, OpenRouter, Groq, Together, '
+                'local Ollama / LM Studio, and anything OpenAI-compatible.\n\n'
+                'Gemini has a free tier with no card required — get a key at '
+                'aistudio.google.com/apikey.', style: AppText.captionMuted),
 
             const SizedBox(height: Sp.x5),
             const SectionHeader('Model'),

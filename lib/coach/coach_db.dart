@@ -64,6 +64,11 @@ class CoachDb {
     'v_sessions',
     'v_baselines',
     'v_insights',
+    // Resistance training imported from Hevy. Widening the ALLOW-LIST (which is
+    // the security boundary) rather than the deny-list, per AGENTS.md: these are
+    // derived/imported views, never raw tables.
+    'v_lifts',
+    'v_lift_sessions',
   };
 
   // Keywords that must never appear as standalone tokens (anything mutating or
