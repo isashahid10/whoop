@@ -25,12 +25,18 @@ import '../screens/detail_cards.dart' show hm;
 import '../../gps/route_models.dart';
 import 'workout_types.dart';
 
-const _ranges = ['Today', 'Week', 'Month', '3M'];
+const _ranges = ['Today', 'Week', 'Month', '3M', 'All'];
 const _rangeKey = [
   'week',
   'week',
   'month',
   'quarter',
+  // 'All' exists because IMPORTED history can be far older than any rolling
+  // window. A Hevy import of workouts from last year landed correctly in
+  // `sessions` and was still invisible, because the widest option reached back
+  // only 90 days — the data was fine, the UI simply could not address it.
+  // getWorkouts already understood 'all' (lower bound 0); nothing offered it.
+  'all',
 ]; // Today filters week to today
 
 String _dayLabel(int? startTs) {

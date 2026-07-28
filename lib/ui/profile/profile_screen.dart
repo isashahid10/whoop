@@ -1827,7 +1827,8 @@ class _HevySectionState extends State<_HevySection> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(r.isError
           ? (r.message ?? 'Hevy sync failed')
-          : 'Imported ${r.workouts} workouts (${r.sets} sets)'),
+          : 'Imported ${r.workouts} workouts (${r.sets} sets)'
+              '${r.message == null ? '' : '\n${r.message}'}'),
     ));
   }
 

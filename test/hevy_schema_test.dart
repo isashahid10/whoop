@@ -18,6 +18,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/coach/coach_db.dart';
+import 'package:openstrap_edge/integrations/hevy_store.dart';
 
 Future<String> _dbPath(String name) async =>
     p.join(await databaseFactory.getDatabasesPath(), name);
@@ -191,6 +192,42 @@ void main() {
       expect(rows.first['strain'], isNull);
       expect(rows.first['calories'], isNull);
       expect(rows.first['max_hr'], isNull);
+    },
+  );
+
+  test(
+    'backfillSessions mirrors workouts imported before the mirror existed',
+    () async {
+      final db = await LocalDb.instance;
+      await db.delete('sessions', where: "source = ?", whereArgs: ['hevy']);
+      await db.delete('hevy_workout');
+
+      // A workout as the PRE-mirror importer wrote it: hevy_workout row, no
+      // matching sessions row. An incremental sync never rewrites this, so
+      // without backfill it stays invisible forever.
+      await db.insert('hevy_workout', {
+        'id': 'old1',
+        'idx': 50,
+        'day': '2026-07-20',
+        'name': 'Legs',
+        'description': '',
+        'start_ts': 1784600000,
+        'end_ts': 1784603600,
+        'duration_s': 3600,
+        'total_volume_kg': 5000.0,
+        'set_count': 12,
+        'synced_at': 1784603600,
+      });
+
+      expect(await HevyStore.backfillSessions(), 1);
+
+      final rows = await db.query('sessions', where: 'id = ?', whereArgs: ['hevy_old1']);
+      expect(rows.length, 1);
+      expect(rows.first['duration_min'], 60);
+      expect(rows.first['source'], 'hevy');
+
+      // Idempotent — a second run must not duplicate or re-report.
+      expect(await HevyStore.backfillSessions(), 0);
     },
   );
 }

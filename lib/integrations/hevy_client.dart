@@ -74,12 +74,25 @@ class HevySet {
     this.rpe,
   });
 
-  static double? _d(Object? v) => (v as num?)?.toDouble();
-  static int? _i(Object? v) => (v as num?)?.toInt();
+  static double? _d(Object? v) => v is num ? v.toDouble() : null;
+  static int? _i(Object? v) => v is num ? v.toInt() : null;
+
+  /// Coerce ANY JSON scalar to a String, or null.
+  ///
+  /// This is an undocumented API and its field types are not stable — a hard
+  /// `as String?` threw "type 'int' is not a subtype of type 'String?'" on real
+  /// data (superset_id, among others, comes back numeric). Anything scalar is
+  /// stringified rather than trusted to be text.
+  static String? str(Object? v) {
+    if (v == null) return null;
+    if (v is String) return v;
+    if (v is num || v is bool) return '$v';
+    return null; // maps/lists are not a name — drop rather than stringify
+  }
 
   factory HevySet.fromJson(Map<String, dynamic> j) => HevySet(
         index: _i(j['index']) ?? 0,
-        indicator: (j['indicator'] as String?) ?? 'normal',
+        indicator: str(j['indicator']) ?? 'normal',
         weightKg: _d(j['weight_kg']),
         reps: _i(j['reps']),
         distanceMeters: _d(j['distance_meters']),
@@ -119,15 +132,15 @@ class HevyExercise {
   });
 
   factory HevyExercise.fromJson(Map<String, dynamic> j) => HevyExercise(
-        title: (j['title'] as String?) ?? 'Unknown',
-        templateId: j['exercise_template_id'] as String?,
-        exerciseType: j['exercise_type'] as String?,
-        equipment: j['equipment_category'] as String?,
-        muscleGroup: j['muscle_group'] as String?,
+        title: HevySet.str(j['title']) ?? 'Unknown',
+        templateId: HevySet.str(j['exercise_template_id']),
+        exerciseType: HevySet.str(j['exercise_type']),
+        equipment: HevySet.str(j['equipment_category']),
+        muscleGroup: HevySet.str(j['muscle_group']),
         otherMuscles:
             ((j['other_muscles'] as List?) ?? const []).map((e) => '$e').toList(),
-        supersetId: j['superset_id'] as String?,
-        notes: (j['notes'] as String?) ?? '',
+        supersetId: HevySet.str(j['superset_id']),
+        notes: HevySet.str(j['notes']) ?? '',
         sets: ((j['sets'] as List?) ?? const [])
             .whereType<Map>()
             .map((s) => HevySet.fromJson(s.cast<String, dynamic>()))
@@ -158,12 +171,12 @@ class HevyWorkout {
 
   factory HevyWorkout.fromJson(Map<String, dynamic> j) {
     DateTime ts(Object? v) => DateTime.fromMillisecondsSinceEpoch(
-        ((v as num?)?.toInt() ?? 0) * 1000);
+        ((v is num ? v.toInt() : 0)) * 1000);
     return HevyWorkout(
-      id: (j['id'] as String?) ?? '',
-      index: (j['index'] as num?)?.toInt() ?? 0,
-      name: (j['name'] as String?) ?? 'Workout',
-      description: (j['description'] as String?) ?? '',
+      id: HevySet.str(j['id']) ?? '',
+      index: (j['index'] is num ? (j['index'] as num).toInt() : 0),
+      name: HevySet.str(j['name']) ?? 'Workout',
+      description: HevySet.str(j['description']) ?? '',
       start: ts(j['start_time']),
       end: ts(j['end_time']),
       exercises: ((j['exercises'] as List?) ?? const [])
@@ -371,8 +384,8 @@ class HevyClient {
     if (decoded is! Map) throw HevyError('Unexpected Hevy refresh response');
 
     final access =
-        (decoded['access_token'] ?? decoded['auth_token']) as String?;
-    final newRefresh = decoded['refresh_token'] as String?;
+        HevySet.str(decoded['access_token'] ?? decoded['auth_token']);
+    final newRefresh = HevySet.str(decoded['refresh_token']);
     if (access == null || access.isEmpty) {
       throw HevyError('Hevy refresh response had no access token');
     }
@@ -393,10 +406,19 @@ class HevyClient {
   ///
   /// [maxPages] bounds a first-run backfill so a huge history cannot wedge a
   /// background sync; the cursor makes the next run resume where this stopped.
+  /// Per-page trace of the last [fetchWorkouts] call: count, index range and
+  /// date range for each page. The cursor semantics of `/workouts_batch/{i}`
+  /// are NOT documented anywhere reliable — the one public reference implies
+  /// 20-per-page ascending, but a first page of 10 stopped the loop dead while
+  /// the user had far more history. This records what the API actually does so
+  /// the paging can be fixed from evidence rather than another guess.
+  final List<String> lastFetchTrace = [];
+
   Future<List<HevyWorkout>> fetchWorkouts({
     int sinceIndex = 0,
     int maxPages = 50,
   }) async {
+    lastFetchTrace.clear();
     var access = await _secure.read(key: _kAccess);
     final scheme = await _secure.read(key: _kScheme) ?? 'auth-token';
     access ??= await _refreshAccessToken();
@@ -442,6 +464,19 @@ class HevyClient {
           .whereType<Map>()
           .map((w) => HevyWorkout.fromJson(w.cast<String, dynamic>()))
           .toList();
+
+      // Record what this page actually contained BEFORE any filtering, so the
+      // trace shows the API's behaviour rather than ours.
+      if (batch.isEmpty) {
+        lastFetchTrace.add('p$page cur=$cursor n=0');
+      } else {
+        final idxs = batch.map((w) => w.index).toList()..sort();
+        final ds = batch.map((w) => w.start).toList()..sort();
+        String d(DateTime t) => t.toIso8601String().substring(0, 10);
+        lastFetchTrace.add('p$page cur=$cursor n=${batch.length} '
+            'idx=${idxs.first}..${idxs.last} ${d(ds.first)}..${d(ds.last)}');
+      }
+
       if (batch.isEmpty) break;
 
       var reachedKnown = false;
@@ -454,8 +489,15 @@ class HevyClient {
       }
       if (reachedKnown) break; // caught up with what we already have
 
-      cursor = batch.last.index;
-      if (batch.length < 20) break; // last page
+      // Advance to the highest index seen, not simply the last element — the
+      // page's ordering is not guaranteed and a wrong cursor silently truncates.
+      final maxIdx = batch.map((w) => w.index).reduce((a, b) => a > b ? a : b);
+      if (maxIdx <= cursor) break; // no forward progress; stop rather than spin
+      cursor = maxIdx;
+      // NOTE: deliberately NOT breaking on a short page. A first page of 10
+      // previously ended the loop while a year of history sat unfetched — the
+      // public reference's "while len == 20" rule does not hold here. The loop
+      // now ends only on an empty page, no cursor progress, or maxPages.
     }
 
     return out;

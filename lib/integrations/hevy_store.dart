@@ -165,9 +165,79 @@ class HevyStore {
       }
     });
 
-    debugPrint('[hevy] stored ${workouts.length} workouts, $setCount sets');
+    // Report what actually LANDED, not what we intended to write. "210
+    // imported" with an empty workouts screen has now happened twice; the
+    // useful number is how many session rows exist and whether their
+    // timestamps fall inside the range the screen queries (31 days).
+    final probe = await db.rawQuery('''
+      SELECT COUNT(*) AS n,
+             MIN(start_ts) AS lo,
+             MAX(start_ts) AS hi,
+             SUM(CASE WHEN start_ts >= ? THEN 1 ELSE 0 END) AS recent
+      FROM sessions WHERE source = 'hevy'
+    ''', [now - 31 * 86400]);
+    final p = probe.first;
+    final n = (p['n'] as num?)?.toInt() ?? 0;
+    final recent = (p['recent'] as num?)?.toInt() ?? 0;
+    final lo = (p['lo'] as num?)?.toInt() ?? 0;
+    final hi = (p['hi'] as num?)?.toInt() ?? 0;
+    String d(int ts) => ts == 0
+        ? 'none'
+        : DateTime.fromMillisecondsSinceEpoch(ts * 1000)
+            .toIso8601String()
+            .substring(0, 10);
+    final trace = client.lastFetchTrace.join('\n');
+    final diag = 'sessions=$n in31d=$recent ${d(lo)}..${d(hi)}'
+        '${trace.isEmpty ? '' : '\n$trace'}';
+
+    debugPrint('[hevy] stored ${workouts.length} workouts, $setCount sets — $diag');
     return HevySyncResult(HevySyncOutcome.ok,
-        workouts: workouts.length, sets: setCount);
+        workouts: workouts.length, sets: setCount, message: diag);
+  }
+
+  /// Write `sessions` rows for Hevy workouts that predate the mirroring code.
+  ///
+  /// The mirror runs at import time, so workouts imported BEFORE it existed have
+  /// no session row and are invisible on the workouts screen — and an
+  /// incremental sync never fixes them, because it only fetches workouts newer
+  /// than the high-water mark and therefore rewrites nothing.
+  ///
+  /// Cheap and idempotent: one INSERT OR REPLACE per unmirrored workout, using
+  /// only rows already in the database. No network, no re-auth, no unlink.
+  /// Returns the number of rows written.
+  static Future<int> backfillSessions() async {
+    final db = await LocalDb.instance;
+    final missing = await db.rawQuery('''
+      SELECT w.* FROM hevy_workout w
+      WHERE NOT EXISTS (
+        SELECT 1 FROM sessions s WHERE s.id = 'hevy_' || w.id
+      )
+    ''');
+    if (missing.isEmpty) return 0;
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await db.transaction((txn) async {
+      for (final w in missing) {
+        final start = (w['start_ts'] as num?)?.toInt() ?? 0;
+        final end = (w['end_ts'] as num?)?.toInt() ?? start;
+        await txn.insert(
+          'sessions',
+          {
+            'id': 'hevy_${w['id']}',
+            'start_ts': start,
+            'end_ts': end,
+            'type': 'strength',
+            'status': 'done',
+            'duration_min': ((w['duration_s'] as num?)?.toInt() ?? 0) ~/ 60,
+            'source': 'hevy',
+            'created_at': now,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+    debugPrint('[hevy] backfilled ${missing.length} session rows');
+    return missing.length;
   }
 
   /// Sign out: drop the tokens and every imported row. Deleting the data too
