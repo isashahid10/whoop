@@ -209,15 +209,25 @@ class HevyClient {
 
   // ── token storage ─────────────────────────────────────────────────────────
 
-  Future<bool> get isLinked async =>
-      (await _secure.read(key: _kRefresh))?.isNotEmpty ?? false;
+  /// Linked when we hold EITHER token. The access token is the one that
+  /// actually works — see [_refreshAccessToken] for why refresh is optional.
+  Future<bool> get isLinked async {
+    final a = await _secure.read(key: _kAccess);
+    if (a != null && a.isNotEmpty) return true;
+    final r = await _secure.read(key: _kRefresh);
+    return r != null && r.isNotEmpty;
+  }
 
-  /// Persist the tokens captured from the one-time WebView sign-in.
+  /// Persist whatever the one-time WebView sign-in captured. Both are optional
+  /// because Hevy exposes no working refresh endpoint — an access token on its
+  /// own is a complete, usable link.
   Future<void> storeTokens({
-    required String refreshToken,
+    String? refreshToken,
     String? accessToken,
   }) async {
-    await _secure.write(key: _kRefresh, value: refreshToken);
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      await _secure.write(key: _kRefresh, value: refreshToken);
+    }
     if (accessToken != null && accessToken.isNotEmpty) {
       await _secure.write(key: _kAccess, value: accessToken);
     }
@@ -231,15 +241,23 @@ class HevyClient {
 
   // ── auth ──────────────────────────────────────────────────────────────────
 
-  /// Exchange the stored refresh token for a fresh access token.
+  /// Best-effort token refresh.
   ///
-  /// This is the endpoint that makes live sync possible at all: unlike
-  /// `/login`, it carries no reCAPTCHA, so it works headlessly forever after
-  /// the initial sign-in.
+  /// ⚠️ `POST /refresh_token` **does not exist** — it 404s. Probed 2026-07-28
+  /// against the live API; the public reverse-engineering repos that document
+  /// it are stale or were wrong. `/auth/refresh_token` exists but returns an
+  /// opaque `{"error":"Bad Request"}` for every payload shape tried, and
+  /// `/oauth/token` demands client credentials we do not have.
+  ///
+  /// So there is no headless re-auth. The session token captured at sign-in is
+  /// what drives everything, and when it finally dies the only honest recovery
+  /// is another WebView sign-in — which is what [HevyAuthExpired] tells the UI
+  /// to ask for. This method stays as a cheap attempt in case Hevy ships a
+  /// working refresh route later, but nothing depends on it succeeding.
   Future<String> _refreshAccessToken() async {
     final refresh = await _secure.read(key: _kRefresh);
     if (refresh == null || refresh.isEmpty) {
-      throw HevyAuthExpired('Not signed in to Hevy');
+      throw HevyAuthExpired('Sign in to Hevy again');
     }
 
     final http.Response resp;
@@ -252,14 +270,12 @@ class HevyClient {
       throw HevyError('Could not reach Hevy: $e');
     }
 
-    if (resp.statusCode == 401 || resp.statusCode == 403) {
-      // Revoked, expired, or the endpoint changed its auth contract. Either
-      // way the only fix is a fresh WebView sign-in — say so plainly.
+    // 404 = the route does not exist (the normal case today). 401/403 = the
+    // token is dead. Every one of these means the same thing to the user, so
+    // say the actionable thing rather than leaking a status code.
+    if (resp.statusCode != 200) {
       await clear();
       throw HevyAuthExpired('Hevy sign-in expired — sign in again');
-    }
-    if (resp.statusCode != 200) {
-      throw HevyError('Hevy refresh failed (${resp.statusCode})');
     }
 
     final Object? decoded;
