@@ -45,6 +45,13 @@ enum _Agg {
 
   /// Keep the last sample of the day (point-in-time measurements like mass).
   last,
+
+  /// Mean of the day's samples (heart rate and similar continuous signals,
+  /// where neither a sum nor a single reading is meaningful).
+  avg,
+
+  /// Number of samples in the day (discrete events).
+  count,
 }
 
 class _ImportSpec {
@@ -80,17 +87,96 @@ class HealthImporter {
   /// wrote them to the store. Importing them would put a worse duplicate next
   /// to a better one with no way for the coach to tell them apart.
   static const List<_ImportSpec> _specs = [
-    // Nutrition — the whole point. FitBee writes these.
+    // ── Nutrition ── every dietary type the package exposes.
     _ImportSpec(HealthDataType.DIETARY_ENERGY_CONSUMED, 'hk_kcal_in', _Agg.sum),
     _ImportSpec(HealthDataType.DIETARY_PROTEIN_CONSUMED, 'hk_protein_g', _Agg.sum),
     _ImportSpec(HealthDataType.DIETARY_CARBS_CONSUMED, 'hk_carbs_g', _Agg.sum),
     _ImportSpec(HealthDataType.DIETARY_FATS_CONSUMED, 'hk_fat_g', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_FIBER, 'hk_fiber_g', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_SUGAR, 'hk_sugar_g', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_SODIUM, 'hk_sodium_mg', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_CAFFEINE, 'hk_caffeine_mg', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_FAT_SATURATED, 'hk_satfat_g', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_FAT_MONOUNSATURATED, 'hk_monofat_g', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_FAT_POLYUNSATURATED, 'hk_polyfat_g', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_CHOLESTEROL, 'hk_cholesterol_mg', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_VITAMIN_A, 'hk_vita', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_THIAMIN, 'hk_thiamin', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_RIBOFLAVIN, 'hk_riboflavin', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_NIACIN, 'hk_niacin', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_PANTOTHENIC_ACID, 'hk_pantothenic', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_VITAMIN_B6, 'hk_vitb6', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_BIOTIN, 'hk_biotin', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_VITAMIN_B12, 'hk_vitb12', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_VITAMIN_C, 'hk_vitc_mg', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_VITAMIN_D, 'hk_vitd_mcg', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_VITAMIN_E, 'hk_vite', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_VITAMIN_K, 'hk_vitk', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_FOLATE, 'hk_folate', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_CALCIUM, 'hk_calcium_mg', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_CHLORIDE, 'hk_chloride', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_IRON, 'hk_iron_mg', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_MAGNESIUM, 'hk_magnesium_mg', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_PHOSPHORUS, 'hk_phosphorus', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_POTASSIUM, 'hk_potassium_mg', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_ZINC, 'hk_zinc', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_CHROMIUM, 'hk_chromium', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_COPPER, 'hk_copper', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_IODINE, 'hk_iodine', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_MANGANESE, 'hk_manganese', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_MOLYBDENUM, 'hk_molybdenum', _Agg.sum),
+    _ImportSpec(HealthDataType.DIETARY_SELENIUM, 'hk_selenium', _Agg.sum),
     _ImportSpec(HealthDataType.WATER, 'hk_water_l', _Agg.sum),
-    // Body composition — feeds nothing automatically, but the coach can trend it.
-    _ImportSpec(HealthDataType.WEIGHT, 'hk_weight_kg', _Agg.last),
-    // Movement logged elsewhere (phone steps predate the band by years).
+    // ── Movement ──
     _ImportSpec(HealthDataType.STEPS, 'hk_steps', _Agg.sum),
+    _ImportSpec(HealthDataType.DISTANCE_WALKING_RUNNING, 'hk_distance_m', _Agg.sum),
+    _ImportSpec(HealthDataType.DISTANCE_CYCLING, 'hk_distance_cycling_m', _Agg.sum),
+    _ImportSpec(HealthDataType.DISTANCE_SWIMMING, 'hk_distance_swim_m', _Agg.sum),
+    _ImportSpec(HealthDataType.FLIGHTS_CLIMBED, 'hk_flights', _Agg.sum),
+    _ImportSpec(HealthDataType.EXERCISE_TIME, 'hk_exercise_min', _Agg.sum),
+    _ImportSpec(HealthDataType.MINDFULNESS, 'hk_mindful_min', _Agg.sum),
+    _ImportSpec(HealthDataType.ACTIVE_ENERGY_BURNED, 'hk_active_kcal', _Agg.sum),
+    _ImportSpec(HealthDataType.BASAL_ENERGY_BURNED, 'hk_basal_kcal', _Agg.sum),
+    // ── Sleep (historic) ── 
+    // Imported despite the band measuring sleep, because Apple Watch history
+    // can predate the band by years. The hk_ prefix keeps it a SEPARATE series
+    // from our own staging, so a worse source can never overwrite a better one.
+    _ImportSpec(HealthDataType.SLEEP_ASLEEP, 'hk_sleep_asleep_min', _Agg.sum),
+    _ImportSpec(HealthDataType.SLEEP_DEEP, 'hk_sleep_deep_min', _Agg.sum),
+    _ImportSpec(HealthDataType.SLEEP_REM, 'hk_sleep_rem_min', _Agg.sum),
+    _ImportSpec(HealthDataType.SLEEP_LIGHT, 'hk_sleep_light_min', _Agg.sum),
+    _ImportSpec(HealthDataType.SLEEP_AWAKE, 'hk_sleep_awake_min', _Agg.sum),
+    _ImportSpec(HealthDataType.SLEEP_IN_BED, 'hk_sleep_inbed_min', _Agg.sum),
+    // ── Body composition ── point-in-time, so keep the day's last.
+    _ImportSpec(HealthDataType.WEIGHT, 'hk_weight_kg', _Agg.last),
+    _ImportSpec(HealthDataType.HEIGHT, 'hk_height_m', _Agg.last),
+    _ImportSpec(HealthDataType.BODY_FAT_PERCENTAGE, 'hk_bodyfat_pct', _Agg.last),
+    _ImportSpec(HealthDataType.BODY_MASS_INDEX, 'hk_bmi', _Agg.last),
+    _ImportSpec(HealthDataType.BODY_WATER_MASS, 'hk_body_water_kg', _Agg.last),
+    _ImportSpec(HealthDataType.WAIST_CIRCUMFERENCE, 'hk_waist_cm', _Agg.last),
+    // ── Vitals ──
+    _ImportSpec(HealthDataType.BLOOD_PRESSURE_SYSTOLIC, 'hk_bp_sys', _Agg.last),
+    _ImportSpec(HealthDataType.BLOOD_PRESSURE_DIASTOLIC, 'hk_bp_dia', _Agg.last),
+    _ImportSpec(HealthDataType.BLOOD_GLUCOSE, 'hk_glucose', _Agg.last),
+    _ImportSpec(HealthDataType.BODY_TEMPERATURE, 'hk_body_temp_c', _Agg.last),
+    _ImportSpec(HealthDataType.BLOOD_OXYGEN, 'hk_spo2', _Agg.last),
+    _ImportSpec(HealthDataType.RESPIRATORY_RATE, 'hk_resp_rate', _Agg.last),
+    _ImportSpec(HealthDataType.FORCED_EXPIRATORY_VOLUME, 'hk_fev1', _Agg.last),
+    _ImportSpec(HealthDataType.PERIPHERAL_PERFUSION_INDEX, 'hk_perfusion', _Agg.last),
+    // ── Cardio (historic) ── 
+    // Same reasoning as sleep: separate series, never merged with band data.
+    _ImportSpec(HealthDataType.HEART_RATE, 'hk_hr_avg', _Agg.avg),
+    _ImportSpec(HealthDataType.RESTING_HEART_RATE, 'hk_rhr', _Agg.avg),
+    _ImportSpec(HealthDataType.WALKING_HEART_RATE, 'hk_walking_hr', _Agg.avg),
+    _ImportSpec(HealthDataType.HEART_RATE_VARIABILITY_SDNN, 'hk_hrv_sdnn', _Agg.avg),
+    _ImportSpec(HealthDataType.HEART_RATE_VARIABILITY_RMSSD, 'hk_hrv_rmssd', _Agg.avg),
+    // ── Cardiac events ──
+    _ImportSpec(HealthDataType.HIGH_HEART_RATE_EVENT, 'hk_ev_high_hr', _Agg.count),
+    _ImportSpec(HealthDataType.LOW_HEART_RATE_EVENT, 'hk_ev_low_hr', _Agg.count),
+    _ImportSpec(HealthDataType.IRREGULAR_HEART_RATE_EVENT, 'hk_ev_irregular_hr', _Agg.count),
   ];
+
+
 
   List<HealthDataType> get _types => _specs.map((s) => s.type).toList();
 
@@ -150,15 +236,28 @@ class HealthImporter {
             .subtract(const Duration(days: _rewriteTailDays));
       }
 
-      final points = await _health.getHealthDataFromTypes(
-        types: _types,
-        startTime: start,
-        endTime: now,
-      );
+      // Fetch PER TYPE rather than in one batch. getHealthDataFromTypes loops
+      // internally and a single unsupported or unauthorised type throws for the
+      // whole call — which, with 70+ types, would mean one odd metric silently
+      // costing every other one. Slower, but a bad type now costs only itself.
+      final points = <HealthDataPoint>[];
+      var failedTypes = 0;
+      for (final spec in _specs) {
+        try {
+          points.addAll(await _health.getHealthDataFromTypes(
+            types: [spec.type],
+            startTime: start,
+            endTime: now,
+          ));
+        } catch (_) {
+          failedTypes++;
+        }
+      }
 
       // date -> key -> value, folded per spec.
       final byDay = <String, Map<String, double>>{};
       final lastSeenAt = <String, DateTime>{}; // for _Agg.last tie-breaks
+      final avgN = <String, int>{}; // running counts for _Agg.avg
       final specByType = {for (final s in _specs) s.type: s};
 
       var skippedOwn = 0;
@@ -178,6 +277,16 @@ class HealthImporter {
         switch (spec.agg) {
           case _Agg.sum:
             bucket[spec.key] = (bucket[spec.key] ?? 0) + value;
+          case _Agg.count:
+            bucket[spec.key] = (bucket[spec.key] ?? 0) + 1;
+          case _Agg.avg:
+            // Running mean, so a day of 1 Hz heart rate does not need holding
+            // in memory: mean += (x - mean) / n.
+            final stamp = '$day|${spec.key}';
+            final n = (avgN[stamp] ?? 0) + 1;
+            avgN[stamp] = n;
+            final prev = bucket[spec.key] ?? 0;
+            bucket[spec.key] = prev + (value - prev) / n;
           case _Agg.last:
             final stamp = '$day|${spec.key}';
             final prev = lastSeenAt[stamp];
@@ -189,8 +298,8 @@ class HealthImporter {
       }
 
       if (byDay.isEmpty) {
-        debugPrint('[health_import] no points '
-            '(${points.length} read, $skippedOwn own-source skipped)');
+        debugPrint('[health_import] no points (${points.length} read, '
+            '$skippedOwn own-source skipped, $failedTypes types unavailable)');
         await LocalDb.setCursor(_cursorKey, now.toIso8601String());
         return 0;
       }
@@ -216,7 +325,8 @@ class HealthImporter {
 
       await LocalDb.setCursor(_cursorKey, now.toIso8601String());
       debugPrint('[health_import] wrote $written scalars across '
-          '${byDay.length} days ($skippedOwn own-source skipped)');
+          '${byDay.length} days ($skippedOwn own-source skipped, '
+          '$failedTypes of ${_specs.length} types unavailable)');
       return written;
     } catch (e, st) {
       // Contract: never throw. A denied permission, a locked store or a

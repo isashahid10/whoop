@@ -91,7 +91,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 27;
+  static const int schemaVersion = 28;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -166,6 +166,7 @@ class LocalDb {
         await _createWorkoutRoute(db);
         await _createNotifFired(db);
         await _createHevy(db);
+        await _createGoals(db);
         await _ensureCoachViews(db);
       },
       onUpgrade: (db, oldV, newV) async {
@@ -398,6 +399,11 @@ class LocalDb {
           // user who never links Hevy.
           await _createHevy(db);
         }
+        if (oldV < 28) {
+          // Personal daily targets. Additive; absent goals simply mean no
+          // target is set, which every consumer must already handle.
+          await _createGoals(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -607,6 +613,32 @@ class LocalDb {
   ///
   /// `day` is the LOCAL calendar label (dayLabelOf) so these JOIN cleanly to
   /// metric_series / v_daily, which are keyed the same way.
+  /// Personal daily targets (steps, protein, water, sleep, …).
+  ///
+  /// NOT read from Apple Health: the Move/Exercise/Stand goals live in
+  /// `HKActivitySummary`, a separate API the `health` package does not expose,
+  /// and a "step goal" is not a HealthKit type at all — it belongs to whichever
+  /// app set it. So targets are owned here instead, which is better anyway:
+  /// they can cover things Apple has no concept of (protein, sleep duration)
+  /// and they can drive our own nudges.
+  ///
+  /// History is kept rather than overwritten — `(key, effective_from)` — so a
+  /// past day is always judged against the target that applied AT THE TIME. A
+  /// single mutable row would silently rewrite months of "goal met" history the
+  /// moment a target changed.
+  static Future<void> _createGoals(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS goals (
+        key TEXT NOT NULL,
+        effective_from TEXT NOT NULL,
+        target REAL NOT NULL,
+        unit TEXT,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (key, effective_from)
+      )
+    ''');
+  }
+
   static Future<void> _createHevy(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS hevy_workout (
@@ -1375,6 +1407,7 @@ class LocalDb {
       'v_insights',
       'v_lifts',
       'v_lift_sessions',
+      'v_goals',
     ];
     for (final v in views) {
       await db.execute('DROP VIEW IF EXISTS $v');
@@ -1436,7 +1469,23 @@ class LocalDb {
         MAX(CASE WHEN key='wx_precip_mm' THEN value END)       AS precip_mm,
         MAX(CASE WHEN key='cal_events' THEN value END)         AS cal_events,
         MAX(CASE WHEN key='cal_busy_min' THEN value END)       AS cal_busy_min,
-        MAX(CASE WHEN key='cal_first_start_min' THEN value END) AS cal_first_start_min
+        MAX(CASE WHEN key='cal_first_start_min' THEN value END) AS cal_first_start_min,
+        -- Wider Apple Health import. Only the commonly-asked ones are pivoted
+        -- here; EVERY hk_ key remains queryable through v_metric (date,key,
+        -- value), so a 60-column view is not needed to reach the rest.
+        MAX(CASE WHEN key='hk_fiber_g' THEN value END)        AS fiber_g,
+        MAX(CASE WHEN key='hk_sugar_g' THEN value END)        AS sugar_g,
+        MAX(CASE WHEN key='hk_sodium_mg' THEN value END)      AS sodium_mg,
+        MAX(CASE WHEN key='hk_caffeine_mg' THEN value END)    AS caffeine_mg,
+        MAX(CASE WHEN key='hk_bodyfat_pct' THEN value END)    AS body_fat_pct,
+        MAX(CASE WHEN key='hk_bmi' THEN value END)            AS bmi,
+        MAX(CASE WHEN key='hk_distance_m' THEN value END)     AS distance_m,
+        MAX(CASE WHEN key='hk_flights' THEN value END)        AS flights,
+        MAX(CASE WHEN key='hk_exercise_min' THEN value END)   AS exercise_min,
+        MAX(CASE WHEN key='hk_mindful_min' THEN value END)    AS mindful_min,
+        MAX(CASE WHEN key='hk_bp_sys' THEN value END)         AS bp_systolic,
+        MAX(CASE WHEN key='hk_bp_dia' THEN value END)         AS bp_diastolic,
+        MAX(CASE WHEN key='hk_glucose' THEN value END)        AS blood_glucose
       FROM metric_series GROUP BY date
     ''');
     // ── Resistance training (Hevy) ────────────────────────────────────────
