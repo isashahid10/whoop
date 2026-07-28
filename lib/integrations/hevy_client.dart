@@ -193,44 +193,99 @@ class HevyClient {
 
   static const _kRefresh = 'hevy_refresh_token';
   static const _kAccess = 'hevy_access_token';
+  /// Which of [authSchemes] this token authenticates under — probed at sign-in
+  /// so data calls never have to re-discover it.
+  static const _kScheme = 'hevy_auth_scheme';
 
   final FlutterSecureStorage _secure = const FlutterSecureStorage();
   final http.Client _http;
 
   HevyClient({http.Client? client}) : _http = client ?? http.Client();
 
-  Map<String, String> _headers({String? accessToken}) => {
+  Map<String, String> _headers({String? accessToken, String? scheme}) => {
         'x-api-key': _apiKey,
         'Content-Type': 'application/json',
         'accept': 'application/json, text/plain, */*',
         'Hevy-Platform': 'web',
-        'auth-token': ?accessToken,
+        if (accessToken != null && accessToken.isNotEmpty)
+          ..._authHeader(scheme ?? 'auth-token', accessToken),
       };
 
   // ── token storage ─────────────────────────────────────────────────────────
 
-  /// Does [token] actually authenticate against Hevy?
-  ///
-  /// The sign-in screen sees several token-shaped cookies and cannot tell which
-  /// is the session by name alone — `access-token`, `auth2.0-token` and a pile
-  /// of analytics values all look plausible. This turns the guess into a fact:
-  /// a 200 from a real endpoint is proof, and anything else is not the token.
-  static Future<bool> tokenWorks(String token) async {
-    if (token.trim().length < 12) return false;
-    try {
-      final resp = await http.get(
-        Uri.parse('$_base/user/account'),
-        headers: {
-          'x-api-key': _apiKey,
-          'accept': 'application/json, text/plain, */*',
-          'Hevy-Platform': 'web',
-          'auth-token': token.trim(),
-        },
-      ).timeout(const Duration(seconds: 15));
-      return resp.statusCode == 200;
-    } catch (_) {
-      return false;
+  /// How a token is presented to the API. The mobile app uses a bare
+  /// `auth-token` header; the WEB app's cookie is named `auth2.0-token`, which
+  /// points at OAuth 2.0 and therefore `Authorization: Bearer`. Since the token
+  /// is captured from the web app, the scheme cannot be assumed — it is probed.
+  static const List<String> authSchemes = ['auth-token', 'bearer', 'x-auth-token'];
+
+  static Map<String, String> _authHeader(String scheme, String token) {
+    switch (scheme) {
+      case 'bearer':
+        return {'Authorization': 'Bearer $token'};
+      case 'x-auth-token':
+        return {'x-auth-token': token};
+      default:
+        return {'auth-token': token};
     }
+  }
+
+  /// Probe [token] against a real endpoint under every known auth scheme.
+  ///
+  /// Returns the scheme that produced a 200, or null. Several cookies are
+  /// token-shaped and picking one by NAME is how earlier attempts went wrong:
+  /// a 200 is proof, a plausible name is not.
+  static Future<String?> workingScheme(String token) async {
+    final t = token.trim();
+    if (t.length < 12) return null;
+    for (final scheme in authSchemes) {
+      try {
+        final resp = await http.get(
+          Uri.parse('$_base/user/account'),
+          headers: {
+            'x-api-key': _apiKey,
+            'accept': 'application/json, text/plain, */*',
+            'Hevy-Platform': 'web',
+            ..._authHeader(scheme, t),
+          },
+        ).timeout(const Duration(seconds: 12));
+        if (resp.statusCode == 200) return scheme;
+      } catch (_) {
+        /* try the next scheme */
+      }
+    }
+    return null;
+  }
+
+  /// Per-candidate status codes, for the sign-in screen's diagnostic. Reports
+  /// only lengths and status codes — never a token value.
+  static Future<String> diagnose(List<String> candidates) async {
+    if (candidates.isEmpty) {
+      return 'No candidate tokens were readable from cookies.\n'
+          'The values are likely HttpOnly (visible by name, unreadable by JS).';
+    }
+    final buf = StringBuffer('Tried ${candidates.length} candidate(s):\n');
+    for (var i = 0; i < candidates.length; i++) {
+      final t = candidates[i].trim();
+      buf.write('\n#${i + 1} len=${t.length}  ');
+      for (final scheme in authSchemes) {
+        try {
+          final resp = await http.get(
+            Uri.parse('$_base/user/account'),
+            headers: {
+              'x-api-key': _apiKey,
+              'accept': 'application/json, text/plain, */*',
+              'Hevy-Platform': 'web',
+              ..._authHeader(scheme, t),
+            },
+          ).timeout(const Duration(seconds: 12));
+          buf.write('$scheme=${resp.statusCode} ');
+        } catch (_) {
+          buf.write('$scheme=ERR ');
+        }
+      }
+    }
+    return buf.toString();
   }
 
   /// Linked when we hold EITHER token. The access token is the one that
@@ -248,7 +303,11 @@ class HevyClient {
   Future<void> storeTokens({
     String? refreshToken,
     String? accessToken,
+    String? scheme,
   }) async {
+    if (scheme != null && scheme.isNotEmpty) {
+      await _secure.write(key: _kScheme, value: scheme);
+    }
     if (refreshToken != null && refreshToken.isNotEmpty) {
       await _secure.write(key: _kRefresh, value: refreshToken);
     }
@@ -261,6 +320,7 @@ class HevyClient {
   Future<void> clear() async {
     await _secure.delete(key: _kRefresh);
     await _secure.delete(key: _kAccess);
+    await _secure.delete(key: _kScheme);
   }
 
   // ── auth ──────────────────────────────────────────────────────────────────
@@ -338,6 +398,7 @@ class HevyClient {
     int maxPages = 50,
   }) async {
     var access = await _secure.read(key: _kAccess);
+    final scheme = await _secure.read(key: _kScheme) ?? 'auth-token';
     access ??= await _refreshAccessToken();
 
     final out = <HevyWorkout>[];
@@ -349,7 +410,7 @@ class HevyClient {
       try {
         resp = await _http
             .get(Uri.parse('$_base/workouts_batch/$cursor'),
-                headers: _headers(accessToken: access))
+                headers: _headers(accessToken: access, scheme: scheme))
             .timeout(const Duration(seconds: 30));
       } catch (e) {
         throw HevyError('Could not reach Hevy: $e');

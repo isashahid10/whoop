@@ -161,4 +161,36 @@ void main() {
     expect(tables, contains('hevy_workout'));
     expect(tables, contains('hevy_set'));
   });
+
+  test(
+    'a stored Hevy workout is MIRRORED into sessions so the workouts screen '
+    'can see it — the import is otherwise silently invisible',
+    () async {
+      final db = await LocalDb.instance;
+      await db.delete('sessions', where: "source = ?", whereArgs: ['hevy']);
+
+      // Mirror row as hevy_store writes it.
+      await db.insert('sessions', {
+        'id': 'hevy_w1',
+        'start_ts': 1785200000,
+        'end_ts': 1785203600,
+        'type': 'strength',
+        'status': 'done',
+        'duration_min': 60,
+        'source': 'hevy',
+        'created_at': 1785203600,
+      });
+
+      final rows = await db.query('sessions',
+          where: 'source = ?', whereArgs: ['hevy']);
+      expect(rows.length, 1);
+      expect(rows.first['type'], 'strength');
+      expect(rows.first['status'], 'done');
+      // strain/calories/max_hr must stay NULL — the band owns those, and a
+      // fabricated number here would read as measured.
+      expect(rows.first['strain'], isNull);
+      expect(rows.first['calories'], isNull);
+      expect(rows.first['max_hr'], isNull);
+    },
+  );
 }

@@ -318,21 +318,24 @@ class _HevyLoginScreenState extends State<HevyLoginScreen> {
       ];
 
       for (final c in candidates) {
-        if (!await HevyClient.tokenWorks(c)) continue;
+        final scheme = await HevyClient.workingScheme(c);
+        if (scheme == null) continue;
         _done = true;
         _poll?.cancel();
-        await HevyClient().storeTokens(refreshToken: refresh, accessToken: c);
+        await HevyClient().storeTokens(
+            refreshToken: refresh, accessToken: c, scheme: scheme);
         if (mounted) Navigator.of(context).pop(true);
         return;
       }
 
       if (manual) {
+        // Report what was TRIED and what the API said, not just what exists.
+        // A key list alone cannot distinguish "cookie unreadable" from "token
+        // read but rejected", and those need opposite fixes.
         final keys = (map['keys'] as List?)?.cast<String>() ?? const <String>[];
+        final report = await HevyClient.diagnose(candidates);
         setState(() {
-          _diagnostic = keys.isEmpty
-              ? 'No web storage found at all — the page may still be loading.'
-              : 'No session token found yet. Storage keys present:\n\n'
-                  '${keys.take(40).join('\n')}';
+          _diagnostic = '$report\n\nStorage keys:\n${keys.take(40).join('\n')}';
         });
       }
     } catch (_) {
