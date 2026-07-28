@@ -69,6 +69,10 @@ class CoachDb {
     // derived/imported views, never raw tables.
     'v_lifts',
     'v_lift_sessions',
+    // How much of each baseline is this person vs a published cohort. Without
+    // it the coach cannot distinguish a 90-night estimate from a 2-night one,
+    // and would speak about both with the same confidence.
+    'v_baseline_trust',
   };
 
   // Keywords that must never appear as standalone tokens (anything mutating or

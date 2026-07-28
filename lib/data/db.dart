@@ -1404,10 +1404,12 @@ class LocalDb {
       'v_hypnogram',
       'v_sessions',
       'v_baselines',
+      'v_baseline_trust',
       'v_insights',
       'v_lifts',
       'v_lift_sessions',
       'v_goals',
+      'v_baseline_trust',
     ];
     for (final v in views) {
       await db.execute('DROP VIEW IF EXISTS $v');
@@ -1583,6 +1585,34 @@ class LocalDb {
              json_extract(payload_json,'\$.delta')           AS delta,
              json_extract(payload_json,'\$.ratio')           AS ratio,
              json_extract(payload_json,'\$.n')               AS n,
+             updated_at
+      FROM baselines
+    ''');
+    // Baselines WITH their population-prior blend state. The coach must be able
+    // to tell a number built on 90 nights of this person from one still leaning
+    // on a published cohort — presenting those identically would be the same
+    // failure as an unlabelled calorie estimate.
+    //
+    // The blend weight is recomputed here rather than stored, so it can never
+    // go stale against the night count: w = n / (n + k), k = 14 by default
+    // (see analytics' population_prior.dart, which owns the per-metric k).
+    await db.execute('''
+      CREATE VIEW v_baseline_trust AS
+      SELECT key,
+             json_extract(payload_json,'\$.mean') AS personal_mean,
+             json_extract(payload_json,'\$.n')    AS nights,
+             CAST(json_extract(payload_json,'\$.n') AS REAL) /
+               (CAST(json_extract(payload_json,'\$.n') AS REAL) + 14.0)
+                                                  AS personal_weight,
+             CASE
+               WHEN CAST(json_extract(payload_json,'\$.n') AS REAL) >= 60
+                 THEN 'personal'
+               WHEN CAST(json_extract(payload_json,'\$.n') AS REAL) >= 14
+                 THEN 'mostly personal'
+               WHEN CAST(json_extract(payload_json,'\$.n') AS REAL) > 0
+                 THEN 'mostly population'
+               ELSE 'population only'
+             END                                  AS basis,
              updated_at
       FROM baselines
     ''');

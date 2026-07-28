@@ -230,4 +230,42 @@ void main() {
       expect(await HevyStore.backfillSessions(), 0);
     },
   );
+
+  test('v_baseline_trust reports the blend basis, and is coach-reachable', () async {
+    final db = await LocalDb.instance;
+    await db.delete('baselines');
+
+    // Two metrics at very different evidence levels. The coach must be able to
+    // tell them apart — presenting a 90-night baseline and a 2-night one as if
+    // equally trustworthy is the failure this view exists to prevent.
+    await db.insert('baselines', {
+      'key': 'rhr',
+      'payload_json': '{"mean": 52.0, "spread": 3.0, "n": 90}',
+      'updated_at': 1785200000,
+    });
+    await db.insert('baselines', {
+      'key': 'rmssd',
+      'payload_json': '{"mean": 60.0, "spread": 10.0, "n": 2}',
+      'updated_at': 1785200000,
+    });
+
+    final rows = await db.rawQuery(
+        'SELECT key, nights, personal_weight, basis FROM v_baseline_trust '
+        'ORDER BY key');
+    expect(rows.length, 2);
+
+    final byKey = {for (final r in rows) r['key'] as String: r};
+    expect(byKey['rhr']!['nights'], 90);
+    expect(byKey['rhr']!['basis'], 'personal');
+    expect((byKey['rhr']!['personal_weight'] as num).toDouble(),
+        greaterThan(0.85));
+
+    expect(byKey['rmssd']!['nights'], 2);
+    expect(byKey['rmssd']!['basis'], 'mostly population');
+    expect((byKey['rmssd']!['personal_weight'] as num).toDouble(),
+        lessThan(0.2));
+
+    // The guard is the security boundary — a view it rejects is unreachable.
+    expect(CoachDb.allowedViews, contains('v_baseline_trust'));
+  });
 }
