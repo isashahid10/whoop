@@ -209,6 +209,30 @@ class HevyClient {
 
   // ── token storage ─────────────────────────────────────────────────────────
 
+  /// Does [token] actually authenticate against Hevy?
+  ///
+  /// The sign-in screen sees several token-shaped cookies and cannot tell which
+  /// is the session by name alone — `access-token`, `auth2.0-token` and a pile
+  /// of analytics values all look plausible. This turns the guess into a fact:
+  /// a 200 from a real endpoint is proof, and anything else is not the token.
+  static Future<bool> tokenWorks(String token) async {
+    if (token.trim().length < 12) return false;
+    try {
+      final resp = await http.get(
+        Uri.parse('$_base/user/account'),
+        headers: {
+          'x-api-key': _apiKey,
+          'accept': 'application/json, text/plain, */*',
+          'Hevy-Platform': 'web',
+          'auth-token': token.trim(),
+        },
+      ).timeout(const Duration(seconds: 15));
+      return resp.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Linked when we hold EITHER token. The access token is the one that
   /// actually works — see [_refreshAccessToken] for why refresh is optional.
   Future<bool> get isLinked async {

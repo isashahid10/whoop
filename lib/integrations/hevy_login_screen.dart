@@ -182,7 +182,7 @@ class _HevyLoginScreenState extends State<HevyLoginScreen> {
   /// diagnostic: the key NAMES present (never their values).
   static const String _probeJs = r'''
 (function () {
-  var out = { keys: [] };
+  var out = { keys: [], candidates: [] };
   try {
     if (window.__osTokens) {
       if (window.__osTokens.refresh) out.refresh = window.__osTokens.refresh;
@@ -211,9 +211,26 @@ class _HevyLoginScreenState extends State<HevyLoginScreen> {
   }
   try { scan(window.localStorage, 'ls'); } catch (e) {}
   try { scan(window.sessionStorage, 'ss'); } catch (e) {}
+
+  // COOKIES — where Hevy actually keeps the session (`access-token` and
+  // `auth2.0-token`, confirmed on device 2026-07-28). The first version of this
+  // read cookie NAMES for the diagnostic and never their VALUES, which is
+  // exactly why capture kept failing while the token sat in plain sight.
   try {
     (document.cookie || '').split(';').forEach(function (c) {
-      var k = c.split('=')[0]; if (k) out.keys.push('ck:' + k.trim());
+      var eq = c.indexOf('=');
+      if (eq < 0) return;
+      var k = c.slice(0, eq).trim();
+      var v = c.slice(eq + 1).trim();
+      if (!k) return;
+      out.keys.push('ck:' + k);
+      if (!v || v.length < 12) return;
+      try { v = decodeURIComponent(v); } catch (e) {}
+      var lk = k.toLowerCase();
+      if (lk.indexOf('refresh') >= 0) out.refresh = out.refresh || v;
+      if (lk.indexOf('token') >= 0 || lk.indexOf('auth') >= 0) {
+        out.candidates.push(v);
+      }
     });
   } catch (e) {}
   try {
@@ -226,7 +243,16 @@ class _HevyLoginScreenState extends State<HevyLoginScreen> {
     if (window.__osTokens) {
       out.refresh = out.refresh || window.__osTokens.refresh;
       out.access = out.access || window.__osTokens.access;
+      if (window.__osTokens.access) out.candidates.unshift(window.__osTokens.access);
     }
+  } catch (e) {}
+  // De-dupe and bound — each candidate costs one validation request.
+  try {
+    var seen = {}; var uniq = [];
+    out.candidates.forEach(function (c) {
+      if (c && !seen[c]) { seen[c] = 1; uniq.push(c); }
+    });
+    out.candidates = uniq.slice(0, 12);
   } catch (e) {}
   return JSON.stringify(out);
 })();
@@ -257,6 +283,12 @@ class _HevyLoginScreenState extends State<HevyLoginScreen> {
       ))
       ..loadRequest(Uri.parse(_loginUrl));
 
+    // Drop anything held from a previous attempt before capturing again. A
+    // stale token makes isLinked true, which sends sync down the auth path and
+    // reports "sign-in expired" while the user is plainly signed in — the exact
+    // confusing failure this screen exists to resolve.
+    HevyClient().clear();
+
     // Continuous poll: Hevy's web app is a SPA, so onPageFinished may never
     // fire again after sign-in routes client-side.
     _poll = Timer.periodic(const Duration(milliseconds: 900), (_) => _probe());
@@ -276,16 +308,20 @@ class _HevyLoginScreenState extends State<HevyLoginScreen> {
       final refresh = map['refresh'] as String?;
       final access = map['access'] as String?;
 
-      // An ACCESS token alone is enough. `/refresh_token` returns 404 — it does
-      // not exist on Hevy's API, so there is nothing to refresh with and the
-      // session token is what actually drives every data call. A refresh token
-      // is stored when we happen to see one, but is never required.
-      if ((access != null && access.isNotEmpty) ||
-          (refresh != null && refresh.isNotEmpty)) {
+      // VALIDATE rather than guess. Several cookies look token-shaped
+      // (`access-token`, `auth2.0-token`, plus analytics junk), and picking by
+      // name is how the last two attempts went wrong. Ask the API which one it
+      // actually accepts — a 200 is proof, a name match is a hypothesis.
+      final candidates = <String>[
+        if (access != null && access.isNotEmpty) access,
+        ...?(map['candidates'] as List?)?.cast<String>(),
+      ];
+
+      for (final c in candidates) {
+        if (!await HevyClient.tokenWorks(c)) continue;
         _done = true;
         _poll?.cancel();
-        await HevyClient()
-            .storeTokens(refreshToken: refresh, accessToken: access);
+        await HevyClient().storeTokens(refreshToken: refresh, accessToken: c);
         if (mounted) Navigator.of(context).pop(true);
         return;
       }
