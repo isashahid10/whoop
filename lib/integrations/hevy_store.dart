@@ -101,6 +101,32 @@ class HevyStore {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
 
+        // Mirror into `sessions` so the workout actually SHOWS UP.
+        //
+        // The workouts screen reads `sessions`; hevy_workout/hevy_set are the
+        // coach's detailed store and are invisible to the UI. Without this the
+        // import silently succeeds and the user sees an empty screen — which is
+        // exactly what happened first time round.
+        //
+        // `source: 'hevy'` keeps these distinguishable from band-detected
+        // sessions, and the id is prefixed so a Hevy id can never collide with
+        // a band session id. strain/max_hr/calories stay NULL: the band owns
+        // those, and inventing them here would be fabrication.
+        await txn.insert(
+          'sessions',
+          {
+            'id': 'hevy_${w.id}',
+            'start_ts': w.start.millisecondsSinceEpoch ~/ 1000,
+            'end_ts': w.end.millisecondsSinceEpoch ~/ 1000,
+            'type': 'strength',
+            'status': 'done',
+            'duration_min': (w.duration.inSeconds / 60).round(),
+            'source': 'hevy',
+            'created_at': now,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+
         // Clear this workout's sets first: an edit in Hevy can REMOVE a set,
         // and a pure upsert would leave the deleted row orphaned forever,
         // silently inflating volume.
@@ -153,6 +179,9 @@ class HevyStore {
     await db.transaction((txn) async {
       await txn.delete('hevy_set');
       await txn.delete('hevy_workout');
+      // Also drop the mirrored rows, or unlinking would leave orphaned
+      // workouts on the workouts screen with no source to refresh them.
+      await txn.delete('sessions', where: "source = ?", whereArgs: ['hevy']);
     });
   }
 
