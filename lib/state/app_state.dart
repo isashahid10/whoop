@@ -51,6 +51,11 @@ import '../notify/notification_event.dart';
 import '../notify/notification_prefs.dart';
 import '../gestures/gesture_settings.dart';
 import '../health/health_export.dart';
+import '../health/health_import.dart';
+import '../integrations/calendar_client.dart';
+import '../notify/profile_nudges.dart';
+import '../integrations/hevy_store.dart';
+import '../integrations/weather_client.dart';
 import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
 import '../gestures/gesture_dispatcher.dart';
@@ -200,6 +205,54 @@ class AppState extends ChangeNotifier {
   static const String _kProfile = 'local_profile_json';
   Map<String, dynamic>? user;
 
+  // ── Build-time profile seed (personal fork) ────────────────────────────────
+  // `flutter install` UNINSTALLS the old build before installing, which wipes
+  // shared_preferences — so without this the profile has to be re-entered by
+  // hand after every rebuild. Supplied via --dart-define-from-file=.env.
+  //
+  // DOB rather than a fixed age on purpose: the stored map keeps `age` as an
+  // int, which silently goes stale every birthday. Seeding the birth date and
+  // deriving age on load keeps it correct forever.
+  static const String _seedDob = String.fromEnvironment('PROFILE_DOB'); // ISO yyyy-MM-dd
+  static const String _seedWeightKg = String.fromEnvironment('PROFILE_WEIGHT_KG');
+  static const String _seedHeightCm = String.fromEnvironment('PROFILE_HEIGHT_CM');
+  static const String _seedSex = String.fromEnvironment('PROFILE_SEX');
+  static const String _seedName = String.fromEnvironment('PROFILE_NAME');
+
+  /// Whole years since an ISO `yyyy-MM-dd` birth date. Null if unparseable or
+  /// implausible. Used on every load so a stored `age` can never go stale.
+  static int? _ageFromWholeYears(String iso) {
+    if (iso.isEmpty) return null;
+    final dob = DateTime.tryParse(iso);
+    if (dob == null) return null;
+    final now = DateTime.now();
+    var age = now.year - dob.year;
+    final hadBirthday =
+        now.month > dob.month || (now.month == dob.month && now.day >= dob.day);
+    if (!hadBirthday) age -= 1;
+    return (age >= 0 && age < 130) ? age : null;
+  }
+
+  /// The seeded profile map, or null when nothing was compiled in. Only fields
+  /// actually supplied are included — a missing field must stay missing so the
+  /// engine's honesty rule (null input => null metric, never a fabricated
+  /// default) still holds.
+  static Map<String, dynamic>? _seedProfile() {
+    final age = _ageFromWholeYears(_seedDob);
+    final w = double.tryParse(_seedWeightKg);
+    final h = double.tryParse(_seedHeightCm);
+    final sex = _seedSex.trim().toLowerCase();
+    final m = <String, dynamic>{
+      'age': ?age,
+      if (_seedDob.isNotEmpty) 'dob': _seedDob,
+      'weight_kg': ?w,
+      'height_cm': ?h,
+      if (sex == 'm' || sex == 'f') 'sex': sex,
+      if (_seedName.isNotEmpty) 'name': _seedName,
+    };
+    return m.isEmpty ? null : m;
+  }
+
   // ── onboarding choice (new vs existing v2 user) ─────────────────────────────
   // 'new' | 'existing' | null (not chosen yet → the welcome screen shows). Once
   // set, the welcome screen never reappears (a returning paired user also skips
@@ -218,7 +271,33 @@ class AppState extends ChangeNotifier {
         /* ignore corrupt blob */
       }
     }
+
+    // Seed the profile on a fresh install when the build carries one. Only ever
+    // fills a GAP — an existing stored profile always wins, so editing it in
+    // the app is never undone by a later rebuild. `age` is refreshed from the
+    // seeded DOB on every load so it cannot go stale.
+    final seed = _seedProfile();
+    if (seed != null) {
+      if (user == null) {
+        user = Map<String, dynamic>.from(seed);
+        await prefs.setString(_kProfile, jsonEncode(user));
+      } else {
+        final dob = (user!['dob'] as String?) ?? _seedDob;
+        final age = dob.isEmpty ? null : _ageFromWholeYears(dob);
+        if (age != null && user!['age'] != age) {
+          user!['age'] = age;
+          await prefs.setString(_kProfile, jsonEncode(user));
+        }
+      }
+    }
+
     _onboardChoice = prefs.getString(_kOnboard);
+    // A seeded profile means onboarding was effectively already answered — skip
+    // the welcome screen rather than re-asking after every rebuild.
+    if (_onboardChoice == null && seed != null) {
+      _onboardChoice = 'new';
+      await prefs.setString(_kOnboard, 'new');
+    }
     // The companion-URL override is loaded in _initCompanion (single source of
     // truth for every network call — announcements, OTA, telemetry, import).
     healthSyncEnabled = prefs.getBool(_kHealthSync) ?? false;
@@ -333,6 +412,52 @@ class AppState extends ChangeNotifier {
 
   // ── platform health export (Apple Health / Health Connect) ──────────────────
   final HealthExporter _healthExport = HealthExporter();
+
+  /// The other direction — pulls nutrition, body mass and phone-logged steps IN
+  /// (see health_import.dart). Upstream Edge was write-only; the coach needs the
+  /// cross-domain inputs the band physically cannot measure.
+  final HealthImporter _healthImport = HealthImporter();
+
+  /// Daily scalars written by the last import. Surfaced in Profile for feedback,
+  /// since a silent no-op import is indistinguishable from a broken one.
+  int lastHealthImportCount = 0;
+
+  // ── Hevy resistance training ───────────────────────────────────────────────
+  final HevyStore _hevy = HevyStore();
+
+  /// Last sync outcome. Held in state (not just logged) so the UI can show an
+  /// expired sign-in LOUDLY — a silently stale lifting log would have the coach
+  /// confidently reasoning from workouts that never happened.
+  HevySyncResult? lastHevySync;
+
+  Future<bool> get hevyLinked => _hevy.client.isLinked;
+
+  /// Called after the one-time WebView sign-in succeeds: pull the full history.
+  Future<HevySyncResult> hevyInitialSync() async {
+    final r = await _hevy.sync(full: true);
+    lastHevySync = r;
+    notifyListeners();
+    return r;
+  }
+
+  /// Incremental sync — only workouts newer than the stored high-water mark.
+  Future<HevySyncResult> hevySyncNow({bool full = false}) async {
+    if (!await _hevy.client.isLinked) {
+      lastHevySync = const HevySyncResult(HevySyncOutcome.notLinked);
+      return lastHevySync!;
+    }
+    final r = await _hevy.sync(full: full);
+    lastHevySync = r;
+    notifyListeners();
+    return r;
+  }
+
+  /// Drop the tokens AND the imported rows.
+  Future<void> hevyUnlink() async {
+    await _hevy.unlink();
+    lastHevySync = null;
+    notifyListeners();
+  }
   HealthLinkState healthState = HealthLinkState.unknown;
   bool healthSyncEnabled = false;
   static const String _kHealthSync = 'health_sync';
@@ -373,14 +498,65 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     if (on) {
       await requestHealth();
+      // READ access is a SEPARATE grant from write on both platforms — asking
+      // for write alone leaves the import silently returning zero forever.
+      await _healthImport.requestPermission();
       if (healthState == HealthLinkState.ready) unawaited(healthSyncNow());
     }
   }
 
-  /// Export all finalized-but-unexported days now. Returns days written.
+  /// Sync BOTH directions. Returns days exported (the import count is reported
+  /// separately via [lastHealthImportCount] — they count different things and
+  /// summing them would be meaningless).
+  ///
+  /// Export runs first: it is the operation the user explicitly opted into, and
+  /// an import failure must never prevent our own metrics reaching the store.
+  /// Both sides swallow their own errors, so neither can break the other.
   Future<int> healthSyncNow() async {
     final n = await _healthExport.exportAll();
+    lastHealthImportCount = await _healthImport.importRecent();
+    // Hevy rides along on the same pass: it is the same class of work (pull
+    // external context the band cannot measure) and shares the trigger points.
+    // Its own errors are captured in lastHevySync, never thrown, so a dead Hevy
+    // token can't break the health sync.
+    if (await _hevy.client.isLinked) {
+      lastHevySync = await _hevy.sync();
+    }
+    // Weather + calendar ride the same pass. Both return 0 rather than throwing
+    // when unavailable (no location fix, permission not granted), so neither can
+    // break the health sync or each other.
+    await _weather.syncRecent();
+    await _calendar.syncRecent();
+    // Profile hygiene: a stale body weight silently biases Keytel calories and
+    // TRIMP, so it gets its own escalating re-check (see profile_nudges.dart).
+    await ProfileNudges.maybePromptWeight();
+    if (lastHealthImportCount > 0 || lastHevySync != null) notifyListeners();
     return n;
+  }
+
+  // ── ambient context (weather + calendar) ───────────────────────────────────
+  final WeatherClient _weather = WeatherClient();
+  final CalendarClient _calendar = CalendarClient();
+
+  /// Grant calendar access. Weather needs no grant of its own — it reuses the
+  /// location permission GPS already asks for, and silently skips without one.
+  Future<bool> requestCalendarAccess() async {
+    final ok = await _calendar.requestPermission();
+    if (ok) await _calendar.syncRecent();
+    notifyListeners();
+    return ok;
+  }
+
+  Future<bool> get calendarLinked => _calendar.hasPermission;
+
+  /// Re-read the full backfill window on the next sync. For "re-import
+  /// everything" after granting a permission that was previously denied — the
+  /// cursor would otherwise skip the period the data was invisible for.
+  Future<int> healthReimportAll() async {
+    await HealthImporter.resetCursor();
+    lastHealthImportCount = await _healthImport.importRecent();
+    notifyListeners();
+    return lastHealthImportCount;
   }
 
   /// Session-triggered Health export for one just-finished workout (issue

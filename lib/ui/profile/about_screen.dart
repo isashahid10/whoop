@@ -94,7 +94,7 @@ class _AboutScreenState extends State<AboutScreen> {
             title: 'Open-source licenses',
             onTap: () => showLicensePage(
               context: context,
-              applicationName: 'Edge',
+              applicationName: 'Whoop',
               applicationVersion: versionLabel,
             ),
           ),
@@ -104,7 +104,7 @@ class _AboutScreenState extends State<AboutScreen> {
         _SettingsCard(rows: [
           ListRow(
             icon: OsIcon.activity,
-            title: 'Edge',
+            title: 'Whoop',
             value: versionLabel ?? '…',
           ),
         ]),

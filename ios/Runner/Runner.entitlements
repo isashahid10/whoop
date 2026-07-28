@@ -8,7 +8,18 @@
 	</array>
 	<key>com.apple.developer.healthkit</key>
 	<true/>
-	<key>com.apple.developer.healthkit.access</key>
-	<array/>
+	<!--
+	  com.apple.developer.healthkit.access REMOVED for free-Personal-Team signing.
+	  It was an EMPTY array upstream, but the key's mere presence makes Xcode
+	  request the "HealthKit Access (Verifiable Health Records)" capability, which
+	  personal teams cannot provision:
+	    "Personal development teams, including "Isa Shahid", do not support the
+	     HealthKit Access (Verifiable Health Records) capability."
+	  Health Records is the clinical-documents entitlement (lab results, hospital
+	  records). This app never touches it — it needs plain HealthKit above for
+	  heart rate, workouts and nutrition, which personal teams DO support.
+	  Restore this key only if moving to a paid Apple Developer account AND
+	  actually reading clinical records.
+	-->
 </dict>
 </plist>
