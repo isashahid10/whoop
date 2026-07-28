@@ -10,6 +10,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../integrations/hevy_detail.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
@@ -1024,6 +1025,9 @@ class _WorkoutDetailBody extends StatefulWidget {
 class _WorkoutDetailBodyState extends State<_WorkoutDetailBody> {
   Map<String, dynamic>? _d;
   WorkoutRoute? _route;
+
+  /// Lift breakdown for an imported Hevy session; null for band sessions.
+  HevyWorkoutDetail? _lifts;
   bool _loading = true;
 
   @override
@@ -1041,10 +1045,25 @@ class _WorkoutDetailBodyState extends State<_WorkoutDetailBody> {
       try {
         route = await api.getWorkoutRoute(widget.id);
       } catch (_) {}
+      // Imported lifts carry their detail in hevy_set, not in the 1 Hz
+      // substrate the band enrichment reads — without this the screen shows
+      // "No data" while every set, rep and load sits in the database.
+      HevyWorkoutDetail? lifts;
+      try {
+        if (!mounted) return;
+        final prof = context.read<AppState>().user;
+        lifts = await HevyDetail.forSession(
+          widget.id,
+          measuredKcal: (d['calories'] as num?)?.round(),
+          weightKg: (prof?['weight_kg'] as num?)?.toDouble(),
+          durationSeconds: ((d['duration_min'] as num?)?.toInt() ?? 0) * 60,
+        );
+      } catch (_) {}
       if (mounted) {
         setState(() {
           _d = d;
           _route = route;
+          _lifts = lifts;
           _loading = false;
         });
         _publishShareData();
@@ -1136,6 +1155,7 @@ class _WorkoutDetailBodyState extends State<_WorkoutDetailBody> {
           ? units.distance(route.distanceMeters)
           : null,
       onCorrectType: d['source'] == 'auto' ? _correctType : null,
+      lifts: _lifts,
     );
   }
 }
@@ -1155,6 +1175,9 @@ class WorkoutDetailContent extends StatelessWidget {
   /// Non-null only for auto-detected sessions (shows the "fix type" affordance).
   final VoidCallback? onCorrectType;
 
+  /// Lift breakdown for an imported session. Non-null only for Hevy sessions.
+  final HevyWorkoutDetail? lifts;
+
   const WorkoutDetailContent({
     super.key,
     required this.d,
@@ -1162,6 +1185,7 @@ class WorkoutDetailContent extends StatelessWidget {
     required this.maxHr,
     this.distanceLabel,
     this.onCorrectType,
+    this.lifts,
   });
 
   num? _n(Object? v) => v is num ? v : null;
@@ -1189,7 +1213,13 @@ class WorkoutDetailContent extends StatelessWidget {
         (d['recovery_curve'] as List?)?.whereType<Map>().toList() ?? const [];
     final live = d['status'] == 'live';
     final strain = _n(d['strain']);
+    // A lift logged without the band has no HR and no strain, but it is very
+    // far from "no data" — it has every set, rep and kilo. Only treat it as
+    // empty when there is nothing from EITHER source.
+    final lifts = this.lifts;
+    final hasLifts = lifts != null && !lifts.isEmpty;
     final noData = !live &&
+        !hasLifts &&
         hrPoints.isEmpty &&
         (((d['avg_hr'] as num?) ?? 0) == 0) &&
         ((strain ?? 0) == 0);
@@ -1206,6 +1236,12 @@ class WorkoutDetailContent extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(Sp.screen, Sp.x2, Sp.screen, Sp.x10),
       children: dsStaggered([
         _hero(live: live, strain: strain, noData: noData),
+
+        // ── LIFTS ── (imported from Hevy: every set, rep and kilo)
+        if (hasLifts) ...[
+          const SizedBox(height: Sp.x4),
+          _LiftBreakdown(detail: lifts),
+        ],
 
         // ── ROUTE ── (run/ride/walk with recorded GPS)
         if (r != null && r.hasPath) ...[
@@ -1805,5 +1841,125 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
             ),
       ],
     );
+  }
+}
+
+/// Every set, rep and kilo of an imported Hevy session.
+///
+/// The rest of the detail screen is built around band telemetry — HR curve,
+/// zones, strain. A lift logged without the band has none of that, and used to
+/// render as "No data" while the whole session sat in `hevy_set`. This is the
+/// half the band cannot see.
+class _LiftBreakdown extends StatelessWidget {
+  final HevyWorkoutDetail detail;
+  const _LiftBreakdown({required this.detail});
+
+  static String _kg(double v) =>
+      v >= 100 ? v.round().toString() : v.toStringAsFixed(1).replaceAll('.0', '');
+
+  @override
+  Widget build(BuildContext context) {
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('Lifts', style: AppText.title),
+              const Spacer(),
+              Text(
+                '${detail.workingSets} sets · ${_kg(detail.totalVolumeKg)} kg',
+                style: AppText.captionMuted,
+              ),
+            ],
+          ),
+          if (detail.energyKcal != null) ...[
+            const SizedBox(height: Sp.x2),
+            Row(children: [
+              Text('${detail.energyKcal} kcal', style: AppText.captionMuted),
+              const SizedBox(width: Sp.x2),
+              // A measured value and a population estimate must never look
+              // alike — the tag is the whole point.
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: Sp.x2, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSunk,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  detail.energyMethod == EnergyMethod.measured
+                      ? 'measured'
+                      : 'estimated',
+                  style: AppText.captionMuted.copyWith(fontSize: 10),
+                ),
+              ),
+            ]),
+          ],
+          const SizedBox(height: Sp.x3),
+          for (final ex in detail.exercises) ...[
+            Divider(height: 1, thickness: 1, color: AppColors.divider),
+            const SizedBox(height: Sp.x3),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(ex.title,
+                      style: AppText.body.copyWith(fontWeight: FontWeight.w700)),
+                ),
+                if (ex.muscleGroup != null)
+                  Text(ex.muscleGroup!, style: AppText.captionMuted),
+              ],
+            ),
+            const SizedBox(height: Sp.x2),
+            for (final st in ex.sets)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 28,
+                      child: Text(
+                        // Warm-ups are shown but visually demoted: they are
+                        // real, they just are not the working set.
+                        st.isWorking ? '${st.setIndex + 1}' : 'W',
+                        style: AppText.captionMuted,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        _describe(st),
+                        style: st.isWorking
+                            ? AppText.body
+                            : AppText.captionMuted,
+                      ),
+                    ),
+                    if (st.rpe != null)
+                      Text('RPE ${_kg(st.rpe!)}', style: AppText.captionMuted),
+                  ],
+                ),
+              ),
+            const SizedBox(height: Sp.x3),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Render whatever the set actually holds — a weighted set, a bodyweight
+  /// set, or a distance/duration piece. Never invents a missing figure.
+  static String _describe(HevySetRow s) {
+    if (s.weightKg != null && s.reps != null) {
+      return '${_kg(s.weightKg!)} kg × ${s.reps}';
+    }
+    if (s.reps != null) return '${s.reps} reps';
+    if (s.distanceM != null && s.distanceM! > 0) {
+      return '${(s.distanceM! / 1000).toStringAsFixed(2)} km';
+    }
+    if (s.durationS != null && s.durationS! > 0) {
+      final m = s.durationS! ~/ 60, sec = s.durationS! % 60;
+      return m > 0 ? '${m}m ${sec}s' : '${sec}s';
+    }
+    return '—';
   }
 }
