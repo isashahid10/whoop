@@ -1579,6 +1579,10 @@ class AppState extends ChangeNotifier {
   Future<void> _init() async {
     paired = await PairedDevice.load();
     await _loadProfile();
+    // Self-heal Hevy workouts imported before the sessions mirror existed:
+    // they have no session row, so the workouts screen cannot see them, and an
+    // incremental sync never rewrites them. No-ops once everything is mirrored.
+    unawaited(HevyStore.backfillSessions());
     await _deriveScheduler.init();
     lastSynced = await LocalDb.latestSample();
     // The true data-edge frontier is the `rec_ts_hw` sync cursor, NOT
