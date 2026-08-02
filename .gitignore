@@ -1,5 +1,15 @@
-.fvm
-.fvmrc
+.fvm/
+
+# .fvmrc IS COMMITTED, deliberately.
+#
+# It is the Flutter version pin, and the pin is load-bearing: on 3.44.x this
+# project does not compile, because phosphor_flutter extends IconData and
+# IconData became a `final class`. Ignoring this file means a fresh clone has
+# no pin at all, silently falls back to whatever Flutter the machine has, and
+# fails with errors that look like a code bug rather than a version mismatch.
+# Verified: a clean clone without it failed on CupertinoPageTransitionsBuilder,
+# which is the documented 3.44 symptom.
+!.fvmrc
 # Miscellaneous
 *.class
 *.log
