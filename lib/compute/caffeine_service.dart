@@ -77,14 +77,20 @@ class CaffeineService {
     } catch (_) {}
   }
 
-  /// Today's intakes, earliest first.
-  static Future<List<({DateTime at, double mg, String? label})>> today() async {
+  /// Intakes on the calendar day containing [when], earliest first.
+  ///
+  /// Single implementation on purpose. A previous version of [impactTonight]
+  /// grew its own copy of this query and got both the column name and the
+  /// timestamp units wrong, which only surfaced as a SQL error in one
+  /// timezone.
+  static Future<List<({DateTime at, double mg, String? label})>> onDay(
+      DateTime when) async {
     try {
       final db = await LocalDb.instance;
       final rows = await db.query(
         'caffeine_log',
         where: 'day = ?',
-        whereArgs: [_dayOf(DateTime.now())],
+        whereArgs: [_dayOf(when)],
         orderBy: 'ts ASC',
       );
       return [
@@ -99,6 +105,10 @@ class CaffeineService {
       return const [];
     }
   }
+
+  /// Today's intakes, earliest first.
+  static Future<List<({DateTime at, double mg, String? label})>> today() =>
+      onDay(DateTime.now());
 
   /// Tonight's bedtime: the sleep coach's recommendation when it has one, else
   /// 23:00 as a stated fallback.
@@ -136,9 +146,20 @@ class CaffeineService {
 
   /// Residual and expected cost at tonight's bedtime.
   static Future<ana.CaffeineImpact> impactTonight() async {
-    final doses = await today();
-    if (doses.isEmpty) return ana.CaffeineImpact.none;
     final bed = await bedtime();
+    // Doses from TODAY, plus anything already logged against the bedtime's own
+    // date when that has rolled past midnight.
+    //
+    // `bedtime()` returns tomorrow once tonight's hour has passed, so between
+    // 23:00 and midnight a coffee logged at 23:30 sits on today's date while
+    // bedtime points at tomorrow. Reading only today's log then measured ~23
+    // hours of decay and reported no impact, when in fact that coffee lands
+    // squarely on the sleep about to happen.
+    final doses = <({DateTime at, double mg, String? label})>[
+      ...await today(),
+      if (_dayOf(bed.at) != _dayOf(DateTime.now())) ...await onDay(bed.at),
+    ];
+    if (doses.isEmpty) return ana.CaffeineImpact.none;
     return ana.caffeineImpact(
       doses: [
         for (final d in doses) ana.CaffeineDose(mg: d.mg, at: d.at),
