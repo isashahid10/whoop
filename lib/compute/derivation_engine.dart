@@ -37,6 +37,7 @@ import '../notify/notification_event.dart';
 import '../notify/tap_router.dart' show kRouteWorkoutSuggestion;
 import '../telemetry/telemetry_service.dart';
 import 'crossday_pipeline.dart';
+import 'sleep_score_service.dart';
 import 'derive_prepare.dart';
 import 'onehz_pipeline.dart';
 import 'profile.dart';
@@ -349,7 +350,15 @@ import 'substrate.dart';
 // green: steps.dart carries the new step API, rr_correction.dart has the
 // signed-dRR `seg.add(x[k])`, advanced_stager.dart has maxAccelCarryForwardSec,
 // live.dart has kKnownRecordVersions.
-const int kAlgoVersion = 50;
+// v51: naps carry the hypnogram + HR the stager already computed. day_result
+// is immutable per (day_id, algo_version), so the new fields only appear once
+// the version bump forces a re-derive of existing days.
+// v52: deep-sleep continuity. The deep overlay was never smoothed yet had to
+// clear a 3-UNBROKEN-MINUTE run test at 1-second epochs, so real bouts were
+// fragmented by ordinary beat-to-beat variation and then deleted. Deep read
+// 2-3% of TST on every night against a normal 13-23%. Gaps are now closed
+// before run length is measured.
+const int kAlgoVersion = 52;
 
 /// Raw is kept this many days past derivation, then pruned (derived stays).
 const int rawRetentionDays = 3;
@@ -753,7 +762,7 @@ class DerivationEngine {
           if (!finalized.contains(day) || overrideDays.contains(day)) day,
       ];
       if (todoDays.isEmpty) {
-        _log('derive: all days finalized — nothing to do');
+        _log('derive: all days finalized - nothing to do');
         if (scope.fullHistory) {
           await _pruneOldDecoded(todoDays, dataNowSec);
         }
@@ -807,7 +816,7 @@ class DerivationEngine {
           if (prepared != null &&
               prepared.daySub.isEmpty &&
               overrideDays.contains(dayId)) {
-            _log('derive day $dayId skipped: override day, raw pruned — kept');
+            _log('derive day $dayId skipped: override day, raw pruned - kept');
           } else if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
             await _derivePreparedDay(prepared, profile, dataNowSec, history);
@@ -921,7 +930,7 @@ class DerivationEngine {
           if (force || !finalized.contains(day)) day,
       ];
       if (todoDays.isEmpty) {
-        _log('derive selected: all days finalized — nothing to do');
+        _log('derive selected: all days finalized - nothing to do');
         return 0;
       }
       _diag['todo_days'] = todoDays.length;
@@ -1396,7 +1405,7 @@ class DerivationEngine {
       final sig = await _baselineSignature();
       final prev = await LocalDb.getCursor('baseline_sig');
       if (sig == prev) {
-        _log('baseline unchanged — rescan skipped');
+        _log('baseline unchanged - rescan skipped');
         return 0;
       }
 
@@ -1421,7 +1430,7 @@ class DerivationEngine {
         return 0;
       }
       _log(
-        'rescan: baseline changed — re-deriving ${todoDays.length} '
+        'rescan: baseline changed - re-deriving ${todoDays.length} '
         'recent day(s) (incl. finalized; v$kAlgoVersion)',
       );
 
@@ -1763,7 +1772,7 @@ class DerivationEngine {
     if (producedNothing) {
       final existing = await LocalDb.dayResult(day.date);
       if (_isRealDayResult(existing)) {
-        _log('derive ${day.date}: no substrate (raw pruned) — kept the '
+        _log('derive ${day.date}: no substrate (raw pruned) - kept the '
             'existing result rather than blanking it');
         return;
       }
@@ -1877,7 +1886,7 @@ class DerivationEngine {
       await _persistWakeDayFeatures(dayId: day.date, wake: blocks.wake);
     } catch (e, st) {
       secondHalfOk = false;
-      _log('day-blocks (offloaded second half) failed for ${day.date} — '
+      _log('day-blocks (offloaded second half) failed for ${day.date} - '
           'persisting headline day (partial): $e');
       TelemetryService.instance.recordNonFatal(e, st, reason: 'day_blocks_failed');
     }
@@ -2144,7 +2153,7 @@ class DerivationEngine {
     try {
       final existing = await LocalDb.dayResult(dayId);
       if (_isRealDayResult(existing)) {
-        _log('derive $dayId $reason — existing result kept (not overwritten '
+        _log('derive $dayId $reason - existing result kept (not overwritten '
             'with a skip marker)');
         return;
       }
@@ -2202,7 +2211,7 @@ class DerivationEngine {
     try {
       final days = await _crossDayInputDays();
       if (days.length < 3) {
-        _log('crossday: only ${days.length} usable day(s) — skip');
+        _log('crossday: only ${days.length} usable day(s) - skip');
         return;
       }
       final profileMap = profile.toMap();
@@ -2221,6 +2230,25 @@ class DerivationEngine {
       _log('crossday: stored over ${days.length} day(s)');
     } catch (e) {
       _log('crossday FAILED/skipped: $e');
+    }
+    // Sleep score AFTER the rollup, because it reads the personal sleep-need
+    // and regularity estimates the rollup just wrote. Outside the try above so
+    // a failed rollup still produces a score — it degrades to the population
+    // reference and abstains on regularity rather than producing nothing.
+    await _runSleepScores(profile);
+  }
+
+  /// Score the recent nights. Cheap indexed reads, idempotent, and it writes
+  /// nothing for a night it cannot score.
+  Future<void> _runSleepScores(Profile profile) async {
+    try {
+      final n = await SleepScoreService.backfill(
+        days: _crossDayWindow,
+        profile: profile.toMap(),
+      );
+      _log('sleep score: $n night(s) scored');
+    } catch (e) {
+      _log('sleep score FAILED/skipped: $e');
     }
   }
 
@@ -2333,16 +2361,16 @@ class DerivationEngine {
         await emit(
           'temp',
           'Skin temperature elevated',
-          'Sustained rise vs your baseline — a possible illness signal.',
+          'Sustained rise vs your baseline - a possible illness signal.',
           route: '/body',
         );
       }
       // 24/7 irregular-rhythm SCREEN (not a diagnosis). Fires at most once/day.
       final irregFlag = await LocalDb.metricValueOn(date, 'irregular_rhythm_flag');
       if (irregFlag == 1.0) {
-        await emit('irregular', 'Irregular heart rhythm — screen',
+        await emit('irregular', 'Irregular heart rhythm - screen',
             'Your beat-to-beat pattern looked irregular today. This is a screen, '
-            'not a diagnosis — see a clinician if you have symptoms.',
+            'not a diagnosis - see a clinician if you have symptoms.',
             route: '/heart');
       }
       final score = gb?['value'] is Map ? (gb!['value'] as Map)['score'] : null;
@@ -2350,7 +2378,7 @@ class DerivationEngine {
         await emit(
           'readiness',
           'Low readiness today',
-          'Your recovery markers are below your usual range — ease off.',
+          'Your recovery markers are below your usual range - ease off.',
           category: NotifCategory.recovery,
           priority: NotifPriority.normal,
           route: '/today',
@@ -2481,7 +2509,7 @@ class DerivationEngine {
     final derivedIds = await LocalDb.dayResultIds(kAlgoVersion);
     final pending = dayIds.where((d) => !derivedIds.contains(d)).toList();
     if (pending.isNotEmpty) {
-      _log('prune skipped — ${pending.length} day(s) not yet derived');
+      _log('prune skipped - ${pending.length} day(s) not yet derived');
       return;
     }
     final cutoffSec = dataNowSec - rawRetentionDays * 86400;
@@ -2673,7 +2701,7 @@ class DerivationEngine {
           'personal_dyn_floor',
         ],
         'note': v == null
-            ? 'real 100 Hz count only — the 1 Hz activity estimate needs a '
+            ? 'real 100 Hz count only - the 1 Hz activity estimate needs a '
                 'personal movement baseline from several days of wear '
                 '(${est.note ?? 'need_baseline'})'
             : 'real 100 Hz count for streamed time + ${v.activeMinutes} active '
@@ -2849,7 +2877,7 @@ class DerivationEngine {
         'tier': 'ESTIMATE',
         'inputs_used': const ['accel_1hz'],
         'note':
-            'active minutes (1 Hz ENMO over wake); 1 Hz cannot count steps — '
+            'active minutes (1 Hz ENMO over wake); 1 Hz cannot count steps - '
             'true step counts come from live workout streaming',
       },
       'activity_curve': _activityCurve(daySub),
@@ -3346,6 +3374,16 @@ class DerivationEngine {
               'end': t0 + nap.endSec,
               'duration_min': (nap.durationSec / 60).round(),
               'confidence': nap.confidence,
+              // Stage minutes from the same cardio stager the night uses.
+              // `staging_reliable` carries the LENGTH caveat forward so the UI
+              // hedges a short nap rather than presenting its split as firm.
+              'tst_min': nap.tstMin,
+              'light_min': nap.lightMin,
+              'deep_min': nap.deepMin,
+              'rem_min': nap.remMin,
+              'staging_reliable': nap.stagingIsReliable,
+              'resting_hr': nap.restingHr,
+              'avg_hrv': nap.avgHrv,
             },
         ],
         'count': naps.length,
@@ -3855,7 +3893,7 @@ class DerivationEngine {
         'confidence': 'low',
         'tier': ana.Tier.relative,
         'note': 'WRIST orientation during sleep (gravity-tilt). A body-position '
-            'PROXY, NOT supine/side/prone body position — the wrist moves '
+            'PROXY, NOT supine/side/prone body position - the wrist moves '
             'independently of the torso.',
       };
     } catch (e) {

@@ -899,6 +899,14 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
       'deep_min': deepSec == null ? null : (deepSec / 60).roundToDouble(),
       'light_min': lightSec == null ? null : (lightSec / 60).roundToDouble(),
       'tst_min': tstSec == null ? null : (tstSec / 60).roundToDouble(),
+      // Wake-after-sleep-onset. Already computed for the sleep JSON; surfaced
+      // as a scalar because the sleep score's continuity component needs it,
+      // and deriving it from TST/efficiency instead would round-trip through
+      // two rounded figures.
+      'waso_min': wasoSec == null ? null : (wasoSec / 60).roundToDouble(),
+      // Segmentation confidence, carried so a score can report how much the
+      // staging behind it is trusted rather than presenting every night alike.
+      'sleep_confidence': sleepConf == 0 ? null : _round(sleepConf, 3),
       'lf_hf': lfhf == null ? null : _round(lfhf, 3),
       'hrv_cv': hrvCv == null ? null : _round(hrvCv, 1),
       // 24/7 irregular-rhythm screen flag (1/0) → drives trend + notification.

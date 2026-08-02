@@ -17,6 +17,8 @@ import 'dart:convert';
 import 'dart:isolate';
 import 'dart:math' as math;
 
+import '../compute/activity_source.dart';
+import '../compute/sleep_score_service.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/hr_max.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
@@ -268,6 +270,25 @@ class LocalRepositoryImpl extends LocalRepository {
       'HIGH',
       note: readinessNote,
     );
+    // Resolve the phone-vs-band preference ONCE, before the payload is built,
+    // so steps and both energy figures agree about which source won.
+    // getToday() is always TODAY by definition — the prior-overnight fallback
+    // above affects sleep, not the activity day.
+    final day = todayLabel();
+    num? band(String key) => activityBundle == null
+        ? (wakeFeatures?[key] as num?)
+        : _scalar(activityBundle, key);
+    final stepsSrc =
+        await ActivitySourceResolver.steps(day, bandSteps: band('steps'));
+    final calSrc = await ActivitySourceResolver.activeCalories(
+      day,
+      bandCalories: band('calories'),
+    );
+    final calTotalSrc = await ActivitySourceResolver.totalCalories(
+      day,
+      bandTotal: band('calories_total'),
+    );
+
     final daily = <String, dynamic>{
       'readiness': readinessMetric,
       'recovery': readinessMetric,
@@ -290,30 +311,30 @@ class LocalRepositoryImpl extends LocalRepository {
         'HIGH',
         unit: 'min',
       ),
-      // Active calories (Keytel HR→kcal over the wake span) + total daily energy
-      // (TDEE: Mifflin BMR floor + active surplus).
+      // Active calories + total daily energy. PHONE FIRST — see the steps note
+      // below; the same reasoning applies, and Health's active-energy figure
+      // moves through the day while the band's only changes on sync + derive.
       'calories': _scalarMetric(
-        activityBundle == null
-            ? (wakeFeatures?['calories'] as num?)?.round()
-            : _scalar(activityBundle, 'calories')?.round(),
-        'ESTIMATE',
+        calSrc.value?.round(),
+        calSrc.source == ActivitySource.phone ? 'HIGH' : 'ESTIMATE',
         unit: 'kcal',
+        note: calSrc.label,
       ),
       'calories_total': _scalarMetric(
-        activityBundle == null
-            ? (wakeFeatures?['calories_total'] as num?)?.round()
-            : _scalar(activityBundle, 'calories_total')?.round(),
-        'ESTIMATE',
+        calTotalSrc.value?.round(),
+        calTotalSrc.source == ActivitySource.phone ? 'HIGH' : 'ESTIMATE',
         unit: 'kcal',
+        note: calTotalSrc.label,
       ),
-      // STEPS — real 100 Hz count (streamed time) + 1 Hz walking estimate for the
-      // rest; the derivation combines them and avoids double-counting.
+      // STEPS — Apple Health when it has the day, else the band's wrist
+      // estimate. The band only sees time it was actually worn and only
+      // updates on sync, so reading it alone made the figure wrong, static
+      // through the day, and blank for any day before the band existed.
       'steps': _scalarMetric(
-        activityBundle == null
-            ? (wakeFeatures?['steps'] as num?)?.round()
-            : _scalar(activityBundle, 'steps')?.round(),
-        'ESTIMATE',
+        stepsSrc.value?.round(),
+        stepsSrc.source == ActivitySource.phone ? 'HIGH' : 'ESTIMATE',
         unit: 'steps',
+        note: stepsSrc.label,
       ),
     };
 
@@ -327,7 +348,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
     return {
       'daily': daily,
-      'sleep': sleepBundle == null ? const {} : _sleepSummary(sleepBundle),
+      'sleep': sleepBundle == null ? const {} : await _sleepSummary(sleepBundle),
       if (sleepBundle != null && rhrEnv != null)
         'nocturnal': _nocturnal(
           sleepBundle,
@@ -395,24 +416,40 @@ class LocalRepositoryImpl extends LocalRepository {
     return total == null ? null : (total / 60).round();
   }
 
-  Map<String, dynamic> _sleepSummary(Map<String, dynamic> b) {
+  Future<Map<String, dynamic>> _sleepSummary(
+    Map<String, dynamic> b, {
+    String? date,
+  }) async {
     // sleep.accounting is a Metric envelope {value:{tst_sec,…}, confidence,…} —
     // read the inner `.value`, not the envelope (the fields live one level down).
     final acct = _sub(b, 'sleep.accounting.value');
     final tst = (acct?['tst_sec'] as num?);
     final eff = (acct?['efficiency_pct'] as num?);
     if (tst == null) return const {};
+    // Read the rollup once and share it, so the gauge's need and the score's
+    // duration component are driven by the same figure.
+    final day = date ?? todayLabel();
+    final crossDay = await SleepScoreService.crossDayBundle();
+    final score = await SleepScoreService.scoreFor(day, crossDay: crossDay);
+    final need = await SleepScoreService.needMinFor(crossDay: crossDay) ?? 480.0;
     return {
       'duration_min': _scalarMetric(
         (tst / 60).round(),
         'ESTIMATE',
         unit: 'min',
       ),
-      // Sleep need: same default-8 h convention as getDaySleep, so the Today
-      // sleep tile gets its "of Xh need" caption + progress just like the
-      // Sleep screen (it was silently absent from the /today seam before).
-      'need_min': _scalarMetric(480, 'ESTIMATE', unit: 'min'),
+      // Sleep need: the personal estimate when a free night justified one,
+      // else the blended personal/population reference. 8 h only as a last
+      // resort — and it comes from the SAME source the score's duration
+      // component uses, so the two can never disagree.
+      'need_min': _scalarMetric(need.round(), 'ESTIMATE', unit: 'min'),
       'efficiency': _scalarMetric(eff, 'ESTIMATE', unit: '%'),
+      // The 0-100 composite. Absent when too little of the night was
+      // measurable — the trio renders that as a dash, never a zero.
+      if (score.score != null)
+        'score': _scalarMetric(score.score!.round(), 'ESTIMATE'),
+      if (score.score != null) 'score_coverage': score.coverage,
+      'score_basis': score.basis,
     };
   }
 
@@ -571,6 +608,16 @@ class LocalRepositoryImpl extends LocalRepository {
     }
 
     final sleepConf = _sub(b, 'sleep.accounting')?['confidence'] as num?;
+
+    // Score the night here rather than in the widget: it is a handful of
+    // indexed reads, and the screen should never own async DB access. The
+    // rollup is read once and shared, so the gauge's need and the score's
+    // duration component cannot disagree about what was targeted.
+    final crossDay = await SleepScoreService.crossDayBundle();
+    final sleepScore = await SleepScoreService.scoreFor(date, crossDay: crossDay);
+    final needMin =
+        await SleepScoreService.needMinFor(crossDay: crossDay) ?? 480.0;
+
     return {
       // Shape matches sleep_detail_screen's contract exactly.
       'has_sleep': true,
@@ -588,6 +635,16 @@ class LocalRepositoryImpl extends LocalRepository {
       'rem_min': min('rem_sec'),
       'nrem_min': min('nrem_sec'),
       'stages_beta': true,
+      // Sleep STABILITY from cardiopulmonary coupling (Thomas 2005), already
+      // computed every night and previously unused by any screen.
+      //
+      // High-frequency coupling is the published biomarker of stable NREM,
+      // which is the state the Deep figure is trying to name. When the two
+      // disagree - a normal-looking Deep figure on a night whose coupling is
+      // low-frequency dominant - that disagreement is real information, and
+      // the screen caveats Deep rather than quietly picking a winner. Measured
+      // both ways against a reference night; see CpcMode in cardio_stager.
+      'cpc_ratio': _sub(b, 'sleep.cpc.value')?['cpc_ratio'] as num?,
       // The 4-class stager is a low-confidence wrist ESTIMATE; Deep especially is
       // an unvalidated overlay. The screen badges the whole stage block honestly.
       'stages_confidence': sleepConf,
@@ -599,12 +656,33 @@ class LocalRepositoryImpl extends LocalRepository {
       // a general daytime heart metric. Pure re-exposure of the same bundle
       // field getDayHeart already read; no new computation.
       'spo2': b['spo2'],
-      // Sleep need: default 8 h (480 min) until a personal sleep-need baseline
-      // exists. Debt = need − actual TST (≥0). Never null so the gauge always reads.
-      'need_min': 480,
-      'debt_min': ((480 - (tst / 60)).clamp(0, 480)).round(),
-      'regularity':
-          null, // needs ≥several nights (honest null → "Need N nights")
+      // Sleep need: the personal optimal sleep duration when a free night let
+      // us estimate one honestly, otherwise the blended personal/population
+      // reference (see SleepScoreService._needMin). 8 h only as a last resort,
+      // so the gauge always reads.
+      'need_min': needMin.round(),
+      'debt_min': ((needMin - (tst / 60)).clamp(0, needMin)).round(),
+      // Phillips SRI over the recent window; null until several nights of
+      // timing history exist (honest null → "Need N nights").
+      'regularity': sleepScore.components
+          .firstWhere((c) => c.key == 'regularity')
+          .score,
+      // 0-100 composite + its breakdown. Null score means too little of the
+      // night was measurable — the screen shows the reason, not a zero.
+      'sleep_score': sleepScore.score,
+      'sleep_score_coverage': sleepScore.coverage,
+      'sleep_score_basis': sleepScore.basis,
+      'sleep_score_components': [
+        for (final c in sleepScore.components)
+          {
+            'key': c.key,
+            'label': c.label,
+            'score': c.score,
+            'weight': c.weight,
+            'detail': c.detail,
+            'absent_reason': c.absentReason,
+          },
+      ],
       // Sleep periods (main + naps) for the periods screen.
       'periods': (b['sleep_periods'] as Map?)?['periods'] ?? const [],
       'total_asleep_min': (b['sleep_periods'] as Map?)?['total_asleep_min'],
@@ -803,6 +881,20 @@ class LocalRepositoryImpl extends LocalRepository {
     } else {
       stepsBase = _scalar(b, 'steps');
     }
+    // Same phone-first preference the Today screen uses. Without this the
+    // detail screen kept showing the BAND series while Today showed Apple
+    // Health's — tapping a correct number opened a screen contradicting it,
+    // and every day before the band existed was blank here.
+    final dayStepsSrc =
+        await ActivitySourceResolver.steps(date, bandSteps: stepsBase);
+    final dayCalSrc = await ActivitySourceResolver.activeCalories(
+      date,
+      bandCalories: _scalar(b, 'calories'),
+    );
+    final dayCalTotalSrc = await ActivitySourceResolver.totalCalories(
+      date,
+      bandTotal: _scalar(b, 'calories_total'),
+    );
     return {
       // Headline 0–21 strain (the detail screen clamps to 0..21). Raw Banister
       // TRIMP is kept as the secondary "training load" figure.
@@ -826,10 +918,13 @@ class LocalRepositoryImpl extends LocalRepository {
         for (final p in zoneTimeline.whereType<Map>())
           {'t': p['t'], 'z': p['z']},
       ],
-      'calories': _scalar(b, 'calories')?.round(),
-      // Total daily energy (TDEE) + 24/7 step ESTIMATE (live pedometer tunes it).
-      'calories_total': _scalar(b, 'calories_total')?.round(),
-      'steps': stepsBase?.round(),
+      'calories': dayCalSrc.value?.round(),
+      'calories_total': dayCalTotalSrc.value?.round(),
+      'steps': dayStepsSrc.value?.round(),
+      // Provenance, so the detail screen can label a phone count as a real
+      // measurement rather than badging it as the band's estimate.
+      'steps_source': dayStepsSrc.source.name,
+      'calories_source': dayCalSrc.source.name,
       'hr': {
         'max': (hrStats?['max'] as num?)?.toInt(),
         'avg': (hrStats?['avg'] as num?)?.toInt(),
@@ -1264,6 +1359,24 @@ class LocalRepositoryImpl extends LocalRepository {
     for (final r in rows) {
       final v = (r['value'] as num?)?.toDouble();
       if (v != null) byDate[r['date'] as String] = v;
+    }
+    // Steps and energy have a SECOND, better series: Apple Health's. It is
+    // stored under an hk_ key, holds years that predate the band, and wins per
+    // day wherever it exists — without this the history chart plotted only the
+    // handful of days the band happened to be worn and looked empty.
+    //
+    // Merged per DAY rather than replacing the series wholesale, so a day only
+    // the band saw is still plotted.
+    final phoneKey = switch (key) {
+      'steps' => ActivitySourceResolver.kPhoneSteps,
+      'calories' => ActivitySourceResolver.kPhoneActiveKcal,
+      _ => null,
+    };
+    if (phoneKey != null) {
+      for (final r in await LocalDb.metricSeries(phoneKey)) {
+        final v = (r['value'] as num?)?.toDouble();
+        if (v != null) byDate[r['date'] as String] = v;
+      }
     }
     final (unit, label) = _unitLabel(metric);
     final base = {
