@@ -1,4 +1,4 @@
-// Tests for the timeline chart's scrub mapping — the pure x→time and
+// Tests for the timeline chart's scrub mapping - the pure x→time and
 // time→value-on-the-drawn-line functions the crosshair reads (issue #141).
 //
 // The bug: the plotted lines are the 15-min bucket averages ([_Vital.avg]) but
@@ -54,7 +54,7 @@ void main() {
   });
 
   group('plottedLineValueAt (time → value ON the drawn line)', () {
-    // Three bucket centres — the vertices the painter's line passes through.
+    // Three bucket centres - the vertices the painter's line passes through.
     final avg = [_b(100, 50), _b(200, 70), _b(300, 60)];
 
     test('a time exactly on a bucket centre returns that vertex value', () {
@@ -64,7 +64,7 @@ void main() {
     });
 
     test('a time between centres lies on the straight segment (interpolated)', () {
-      // Halfway 100→200: (50+70)/2 = 60 — exactly where lineTo draws.
+      // Halfway 100→200: (50+70)/2 = 60 - exactly where lineTo draws.
       expect(plottedLineValueAt(avg, 150), 60);
       // Quarter 200→300: 70 + (60-70)*0.25 = 67.5.
       expect(plottedLineValueAt(avg, 225), 67.5);
@@ -89,8 +89,8 @@ void main() {
     });
 
     test('the boundary centres themselves still return their value', () {
-      expect(plottedLineValueAt(avg, 100), 50); // first centre — inclusive
-      expect(plottedLineValueAt(avg, 300), 60); // last centre — inclusive
+      expect(plottedLineValueAt(avg, 100), 50); // first centre - inclusive
+      expect(plottedLineValueAt(avg, 300), 60); // last centre - inclusive
     });
 
     test('empty series returns null', () {
@@ -106,7 +106,7 @@ void main() {
 
     test('coincident bucket timestamps do not divide by zero', () {
       final dup = [_b(100, 50), _b(100, 80), _b(200, 60)];
-      // Lands on the duplicate boundary — returns a finite vertex value.
+      // Lands on the duplicate boundary - returns a finite vertex value.
       final v = plottedLineValueAt(dup, 100)!;
       expect(v.isFinite, isTrue);
     });
@@ -134,8 +134,8 @@ void main() {
   group('a vital with narrower coverage than the scrub span is omitted', () {
     // The scrub band spans the whole timeline [0, 400] (e.g. it's driven by a
     // sleep band), but this vital only has buckets over [100, 300]. Scrubbing
-    // outside 100–300 must omit it — so the crosshair draws no dot and the
-    // readout shows "—" — while a full-coverage vital still reports a value.
+    // outside 100–300 must omit it - so the crosshair draws no dot and the
+    // readout shows "—" - while a full-coverage vital still reports a value.
     final wide = [_b(0, 10), _b(200, 30), _b(400, 20)]; // covers the whole span
     final narrow = [_b(100, 50), _b(200, 70), _b(300, 60)]; // covers 100–300
 

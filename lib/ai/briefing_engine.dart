@@ -13,6 +13,7 @@
 // shows exactly the inputs snapshot so the user can see what the model saw.
 
 import '../coach/coach_config.dart';
+import '../data/db.dart';
 import '../coach/coach_engine.dart';
 import '../data/day_label.dart';
 import '../data/local_repository.dart';
@@ -20,10 +21,8 @@ import 'briefing.dart';
 
 /// Injectable one-shot completion (tests pass a fake; production defaults to
 /// [CoachEngine.completeText] — the shared BYOK plumbing).
-typedef BriefingComplete = Future<String> Function({
-  required String system,
-  required String user,
-});
+typedef BriefingComplete =
+    Future<String> Function({required String system, required String user});
 
 // ── input collection (repo → compact snapshot) ────────────────────────────────
 
@@ -52,6 +51,56 @@ void _put(Map<String, dynamic> out, String key, num? v, {int? round}) {
 /// Read-only snapshot of what the store knows for [period]. Only fields that
 /// exist end up in the map — the prompt builder and the "based on" UI both walk
 /// this map, so what the model saw and what the user sees are the same thing.
+/// Fold the last few days of logged sets into the briefing inputs.
+///
+/// Session-level only: a briefing is a few hundred tokens, and every
+/// individual set would swamp it. Volume, sets and the muscles hit is enough
+/// for "you pulled heavy yesterday, go easy today".
+Future<void> _putRecentLifts(Map<String, dynamic> out, {DateTime? now}) async {
+  try {
+    final db = await LocalDb.instance;
+    final from = (now ?? DateTime.now()).subtract(const Duration(days: 3));
+    final cutoff =
+        '${from.year.toString().padLeft(4, '0')}-'
+        '${from.month.toString().padLeft(2, '0')}-'
+        '${from.day.toString().padLeft(2, '0')}';
+    final rows = await db.rawQuery(
+      '''
+      SELECT w.day, w.name, w.total_volume_kg, w.set_count,
+             (SELECT GROUP_CONCAT(DISTINCT muscle_group) FROM hevy_set
+                WHERE workout_id = w.id) AS muscles
+      FROM hevy_workout w
+      WHERE w.day >= ?
+      ORDER BY w.day DESC
+      LIMIT 4
+      ''',
+      [cutoff],
+    );
+    if (rows.isEmpty) return;
+    final lines = <String>[];
+    for (final r in rows) {
+      final vol = (r['total_volume_kg'] as num?)?.round();
+      final sets = (r['set_count'] as num?)?.toInt();
+      final muscles = (r['muscles'] as String?) ?? '';
+      lines.add(
+        [
+          r['day'],
+          (r['name'] as String?)?.trim().isNotEmpty == true
+              ? r['name']
+              : 'lift',
+          if (sets != null) '$sets sets',
+          if (vol != null) '${vol}kg volume',
+          if (muscles.isNotEmpty) muscles,
+        ].join(' · '),
+      );
+    }
+    out['recent_lifts'] = lines;
+  } catch (_) {
+    // A briefing without lifting context is worse, not broken — never fail
+    // the whole generation over it.
+  }
+}
+
 Future<Map<String, dynamic>> collectBriefingInputs(
   LocalRepository repo,
   BriefingPeriod period, {
@@ -70,16 +119,18 @@ Future<Map<String, dynamic>> collectBriefingInputs(
     // The overnight bundle Today is showing (may be yesterday's sleep if this
     // day hasn't derived yet) — same source of truth as the Sleep screen.
     final status = _map(t['status']);
-    final sleepDay =
-        (status?['overnight_day'] as String?) ?? todayLabel(now);
+    final sleepDay = (status?['overnight_day'] as String?) ?? todayLabel(now);
     try {
       final ds = await repo.getDaySleep(sleepDay);
       if (ds['has_sleep'] == true || _num(ds['duration_min']) != null) {
         _put(out, 'sleep_min', _num(ds['duration_min']), round: 0);
         final eff = _num(ds['efficiency']);
-        _put(out, 'sleep_efficiency_pct',
-            eff == null ? null : (eff <= 1 ? eff * 100 : eff),
-            round: 0);
+        _put(
+          out,
+          'sleep_efficiency_pct',
+          eff == null ? null : (eff <= 1 ? eff * 100 : eff),
+          round: 0,
+        );
         _put(out, 'sleep_debt_min', _num(ds['debt_min']), round: 0);
         _put(out, 'deep_min', _num(ds['deep_min']), round: 0);
         _put(out, 'rem_min', _num(ds['rem_min']), round: 0);
@@ -88,30 +139,56 @@ Future<Map<String, dynamic>> collectBriefingInputs(
         final wake = _num(ds['wake_ts'])?.toInt();
         if (onset != null && onset > 0) {
           out['bedtime'] = _hhmm(
-              DateTime.fromMillisecondsSinceEpoch(onset * 1000));
+            DateTime.fromMillisecondsSinceEpoch(onset * 1000),
+          );
         }
         if (wake != null && wake > 0) {
-          out['wake_time'] =
-              _hhmm(DateTime.fromMillisecondsSinceEpoch(wake * 1000));
+          out['wake_time'] = _hhmm(
+            DateTime.fromMillisecondsSinceEpoch(wake * 1000),
+          );
         }
       }
-    } catch (_) {/* sleep detail absent → morning runs on the daily scalars */}
+    } catch (_) {
+      /* sleep detail absent → morning runs on the daily scalars */
+    }
+    // The composite sleep score. A null is an ABSTENTION (too little of the
+    // night was measurable), never a bad night — omitted entirely rather than
+    // sent as 0, which the model would read as "slept terribly".
+    _put(out, 'sleep_score_0_100', _num(_map(t['sleep'])?['score']), round: 0);
   } else {
     _put(out, 'strain_0_21', _metricNum(daily['strain']), round: 1);
     _put(out, 'steps', _metricNum(daily['steps']), round: 0);
     _put(out, 'step_goal', _num(t['step_goal']), round: 0);
-    _put(out, 'calories_total_kcal', _metricNum(daily['calories_total']),
-        round: 0);
+    _put(
+      out,
+      'calories_total_kcal',
+      _metricNum(daily['calories_total']),
+      round: 0,
+    );
     _put(out, 'wear_min', _metricNum(daily['wear_min']), round: 0);
     final stress = _map(t['stress']);
-    _put(out, 'stress_0_100', _metricNum(stress?['score'] ?? stress?['value']),
-        round: 0);
+    _put(
+      out,
+      'stress_0_100',
+      _metricNum(stress?['score'] ?? stress?['value']),
+      round: 0,
+    );
+
+    // Resistance training from the Hevy log. Without this the briefing could
+    // see "strain 8.1" and had no idea it came from a 26-set pull session —
+    // which is the single most load-bearing fact about the day for anyone who
+    // lifts, and the reason this fork exists.
+    await _putRecentLifts(out, now: now);
 
     // Today's workouts (manual + auto-detected, manual wins) — compact lines.
     try {
       final dayStart = now ?? DateTime.now();
-      final startSec = DateTime(dayStart.year, dayStart.month, dayStart.day)
-              .millisecondsSinceEpoch ~/
+      final startSec =
+          DateTime(
+            dayStart.year,
+            dayStart.month,
+            dayStart.day,
+          ).millisecondsSinceEpoch ~/
           1000;
       final sessions = await repo.getSessions(from: startSec);
       final w = <String>[];
@@ -119,7 +196,8 @@ Future<Map<String, dynamic>> collectBriefingInputs(
         final st = _num(s['start_ts'])?.toInt();
         if (st == null || st < startSec) continue;
         final en = _num(s['end_ts'])?.toInt();
-        final durMin = _num(s['duration_min'])?.round() ??
+        final durMin =
+            _num(s['duration_min'])?.round() ??
             (en != null ? ((en - st) / 60).round() : null);
         final type = (s['type'] ?? s['sport'] ?? s['label'] ?? 'workout')
             .toString();
@@ -127,7 +205,9 @@ Future<Map<String, dynamic>> collectBriefingInputs(
         if (w.length >= 5) break;
       }
       if (w.isNotEmpty) out['workouts'] = w;
-    } catch (_) {/* sessions unavailable → recap runs on the daily scalars */}
+    } catch (_) {
+      /* sessions unavailable → recap runs on the daily scalars */
+    }
   }
   return out;
 }
@@ -169,7 +249,7 @@ String briefingSystemPrompt(BriefingPeriod period, String timeOfDay) {
       ? 'last night\'s sleep and recovery, and what they mean for the day ahead'
       : 'today\'s activity, strain and stress, and how the day landed';
   return 'You write a health briefing for a local-first fitness band app. '
-      'It is currently $timeOfDay for the reader — if you open with a greeting, '
+      'It is currently $timeOfDay for the reader - if you open with a greeting, '
       'greet for the $timeOfDay and never assume a different time of day. '
       'Summarize $scope.\n'
       'HARD RULES:\n'
@@ -181,7 +261,7 @@ String briefingSystemPrompt(BriefingPeriod period, String timeOfDay) {
       'if individual sub-metrics (HRV, RHR) look fine in isolation.\n'
       '- Warm, direct, second person. No emojis. No headers.\n'
       'OUTPUT FORMAT (exactly):\n'
-      'Line 1: one plain-text sentence, max 140 characters — the whole story '
+      'Line 1: one plain-text sentence, max 140 characters - the whole story '
       'at a glance. No markdown.\n'
       'Line 2: ---\n'
       'Then 3-5 markdown bullet points (each starting with "- "), max 14 words '
@@ -196,11 +276,13 @@ String buildBriefingUserPrompt(
   String timeOfDay,
 ) {
   final b = StringBuffer()
-    ..writeln(period == BriefingPeriod.morning
-        ? 'Overnight briefing for $day (reader\'s local time: $timeOfDay). '
-            'Overnight data:'
-        : 'Evening recap for $day (reader\'s local time: $timeOfDay). '
-            'Today\'s data so far:');
+    ..writeln(
+      period == BriefingPeriod.morning
+          ? 'Overnight briefing for $day (reader\'s local time: $timeOfDay). '
+                'Overnight data:'
+          : 'Evening recap for $day (reader\'s local time: $timeOfDay). '
+                'Today\'s data so far:',
+    );
   if (inputs.isEmpty) {
     b.writeln('(no metrics available yet)');
   } else {
@@ -282,13 +364,17 @@ class BriefingEngine {
     final day = todayLabel(effectiveNow);
     final tod = partOfDay(effectiveNow);
     final inputs = await collectBriefingInputs(repo, period, now: effectiveNow);
-    final raw = await (complete ??
-        (({required String system, required String user}) =>
-            CoachEngine.completeText(
-                config: config, system: system, user: user)))(
-      system: briefingSystemPrompt(period, tod),
-      user: buildBriefingUserPrompt(period, day, inputs, tod),
-    );
+    final raw =
+        await (complete ??
+            (({required String system, required String user}) =>
+                CoachEngine.completeText(
+                  config: config,
+                  system: system,
+                  user: user,
+                )))(
+          system: briefingSystemPrompt(period, tod),
+          user: buildBriefingUserPrompt(period, day, inputs, tod),
+        );
     if (raw.trim().isEmpty) {
       throw CoachException('Empty response from provider.');
     }

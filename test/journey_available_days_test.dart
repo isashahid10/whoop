@@ -1,8 +1,8 @@
 // availableDays() over the REAL LocalDb (in-memory sqlite via
 // sqflite_common_ffi): the RENDERABLE-day range that bounds the lookback
 // screen's day navigation (issue #112). availableDayIds must return EXACTLY the
-// days `getDayTimeline`/`_bundleForDate` would render non-empty — the latest
-// derived `day_result` per day that is NOT a skip-marker — and must EXCLUDE
+// days `getDayTimeline`/`_bundleForDate` would render non-empty - the latest
+// derived `day_result` per day that is NOT a skip-marker - and must EXCLUDE
 // raw-only `decoded_onehz` days and skip-markers (both render empty).
 
 import 'dart:convert';
@@ -83,10 +83,10 @@ void main() {
     await seedDerived('2099-01-03');
     await seedDerived('2099-01-01');
 
-    // A skip-marker day — renders empty, must NOT bound navigation.
+    // A skip-marker day - renders empty, must NOT bound navigation.
     await seedSkip('2099-01-06');
 
-    // A RAW-ONLY day (decoded_onehz, no derived row) — also renders empty.
+    // A RAW-ONLY day (decoded_onehz, no derived row) - also renders empty.
     // Local noon so its calendar-day label is unambiguous in every timezone.
     await seedRawSecond(DateTime(2099, 1, 4, 12), 990004);
     final rawDay = dayLabelOf(DateTime(2099, 1, 4, 12));

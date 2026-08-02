@@ -1,4 +1,4 @@
-// Unit tests for the notification gating + id partitioning — the pure logic that
+// Unit tests for the notification gating + id partitioning - the pure logic that
 // decides whether an event reaches the OS and which id it lands on. No plugins:
 // we construct NotificationPrefs/NotificationEvent directly.
 

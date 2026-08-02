@@ -1,4 +1,4 @@
-// Coach read-only SQL guard — security-critical: derived views only, no writes,
+// Coach read-only SQL guard - security-critical: derived views only, no writes,
 // no raw tables, single SELECT.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/coach/coach_db.dart';

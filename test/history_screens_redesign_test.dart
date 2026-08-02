@@ -3,7 +3,7 @@
 // each content widget renders in BOTH palettes from sample payloads, the
 // Recap share surface still captures to a real PNG, and ShellScaffold's
 // tab-select switches pages while a pushed sub-screen still pops/swipes back.
-// Explicit pump durations (never blind pumpAndSettle — kit widgets repeat).
+// Explicit pump durations (never blind pumpAndSettle - kit widgets repeat).
 
 import 'dart:ui' as ui;
 
@@ -40,10 +40,10 @@ Future<void> _pumpTwice(WidgetTester t) async {
 }
 
 /// The merged-timeline vital SELECTOR chip for [label], scoped to the keyed
-/// chip row. A bare `find.text(label)` is ambiguous here — the timeline's
+/// chip row. A bare `find.text(label)` is ambiguous here - the timeline's
 /// crosshair readout (`_crosshairReadout`) renders the same vital labels and
 /// stays mounted at all times (`Visibility(maintainState: true)`, so its
-/// layout slot doesn't grow/shrink when scrubbing starts/stops — see its
+/// layout slot doesn't grow/shrink when scrubbing starts/stops - see its
 /// doc comment), just invisible via opacity, not `Offstage`. That means it's
 /// still "onstage" for finders/`tester.tap` even while idle/hidden.
 Finder _vitalChip(String label) => find.descendant(
@@ -182,7 +182,7 @@ void main() {
         expect(find.text('NIGHTS'), findsOneWidget);
         // Headline PR → medal (top_workout wins the priority).
         expect(find.byType(MedalCard), findsOneWidget);
-        expect(find.textContaining('Top workout strain — 14.2'), findsWidgets);
+        expect(find.textContaining('Top workout strain - 14.2'), findsWidgets);
         // The remaining PRs land in bento tiles with formatted values.
         expect(find.text('47'), findsOneWidget); // lowest RHR
         // Steps group with a thin space.
@@ -219,13 +219,16 @@ void main() {
         );
         await _pumpTwice(t);
 
-        expect(find.text('OpenStrap'), findsOneWidget);
+        // The share card carries the app's own wordmark, so this pins the
+        // BRAND - it is the assertion that catches a half-finished rename.
+        expect(find.text('Whoop'), findsOneWidget);
+        expect(find.textContaining('OpenStrap'), findsNothing);
         expect(find.text('11.8'), findsOneWidget); // avg strain hero
         expect(find.text('AVG STRAIN'), findsOneWidget);
         expect(find.text('52'), findsOneWidget); // resting HR cell
         expect(find.text('7h 32m'), findsOneWidget); // sleep/night
         expect(find.text('15k'), findsOneWidget); // calories compact (>=10k)
-        expect(find.textContaining('Top workout — Run'), findsOneWidget);
+        expect(find.textContaining('Top workout - Run'), findsOneWidget);
         expect(find.byType(MiniBars), findsNWidgets(3));
         expect(t.takeException(), isNull);
       }
@@ -269,14 +272,14 @@ void main() {
           await _pumpTwice(t);
 
           // The merged multi-vital timeline (TimelineContent) is embedded
-          // here — one selector chip + color per continuously-recorded vital.
+          // here - one selector chip + color per continuously-recorded vital.
           for (final label in ['Heart rate', 'HRV', 'Resp', 'Skin temp']) {
             expect(_vitalChip(label), findsOneWidget);
           }
           expect(find.text('HEART RATE · BPM'), findsOneWidget);
           expect(find.text('PEAK · HEART RATE'), findsOneWidget);
           expect(find.text('LOW · HEART RATE'), findsOneWidget);
-          // No play/replay control — scrub replaces tap-to-replay.
+          // No play/replay control - scrub replaces tap-to-replay.
           expect(find.byType(HrReplayOverlay), findsNothing);
           // The merged timeline's own event bands (sleep/nap/workout).
           expect(find.text('EVENTS'), findsOneWidget);
@@ -359,7 +362,7 @@ void main() {
       await t.pump(const Duration(milliseconds: 400));
       expect(find.text('PAGE Today'), findsOneWidget);
 
-      // Tap the Heart tab (icon-only until selected) — illustrated icon.
+      // Tap the Heart tab (icon-only until selected) - illustrated icon.
       await t.tap(find.byWidgetPredicate(
         (w) => w is OsAppIcon && w.icon == OsIcon.heart,
       ));
@@ -374,7 +377,7 @@ void main() {
       final nav = GlobalKey<NavigatorState>();
       await t.pumpWidget(shellApp(nav));
       await t.pump(const Duration(milliseconds: 400));
-      // All five tabs, no add coin — starting a workout lives on the
+      // All five tabs, no add coin - starting a workout lives on the
       // Workouts screen, not in the nav pill.
       expect(find.byType(OsAppIcon), findsNWidgets(5));
       expect(

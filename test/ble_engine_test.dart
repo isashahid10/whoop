@@ -95,7 +95,7 @@ void main() {
 
     test(
       'matches once gate-rejected (stale-clock block) records are added '
-      'back in — the exact shape of the real bug: expected=50, only 26 '
+      'back in - the exact shape of the real bug: expected=50, only 26 '
       'passed the plausibility gate, 24 were legitimately dropped',
       () {
         expect(
@@ -109,7 +109,7 @@ void main() {
       },
     );
 
-    test('does not over-forgive — dropped count must exactly close the gap',
+    test('does not over-forgive - dropped count must exactly close the gap',
         () {
       expect(
         burstPacketCountMatches(

@@ -1,9 +1,9 @@
-// Redesigned metric-detail + trends + stress surfaces — render tests for the
+// Redesigned metric-detail + trends + stress surfaces - render tests for the
 // PURE content widgets (no repo/AppState): the MetricScreen TrendBoard, the
 // Heart / Wear / Oxygen day boards, the Steps board and StressDayContent.
 // Each renders in BOTH palettes at phone width with sample data; overflow is
 // asserted via takeException. Explicit pump durations (never blind
-// pumpAndSettle — some design-system widgets animate on a loop).
+// pumpAndSettle - some design-system widgets animate on a loop).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -83,7 +83,7 @@ Map<String, dynamic> _sampleHeartDay() => {
   },
   'hrr': 28,
   'resp': {'value': 14.2},
-  // No 'spo2' here deliberately — Oxygen dips moved off the Heart tab onto
+  // No 'spo2' here deliberately - Oxygen dips moved off the Heart tab onto
   // the Sleep tab's nocturnal grouping; getDayHeart no longer even supplies
   // this key (see the "no Oxygen dips" test below).
   'skin_temp': {'value': 0.2},
@@ -239,7 +239,7 @@ void main() {
       final ts = DateTime.utc(2026, 7, 6).millisecondsSinceEpoch ~/ 1000; // Mon
       expect(trendBarLabel('week', 0, {'t_start': ts}), 'Mon');
       // 'month' buckets are ROLLING 7-day windows ending at the anchor, not
-      // calendar weeks — 'W1…W4' claimed a calendar structure they don't have.
+      // calendar weeks - 'W1…W4' claimed a calendar structure they don't have.
       // See absent_not_zero_test.dart.
       expect(trendBarLabel('month', 2, {'t_start': ts}), 'Jul 12');
       expect(trendBarLabel('quarter', 0, {'t_start': ts}), 'Jul');
@@ -272,7 +272,7 @@ void main() {
     });
 
     testWidgets(
-        'no longer shows Oxygen dips — moved to the Sleep tab\'s nocturnal '
+        'no longer shows Oxygen dips - moved to the Sleep tab\'s nocturnal '
         'grouping (it\'s an overnight signal, not a daytime heart metric)', (
       t,
     ) async {
@@ -289,7 +289,7 @@ void main() {
 
     testWidgets(
         'Personal baselines: one consolidated header count replaces one pill '
-        'per row — only the non-trusted exception keeps its own tag', (
+        'per row - only the non-trusted exception keeps its own tag', (
       t,
     ) async {
       _phone(t, height: 4200);
@@ -451,7 +451,7 @@ void main() {
       await t.pump(const Duration(milliseconds: 900));
       expect(find.text('Calm'), findsOneWidget);
       expect(
-        find.text('Your system is settled — a good day to take on load.'),
+        find.text('Your system is settled - a good day to take on load.'),
         findsOneWidget,
       );
 
@@ -466,7 +466,7 @@ void main() {
       expect(find.text('High'), findsOneWidget);
       expect(
         find.text(
-          'High sympathetic load — favour easy movement and an early night.',
+          'High sympathetic load - favour easy movement and an early night.',
         ),
         findsOneWidget,
       );

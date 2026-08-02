@@ -1,4 +1,4 @@
-// UnitsController pace formatting — regression coverage for a real user
+// UnitsController pace formatting - regression coverage for a real user
 // report: a near-zero GPS distance divided into real elapsed time produced
 // an absurd "189:xx" style pace instead of an honest "—".
 
@@ -7,10 +7,10 @@ import 'package:openstrap_edge/state/units_controller.dart';
 
 void main() {
   group('UnitsController pace sanity ceiling', () {
-    test('formatPace shows an honest — for an absurdly slow pace, not the '
+    test('formatPace shows an honest - for an absurdly slow pace, not the '
         'raw number', () {
       final u = UnitsController.seed(UnitSystem.metric);
-      // 1000 min/km — the exact class of number the bug produced.
+      // 1000 min/km - the exact class of number the bug produced.
       expect(u.formatPace(1000 * 60), '—');
     });
 
@@ -20,9 +20,9 @@ void main() {
     });
 
     test('pace() returns bare "—" (no unit suffix) for a near-zero distance '
-        'over real elapsed time — the exact bed-jitter scenario', () {
+        'over real elapsed time - the exact bed-jitter scenario', () {
       final u = UnitsController.seed(UnitSystem.metric);
-      // 1 metre over 60 seconds — GPS noise, not a real 60 min/km pace.
+      // 1 metre over 60 seconds - GPS noise, not a real 60 min/km pace.
       expect(u.pace(1, 60), '—');
     });
 

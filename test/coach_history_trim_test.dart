@@ -1,15 +1,15 @@
-// CoachEngine._trimHistory — the resent-context size bound.
+// CoachEngine._trimHistory - the resent-context size bound.
 //
 // The trim drops WHOLE turns from the oldest end specifically so that a `tool`
 // message never outlives the assistant turn whose `tool_calls` it answers:
 // OpenAI-compatible providers reject an orphaned tool message with a 400, and
 // once the history is persisted that rejection repeats on every subsequent turn
-// of the session — the conversation is bricked, not just one reply.
+// of the session - the conversation is bricked, not just one reply.
 //
 // That invariant used to be a side effect of the loop bounds rather than
 // something the code enforced. Both loops stop at `length > 1`, so a single
 // turn larger than the whole byte budget walked the history down to exactly one
-// element and left it there — and if that survivor was the `tool` half of a
+// element and left it there - and if that survivor was the `tool` half of a
 // pair, the very orphan the method exists to prevent was what got sent.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/coach/coach_config.dart';

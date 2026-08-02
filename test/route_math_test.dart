@@ -1,5 +1,5 @@
 // Tests for the pure GPS route analytics: distance, per-unit splits, and the
-// HR → zone colouring join. No DB / no geolocator — pure functions only.
+// HR → zone colouring join. No DB / no geolocator - pure functions only.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gps/route_math.dart';
@@ -65,7 +65,7 @@ void main() {
     });
 
     test('far travel over a long gap IS plausible and counted', () {
-      // 1 km apart but 5 minutes between fixes (3.3 m/s — a slow run).
+      // 1 km apart but 5 minutes between fixes (3.3 m/s - a slow run).
       final pts = [
         const RoutePoint(seq: 0, tsMs: 0, lat: 0, lng: 0),
         RoutePoint(seq: 1, tsMs: 300000, lat: 0, lng: 1000 / _mPerDegLngAtEq),
@@ -79,7 +79,7 @@ void main() {
       final pts = [
         const RoutePoint(seq: 0, tsMs: 0, lat: 0, lng: 0),
         RoutePoint(seq: 1, tsMs: 10000, lat: 0, lng: 20 / _mPerDegLngAtEq),
-        // 10-minute pause at a junction — must not dilute the pace.
+        // 10-minute pause at a junction - must not dilute the pace.
         RoutePoint(seq: 2, tsMs: 610000, lat: 0, lng: 40 / _mPerDegLngAtEq),
         RoutePoint(seq: 3, tsMs: 620000, lat: 0, lng: 60 / _mPerDegLngAtEq),
       ];
@@ -168,7 +168,7 @@ void main() {
     });
 
     test('vertex with no nearby HR sample gets a null zone', () {
-      // Point 1 is 60 s after the only HR sample — beyond the 15 s join gap.
+      // Point 1 is 60 s after the only HR sample - beyond the 15 s join gap.
       final pts = _line(count: 2, stepMeters: 100, stepSec: 60);
       final hr = [const HrSample(tsMs: 0, hr: 120)];
       final v = buildVertices(pts, hr, 200);
@@ -222,7 +222,7 @@ void main() {
     // REGRESSION: computeSplits walked raw haversine over every consecutive
     // pair while totalDistanceMeters skipped implausible segments, so one GPS
     // teleport across a tunnel gap made the route detail screen contradict its
-    // own headline — "5 km" above a list of ~60 splits, most of them phantom.
+    // own headline - "5 km" above a list of ~60 splits, most of them phantom.
     group('implausible segments (recording gaps)', () {
       /// 5 km of real running, then a 55 km teleport, then more running.
       List<RoutePoint> withTeleport() {
@@ -230,7 +230,7 @@ void main() {
         final last = pts.last;
         return [
           ...pts,
-          // 55 km in 30 s — far past kMaxPlausibleSpeedMps × gap.
+          // 55 km in 30 s - far past kMaxPlausibleSpeedMps × gap.
           RoutePoint(
             seq: 51,
             tsMs: last.tsMs + 30000,
@@ -255,13 +255,13 @@ void main() {
         final splitSum = splits.fold<double>(0, (a, s) => a + s.meters);
         expect(splitSum, closeTo(total, 1),
             reason: 'headline distance and the splits list must not disagree');
-        // 5 full km + a short trailing partial — NOT ~60 phantom splits.
+        // 5 full km + a short trailing partial - NOT ~60 phantom splits.
         expect(splits.length, 6);
         expect(splits.last.meters, closeTo(100, 30));
       });
 
       test('a plausible fast segment is still counted', () {
-        // 300 m in 30 s (10 m/s) is fast but real — must not be filtered.
+        // 300 m in 30 s (10 m/s) is fast but real - must not be filtered.
         final pts = _line(count: 11, stepMeters: 300, stepSec: 30); // 3 000 m
         final splits = computeSplits(pts, const [], unitMeters: 1000);
         expect(splits.fold<double>(0, (a, s) => a + s.meters),
@@ -288,7 +288,7 @@ void main() {
       var v = 3.0;
       v = emaSpeed(v, 3.05); // realistic run-pace jitter
       v = emaSpeed(v, 30.0); // one wild GPS spike
-      // alpha=0.25 default: 3.0125 + 0.25*(30-3.0125) ≈ 9.76 — damped, not 30.
+      // alpha=0.25 default: 3.0125 + 0.25*(30-3.0125) ≈ 9.76 - damped, not 30.
       expect(v, lessThan(10));
       expect(v, greaterThan(3));
     });

@@ -1,6 +1,6 @@
 // Pure unit tests for the lookback day-navigation maths (issue #112): the
 // prev/next/earliest bounds over a set of recorded days. No Flutter, no repo,
-// no DB — [DayNav] is intentionally a pure string helper so these rules (never
+// no DB - [DayNav] is intentionally a pure string helper so these rules (never
 // past today, stop at the earliest day, skip empty gaps) are exhaustively
 // testable.
 
@@ -149,7 +149,7 @@ void main() {
     });
 
     test('every selectable day is one navigation can also step onto', () {
-      // The picker and the chevrons share the same set — no day is choosable
+      // The picker and the chevrons share the same set - no day is choosable
       // that prev/next could not also reach (and vice-versa).
       for (final d in nav) {
         expect(DayNav.isSelectable(d, nav), isTrue);

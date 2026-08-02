@@ -6,7 +6,7 @@
 // on EXACT-zero MAD; a near-degenerate baseline (e.g. duplicate-day pollution
 // collapsing the window toward one value) has a tiny NON-zero MAD, so robustZ
 // returns a huge z, the logistic saturates, and today's headline flashes ~100
-// until a cleaner re-derive snaps it back — a ready→ready bounce the
+// until a cleaner re-derive snaps it back - a ready→ready bounce the
 // `overnight_state == 'ready'` gate can't catch (the state is `ready` throughout).
 //
 // The fix (`headlineReadinessScalar` / `kReadinessZCap`) abstains from a

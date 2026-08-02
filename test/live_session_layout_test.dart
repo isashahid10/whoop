@@ -4,7 +4,7 @@
 // layout relationship between them, and they collided on real devices:
 //
 //   • the map's re-centre button was pinned `bottom: 96` while the control
-//     panel is far taller than that — so it rendered UNDERNEATH the panel;
+//     panel is far taller than that - so it rendered UNDERNEATH the panel;
 //   • the centred "Recording" pill ran under the 44 px map toggle;
 //   • the ring-mode core was a fixed 270 px in a Center, with the session
 //     clock absolutely positioned above it and the panel below, so all three
@@ -26,7 +26,7 @@ import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-/// Real handset sizes, smallest first — the small ones are where the old
+/// Real handset sizes, smallest first - the small ones are where the old
 /// fixed-size layers collided.
 const _sizes = <String, Size>{
   'iPhone SE': Size(375, 667),
@@ -84,7 +84,7 @@ void main() {
       await t.pump(const Duration(milliseconds: 300));
 
       // Assert against the BOTTOM-MOST hero element, not the clock at the
-      // top — the clock clears the sheet even in the broken layout, so
+      // top - the clock clears the sheet even in the broken layout, so
       // asserting on it would pass vacuously (it did; that is why this
       // compares the zone label instead).
       //
@@ -185,8 +185,8 @@ void main() {
     addTearDown(t.view.reset);
 
     // The nudge only appears within 5 bpm of the next zone, which is why no
-    // test ever hit it — and an escaped `\$` in the template shipped, rendering
-    // the literal text `$gapBpm bpm to ${_zones[zone + 1].label} — push` to the
+    // test ever hit it - and an escaped `\$` in the template shipped, rendering
+    // the literal text `$gapBpm bpm to ${_zones[zone + 1].label} - push` to the
     // athlete. Default maxHr is 190 (age 30), Z4 starts at 0.8 => 152 bpm, so
     // 148 sits 4 bpm short of it.
     final app = liveApp(hr: 148);
@@ -200,6 +200,6 @@ void main() {
         reason: 'the template must be interpolated, not printed');
     expect(find.textContaining(r'${'), findsNothing,
         reason: 'no raw interpolation syntax may reach the screen');
-    expect(find.text('4 bpm to Z4 — push'), findsOneWidget);
+    expect(find.text('4 bpm to Z4 - push'), findsOneWidget);
   });
 }

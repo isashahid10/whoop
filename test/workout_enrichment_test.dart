@@ -58,7 +58,7 @@ Future<void> _insertHr(int fromTs, int toTs, int Function(int ts) hrOf,
 }
 
 void main() {
-  // Pure fallback for the Today stress tile — mirrors getDayStress so the tile
+  // Pure fallback for the Today stress tile - mirrors getDayStress so the tile
   // and the stress screen agree (the "stress pill has no number" fix).
   group('stressSummaryForToday', () {
     test('passes through a real SI-derived score', () {
@@ -229,7 +229,7 @@ void main() {
       },
     );
 
-    // No today bundle exists → the seam falls back to yesterday's — but the
+    // No today bundle exists → the seam falls back to yesterday's - but the
     // Today card must NOT get yesterday's curve on a today axis.
     final chart = await repo.getChart('hr');
     expect(chart['points'], isEmpty);
@@ -251,7 +251,7 @@ void main() {
         'scalars': {'rhr': 55.0},
         'series': {
           'hr_curve': [
-            {'t': todayMidnight - 7200, 'v': 60}, // stale — clipped
+            {'t': todayMidnight - 7200, 'v': 60}, // stale - clipped
             {'t': t1, 'v': 62},
             {'t': t1 + 600, 'v': 66},
           ],
@@ -308,7 +308,7 @@ void main() {
 
     // getRecords gates the resting-HR PR on the resting_hr baseline actually
     // being "trusted" (never celebrate a personal best built on a baseline
-    // the app itself still calls calibrating) — upsert today's bundle with a
+    // the app itself still calls calibrating) - upsert today's bundle with a
     // trusted status so this test exercises the normal (celebrated) path.
     // See the "provisional resting_hr baseline hides the PR" test below for
     // the honesty-gate itself.
@@ -363,7 +363,7 @@ void main() {
 
   test(
       "getRecords hides the resting-HR PR while its baseline is only "
-      "'calibrating' — never celebrate an unreliable number", () async {
+      "'calibrating' - never celebrate an unreliable number", () async {
     // Downgrade today's resting_hr baseline status (still the latest bundle
     // from the previous test) to calibrating.
     await LocalDb.putDayResult(
@@ -393,21 +393,21 @@ void main() {
 
     final r = await repo.getRecords();
     final records = (r['records'] as Map).cast<String, dynamic>();
-    // The resting-HR PR is gone — a calibrating baseline is not a trust the
+    // The resting-HR PR is gone - a calibrating baseline is not a trust the
     // app can vouch for, so nothing celebrates it.
     expect(records.containsKey('lowest_rhr'), isFalse);
     // Every other record type is untouched by the gate (no equivalent trust
-    // concept exists for them in this codebase — see local_repository_impl
+    // concept exists for them in this codebase - see local_repository_impl
     // comment at the gate).
     expect((records['top_strain'] as Map)['value'], 15.4);
     expect((records['top_readiness'] as Map)['value'], 91.0);
   });
 
   test(
-      "getRecords doesn't throw when baselines.resting_hr is malformed — "
+      "getRecords doesn't throw when baselines.resting_hr is malformed - "
       "falls into the honest 'not trusted' branch instead of "
       'NoSuchMethodError (the dotted-_sub-path fix)', () async {
-    // resting_hr is a String here, not a Map — the old chained
+    // resting_hr is a String here, not a Map - the old chained
     // `?['resting_hr']?['status']` indexing would throw on this shape.
     await LocalDb.putDayResult(
       dayId: todayLabel(),
@@ -442,7 +442,7 @@ void main() {
   test('LiveWorkoutState.zoneMinutes emits the 5-element Z1..Z5 minutes shape',
       () {
     final w = LiveWorkoutState(startTime: DateTime.now(), targetKcal: 300);
-    w.zoneSeconds[0] = 120; // rest — excluded from zone_min
+    w.zoneSeconds[0] = 120; // rest - excluded from zone_min
     w.zoneSeconds[2] = 300; // Z2: 5 min
     w.zoneSeconds[3] = 90; // Z3: 1.5 min
     w.zoneSeconds[5] = 30; // Z5: 0.5 min

@@ -5,7 +5,7 @@
 //
 //  1. A v26 database must upgrade to v27 WITHOUT throwing. `onUpgrade` runs in
 //     one exclusive transaction, so a single bad step rolls the whole ladder
-//     back and openDatabase rethrows — leaving the app stuck on the loading
+//     back and openDatabase rethrows - leaving the app stuck on the loading
 //     screen on EVERY launch, permanently. A migration that only ever gets
 //     tested on a fresh install would not catch that.
 //
@@ -126,7 +126,7 @@ void main() {
   });
 
   test('the coach SQL guard allows the new lift views', () {
-    // The allow-list IS the security boundary (coach_db.dart) — a view missing
+    // The allow-list IS the security boundary (coach_db.dart) - a view missing
     // from it is unreachable no matter how well the import works.
     expect(CoachDb.allowedViews, contains('v_lifts'));
     expect(CoachDb.allowedViews, contains('v_lift_sessions'));
@@ -144,7 +144,7 @@ void main() {
 
     // Minimal v26 database: version stamp only. The ladder's v27 rung is purely
     // additive (CREATE TABLE IF NOT EXISTS), so it must survive an otherwise
-    // empty database — the exact case a fresh-install-only test would miss.
+    // empty database - the exact case a fresh-install-only test would miss.
     final legacy = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(version: 26, onCreate: (_, _) async {}),
@@ -165,7 +165,7 @@ void main() {
 
   test(
     'a stored Hevy workout is MIRRORED into sessions so the workouts screen '
-    'can see it — the import is otherwise silently invisible',
+    'can see it - the import is otherwise silently invisible',
     () async {
       final db = await LocalDb.instance;
       await db.delete('sessions', where: "source = ?", whereArgs: ['hevy']);
@@ -187,7 +187,7 @@ void main() {
       expect(rows.length, 1);
       expect(rows.first['type'], 'strength');
       expect(rows.first['status'], 'done');
-      // strain/calories/max_hr must stay NULL — the band owns those, and a
+      // strain/calories/max_hr must stay NULL - the band owns those, and a
       // fabricated number here would read as measured.
       expect(rows.first['strain'], isNull);
       expect(rows.first['calories'], isNull);
@@ -226,7 +226,7 @@ void main() {
       expect(rows.first['duration_min'], 60);
       expect(rows.first['source'], 'hevy');
 
-      // Idempotent — a second run must not duplicate or re-report.
+      // Idempotent - a second run must not duplicate or re-report.
       expect(await HevyStore.backfillSessions(), 0);
     },
   );
@@ -236,7 +236,7 @@ void main() {
     await db.delete('baselines');
 
     // Two metrics at very different evidence levels. The coach must be able to
-    // tell them apart — presenting a 90-night baseline and a 2-night one as if
+    // tell them apart - presenting a 90-night baseline and a 2-night one as if
     // equally trustworthy is the failure this view exists to prevent.
     await db.insert('baselines', {
       'key': 'rhr',
@@ -265,7 +265,7 @@ void main() {
     expect((byKey['rmssd']!['personal_weight'] as num).toDouble(),
         lessThan(0.2));
 
-    // The guard is the security boundary — a view it rejects is unreachable.
+    // The guard is the security boundary - a view it rejects is unreachable.
     expect(CoachDb.allowedViews, contains('v_baseline_trust'));
   });
 }

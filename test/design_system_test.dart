@@ -1,7 +1,7 @@
 // Widget tests for the design-system foundation (lib/ui/design): MetricCard,
 // ArcGauge, AppScaffold's back button, BentoGrid packing, InfoSheet/InfoDot,
 // SegmentedControl, Sparkline, and both-theme rendering. Tests pump with
-// explicit durations (never pumpAndSettle blindly — some kit widgets repeat).
+// explicit durations (never pumpAndSettle blindly - some kit widgets repeat).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -332,7 +332,7 @@ void main() {
         addTearDown(t.view.reset);
 
         // The gallery now renders the real share card, which means real map
-        // tiles — and flutter_test's HTTP mock answers 400 for every request,
+        // tiles - and flutter_test's HTTP mock answers 400 for every request,
         // so each tile throws through the image-resource service.
         //
         // Filtered rather than drained: this test exists to catch RenderFlex

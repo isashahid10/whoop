@@ -93,13 +93,13 @@ Future<void> maybeHeadlessBoot() async {
   final lease = BandOwnership.tryAcquireHeadless();
   if (lease == null) {
     debugPrint(
-      '[headless-boot] boot wake skipped — ${BandOwnership.debugState}',
+      '[headless-boot] boot wake skipped - ${BandOwnership.debugState}',
     );
     return;
   }
 
   debugPrint(
-    '[headless-boot] boot wake confirmed — lease=${lease.token} '
+    '[headless-boot] boot wake confirmed - lease=${lease.token} '
     '${BandOwnership.debugState}',
   );
   // Ensure the foreground service is running (it was started by BootReceiver, but
@@ -116,7 +116,7 @@ Future<void> maybeHeadlessBoot() async {
     runBootSyncThroughGate(lease).then((ran) {
       debugPrint(
         ran == null
-            ? '[headless-boot] boot wake skipped — another headless sync '
+            ? '[headless-boot] boot wake skipped - another headless sync '
                 'holds the gate; lease released.'
             : '[headless-boot] headless sync complete',
       );

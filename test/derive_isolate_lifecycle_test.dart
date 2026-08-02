@@ -2,13 +2,13 @@
 //
 // Every one of these failures had the same shape: a worker isolate dies or
 // hangs, the main side awaits a Completer that can never complete, `_running`
-// stays true, and `DeriveScheduler._drain` never returns — ALL derivation is
+// stays true, and `DeriveScheduler._drain` never returns - ALL derivation is
 // dead until the app is restarted. The engine never sees an error, so it never
 // even logs one.
 //
 //  * `_loadSubstrateRange` spawned the prepare worker with NO onError/onExit
 //    port and put NO timeout on the result, while the worker itself only
-//    reported errors from its 'finish' branch — so any throw in its 'page'
+//    reported errors from its 'finish' branch - so any throw in its 'page'
 //    handler (an unguarded numeric read over a SQLite row) killed it silently.
 //  * `Isolate.run(...).timeout(...)` only stops the CALLER waiting; the isolate
 //    keeps burning a core behind the bounded worker pool's back. And the
@@ -80,7 +80,7 @@ void main() {
     test('a malformed decoded row is reported, not swallowed into a hang',
         () async {
       // `hr` arrives as a String. SQLite storage classes are per-VALUE, so a row
-      // written by an older/importing path really can do this — and the old
+      // written by an older/importing path really can do this - and the old
       // `row['hr'] as num?` threw inside the 'page' handler, whose only error
       // reporting lived in the (never-reached) 'finish' branch.
       final out = await _drivePrepareWorker([
@@ -167,7 +167,7 @@ void main() {
 
     test('a result that is itself a List is not mistaken for an error', () {
       // The uncaught-error wire format is a 2-element List and `onExit` sends
-      // null — a naive protocol would misread either as failure.
+      // null - a naive protocol would misread either as failure.
       expect(
         runCancellableIsolate<List<String>>(
           () => ['boom', 'stack'],
@@ -209,8 +209,8 @@ void main() {
     });
 
     test('a wedged-but-alive computation TIMES OUT (and is killed)', () async {
-      // The defect this pins: `Isolate.run` with no timeout at all — the
-      // sleep-staging site — left the caller awaiting forever with
+      // The defect this pins: `Isolate.run` with no timeout at all - the
+      // sleep-staging site - left the caller awaiting forever with
       // `_running == true`, so DeriveScheduler._drain never returned again.
       final sw = Stopwatch()..start();
       await expectLater(

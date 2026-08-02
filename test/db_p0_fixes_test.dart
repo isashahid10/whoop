@@ -1,7 +1,7 @@
 // P0 regressions in the LocalDb data layer, run against the REAL LocalDb over
 // sqflite_ffi. Each test fails against the pre-fix behaviour.
 //
-//  1. exportDaysDb had NEVER worked — openDatabase(onCreate:) with no version:
+//  1. exportDaysDb had NEVER worked - openDatabase(onCreate:) with no version:
 //     throws ArgumentError before opening anything; and the decoded_rr copy
 //     built one `IN (?, …)` per counter (86 400 a day, past
 //     SQLITE_MAX_VARIABLE_NUMBER).
@@ -91,7 +91,7 @@ void main() {
   // ── fix 3 ────────────────────────────────────────────────────────────────
   test(
     'a REUSED counter (reboot reset) leaves no stale-timestamped decoded_rr '
-    'beats behind — the counter-PK eviction is guarded too',
+    'beats behind - the counter-PK eviction is guarded too',
     () async {
       const older = 1785000000;
       const newer = 1785000600; // a DIFFERENT second, same counter
@@ -104,7 +104,7 @@ void main() {
       // Post-reboot the counter is handed out again, now for a later second.
       // The INSERT-OR-REPLACE evicts the older second's decoded_onehz row via
       // the `counter` PRIMARY KEY; only beat_index 0 and 1 are overwritten, so
-      // beat_index 2 used to SURVIVE still stamped with `older` — invisible to
+      // beat_index 2 used to SURVIVE still stamped with `older` - invisible to
       // both prune paths, and it polluted every later RR read of that counter.
       await LocalDb.insertRecord(
         _raw(newer, counter),
@@ -138,12 +138,12 @@ void main() {
 
   // ── fix 4 ────────────────────────────────────────────────────────────────
   test(
-    'decodedRrByCounterRange returns a page spanning a counter RESET — the '
+    'decodedRrByCounterRange returns a page spanning a counter RESET - the '
     'endpoints are page bounds, not a monotonic counter span',
     () async {
       const t0 = 1785100000;
       // Pre-reboot: high counter. Post-reboot: the counter restarts near zero,
-      // for the NEXT second — exactly what a page ordered by (rec_ts, counter)
+      // for the NEXT second - exactly what a page ordered by (rec_ts, counter)
       // straddles.
       await LocalDb.insertRecord(
         _raw(t0, 1200000),
@@ -223,7 +223,7 @@ void main() {
 
   // ── fix 11 ───────────────────────────────────────────────────────────────
   test(
-    'eventsInRange is bounded BY THE DAY — a day past the oldest-2000 page is '
+    'eventsInRange is bounded BY THE DAY - a day past the oldest-2000 page is '
     'still reachable',
     () async {
       final db = await LocalDb.instance;
@@ -285,7 +285,7 @@ void main() {
         payloadJson: '{"sleep":{"accounting":{"value":{"tst_sec":21600}}}}',
         windowJson: '{}',
       );
-      // A LATER version of the same day that lost its sleep block — the latest
+      // A LATER version of the same day that lost its sleep block - the latest
       // version is the one that counts.
       await LocalDb.putDayResult(
         dayId: '2026-02-01',
@@ -439,7 +439,7 @@ void main() {
       );
 
       // Before the fix this threw ArgumentError('onCreate must be null if no
-      // version is specified') — the export had never once produced a file.
+      // version is specified') - the export had never once produced a file.
       final path = await LocalDb.exportDaysDb({dayId});
       expect(await File(path).exists(), isTrue);
 

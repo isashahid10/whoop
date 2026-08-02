@@ -82,6 +82,10 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // already-running process (openAppWhenRun doesn't guarantee a fresh
       // launch) — the constructor-time check alone would miss that case.
       unawaited(app.checkPendingSiriRoute());
+      // Same reasoning for the Siri band alarm: openAppWhenRun may have
+      // foregrounded an already-running process, so a constructor-time drain
+      // alone would miss the request entirely.
+      unawaited(app.drainPendingAlarmIntent());
       if (app.isPaired) app.openSession();
     } else if (state == AppLifecycleState.paused) {
       // Backgrounded: hand the band to the iOS restore path so it can wake-and-drain
@@ -94,7 +98,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
     return MaterialApp(
-      title: 'OpenStrap',
+      title: 'Whoop',
       debugShowCheckedModeBanner: false,
       theme: theme.lightTheme,
       darkTheme: theme.darkTheme,
@@ -300,7 +304,12 @@ class ShellScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true,
+      // extendBody was true for the old FLOATING nav pill: it was a lifted,
+      // inset lozenge with page visible around and behind it, so the body had
+      // to run underneath. The bar is opaque and full-width now, so extending
+      // the body behind it just hides the last ~90 pt of every scroll view
+      // behind the bar — content visibly clipped mid-row at the bottom.
+      extendBody: false,
       body: PageView(
         controller: controller,
         onPageChanged: onPageChanged,

@@ -1,6 +1,6 @@
-// HeadlessSyncGate: mutual exclusion across EVERY headless wake source — the
+// HeadlessSyncGate: mutual exclusion across EVERY headless wake source - the
 // three iOS ones (BLE-restore, BGProcessingTask, BGAppRefreshTask) and the
-// Android post-boot wake — plus the skip-streak telemetry that makes repeated
+// Android post-boot wake - plus the skip-streak telemetry that makes repeated
 // wake-source collisions observable instead of a single easy-to-miss
 // debugPrint line.
 
@@ -80,7 +80,7 @@ void main() {
     expect(HeadlessSyncGate.consecutiveSkipsFor('owner_b'), 1);
     expect(HeadlessSyncGate.consecutiveSkipsFor('owner_c'), 1);
 
-    // owner_b finally gets to run — its OWN streak clears; owner_c's doesn't.
+    // owner_b finally gets to run - its OWN streak clears; owner_c's doesn't.
     await HeadlessSyncGate.tryRun<int>('owner_b', () async => 4);
     expect(HeadlessSyncGate.consecutiveSkipsFor('owner_b'), 0);
     expect(HeadlessSyncGate.consecutiveSkipsFor('owner_c'), 1);
@@ -101,7 +101,7 @@ void main() {
     expect(HeadlessSyncGate.busy, isFalse);
   });
 
-  group('P2 — the Android boot wake goes through the gate too', () {
+  group('P2 - the Android boot wake goes through the gate too', () {
     test('the gate is BUSY for the whole duration of a boot drain', () async {
       final lease = BandOwnership.tryAcquireHeadless()!;
       final started = Completer<void>();

@@ -1,4 +1,4 @@
-// cleanDeviceLabel — the guard that keeps "?*" junk (from a bad HELLO parse) out
+// cleanDeviceLabel - the guard that keeps "?*" junk (from a bad HELLO parse) out
 // of the persisted/displayed device label, while allowing real serials and
 // user-set strap names.
 

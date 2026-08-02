@@ -32,11 +32,11 @@ void main() {
 
   // The backfill/insert fix: rec_ts must come from the frame's REAL device time,
   // never from receive time. decodeRecTs is the pure resolver used at insert AND
-  // in the v6 migration backfill — if it returned the fallback (≈now) the whole
+  // in the v6 migration backfill - if it returned the fallback (≈now) the whole
   // multi-day backfill would collapse into one "today" bucket and hang derivation.
   // The fixture is a real band capture kept beside the repo, not inside it, so
   // it is there for local runs and absent in CI. Skip rather than fail when it
-  // is missing — a green CI must not depend on an untracked file.
+  // is missing - a green CI must not depend on an untracked file.
   final skipNoFixture = fixtureFile() == null
       ? 'whoop_hist.jsonl fixture not found beside the repo'
       : null;
@@ -92,7 +92,7 @@ void main() {
     expect(sub.rrMs.length, greaterThan(50), reason: 'decoded RR beats');
 
     // ── calendar-day segmentation: a day always exists when there's data ──────
-    // The fixture is ~9 min — too short to qualify as a ≥3 h main sleep, so the
+    // The fixture is ~9 min - too short to qualify as a ≥3 h main sleep, so the
     // day is emitted with no sleep (flag NO_SLEEP_DETECTED).
     final days = calendarDays(sub);
     expect(days, isNotEmpty, reason: 'a calendar day always exists');
@@ -101,7 +101,7 @@ void main() {
     // ── coordinator slice → DayBundleInput → deriveDayBundle (synchronous) ────
     // The fixture is ~9 min. Nocturnal RHR needs ≥~15 min (half its 30-min
     // window) of valid HR. Tile the REAL decoded HR/RR forward in time to ~30 min
-    // so the night-grade clinical metrics exercise on genuine values — no
+    // so the night-grade clinical metrics exercise on genuine values - no
     // synthetic numbers, just real samples repeated along a continuous timeline.
     // Treat the whole tiled capture as both the day span AND the HRV/RHR window
     // (in lieu of a qualifying sleep), mirroring the engine's slicing without a DB.

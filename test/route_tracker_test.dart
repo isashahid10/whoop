@@ -1,5 +1,5 @@
 // Tests for RouteTracker: buffering, batched persistence, de-noising, and the
-// live ValueNotifiers — driven by a FAKE GpsSample stream and a fake sink (no
+// live ValueNotifiers - driven by a FAKE GpsSample stream and a fake sink (no
 // geolocator, no DB).
 
 import 'dart:async';
@@ -100,7 +100,7 @@ void main() {
     t.start(ctrl.stream);
 
     ctrl.add(_fix(0));
-    // A 5 km jump in one step — a spike, should be rejected.
+    // A 5 km jump in one step - a spike, should be rejected.
     ctrl.add(GpsSample(lat: 0, lng: 5000 / _mPerDegLngAtEq, tsMs: 1000));
     ctrl.add(_fix(1)); // near the first point again
     await pumpEventQueue();
@@ -221,7 +221,7 @@ void main() {
         if (calls == 1) throw Exception('disk busy');
         persisted.addAll(b);
       },
-      batchSize: 100, // never auto-flushes — everything rides on stop()
+      batchSize: 100, // never auto-flushes - everything rides on stop()
     );
     t.start(ctrl.stream);
 
@@ -335,7 +335,7 @@ void main() {
       final t = RouteTracker(sink: (_) async {}, batchSize: 100);
       t.start(ctrl.stream);
 
-      // No `speed` on either fix — platform doesn't report it.
+      // No `speed` on either fix - platform doesn't report it.
       ctrl.add(_fix(0, stepMeters: 20));
       ctrl.add(_fix(1, stepMeters: 40)); // 20 m in 1 s ≈ 20 m/s
       await pumpEventQueue();
@@ -363,11 +363,11 @@ void main() {
       async.flushMicrotasks();
       expect(t.stalled.value, isFalse);
 
-      // Silence for longer than stallAfter — no error, just nothing arriving
+      // Silence for longer than stallAfter - no error, just nothing arriving
       // (exactly the "silently stopped, never errored" gap this closes).
       async.elapse(const Duration(seconds: 16));
       expect(t.stalled.value, isTrue);
-      expect(t.error.value, isNull); // NOT an error — distinct signal
+      expect(t.error.value, isNull); // NOT an error - distinct signal
 
       // A fix arrives again → clears immediately, no need to wait out the
       // watchdog's next poll.
@@ -399,7 +399,7 @@ void main() {
     ctrl.add(GpsSample(lat: 0, lng: 3 / _mPerDegLngAtEq, tsMs: 3000));
     await pumpEventQueue();
 
-    // Only the anchor itself was accepted — every jitter fix was dropped.
+    // Only the anchor itself was accepted - every jitter fix was dropped.
     expect(t.pointCount, 1);
     expect(t.distanceMeters.value, 0);
     expect(t.path.value.length, 1);
@@ -457,7 +457,7 @@ void main() {
 
     expect(t.path.value.length, 1); // still just the anchor
 
-    // Now real movement starts — should be captured normally.
+    // Now real movement starts - should be captured normally.
     ctrl.add(GpsSample(lat: 0, lng: 500 / _mPerDegLngAtEq, tsMs: 21000));
     await pumpEventQueue();
     expect(t.path.value.length, 2);
@@ -490,7 +490,7 @@ void main() {
   // REGRESSION: dispose() cancelled only the watchdog. The GPS StreamSubscription
   // stayed live and `_stopped` stayed false, so a dispose() without a stop()
   // left the location stream (and the platform GPS session behind it) running
-  // for the life of the process — and nothing ever called dispose() at all, so
+  // for the life of the process - and nothing ever called dispose() at all, so
   // the six ValueNotifiers and their listeners leaked once per route workout.
   group('lifecycle: dispose', () {
     test('dispose() cancels the GPS subscription', () async {

@@ -1,6 +1,6 @@
 // Regression coverage for the "steps mismatch" bug: getDayStrain (the Body/
 // strain-detail screen's data source) used to route steps through the SAME
-// _bundleForDate fallback as strain/zones/HR — which, for TODAY specifically,
+// _bundleForDate fallback as strain/zones/HR - which, for TODAY specifically,
 // falls back to the latest COMPLETE day's bundle when today's own row hasn't
 // been derived yet. That's the right UX for strain/sleep/HRV ("show last
 // night's finished result while today settles"), but it's actively wrong for
@@ -8,7 +8,7 @@
 // instead of today's own in-progress estimate.
 //
 // Fix: getDayStrain now sources steps from wake_day_features (today's interim
-// estimate — same source getToday() uses for the Today screen) whenever
+// estimate - same source getToday() uses for the Today screen) whenever
 // today's own day_result row doesn't exist yet, instead of falling through to
 // whatever _bundleForDate happened to return.
 
@@ -46,7 +46,7 @@ void main() {
       "when today's own day_result is missing, getDayStrain's steps come "
       'from wake_day_features, NOT a fallback to a prior complete day', () async {
     // Yesterday's finalized bundle exists and has a real (different) steps
-    // figure — this is what the old code would have silently surfaced as
+    // figure - this is what the old code would have silently surfaced as
     // "today's steps" via _bundleForDate's latest-complete-day fallback.
     await LocalDb.putDayResult(
       dayId: yesterday,
@@ -59,7 +59,7 @@ void main() {
     );
 
     // Today has NO day_result row yet (derivation hasn't run), but DOES have
-    // an interim wake_day_features estimate — the honest "so far today" number.
+    // an interim wake_day_features estimate - the honest "so far today" number.
     await LocalDb.putWakeDayFeatures(
       dayId: today,
       algoVersion: kAlgoVersion,

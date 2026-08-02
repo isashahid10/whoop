@@ -7,7 +7,7 @@
 //
 // Why this can be tested in-process at all: the race being fixed is two
 // derivation isolates racing between "has it fired?" and "record that it fired".
-// A unit test can't spawn the WorkManager isolate, but it doesn't need to — both
+// A unit test can't spawn the WorkManager isolate, but it doesn't need to - both
 // isolates reach the SAME sqlite database, and the claim's correctness is a
 // property of the statement, not of who calls it. Calling claim() concurrently
 // WITHOUT NotificationCenter's in-isolate lock reproduces exactly the
@@ -35,7 +35,7 @@ NotificationEvent _ev(String dedupeKey) => NotificationEvent(
       priority: NotifPriority.critical,
     );
 
-/// A local YYYY-MM-DD offset from today — same convention the store's retention
+/// A local YYYY-MM-DD offset from today - same convention the store's retention
 /// cutoff uses (day labels are LOCAL everywhere; see data/day_label.dart).
 String _dayOffset(int days) => dayLabelOf(DateTime.now().add(Duration(days: days)));
 
@@ -65,7 +65,7 @@ void main() {
       const store = FiredKeyStore();
       const key = '2026-07-25:readiness';
 
-      // No in-isolate lock here — this is the cross-isolate shape.
+      // No in-isolate lock here - this is the cross-isolate shape.
       final results = await Future.wait([
         store.claim(key),
         store.claim(key),
@@ -101,7 +101,7 @@ void main() {
     });
 
     test('a key that fired in degraded mode never fires again once the DB is '
-        'back — however many passes run', () async {
+        'back - however many passes run', () async {
       const store = FiredKeyStore();
       const key = '2026-07-25:low_read';
 

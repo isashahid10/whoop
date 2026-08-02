@@ -105,7 +105,7 @@ void main() {
       generatedAtMs: DateTime.now().millisecondsSinceEpoch,
       inputs: const {'strain_0_21': 12.4, 'steps': 8300},
     ));
-    // An engine that would THROW if called — proves we render from cache.
+    // An engine that would THROW if called - proves we render from cache.
     final engine = BriefingEngine(
       config: CoachConfig(),
       repo: _FakeRepo(),

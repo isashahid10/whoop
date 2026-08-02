@@ -5,7 +5,7 @@
 // the existing category/quiet-hours gating is untouched. We inject a fake
 // present sink (counts calls, no device) and a mocked SharedPreferences.
 //
-// NOTE — this suite runs with NO sqlite factory registered, so FiredKeyStore's
+// NOTE - this suite runs with NO sqlite factory registered, so FiredKeyStore's
 // atomic SQLite claim is unavailable and every test here exercises its DEGRADED
 // SharedPreferences fallback. That's deliberate: the fallback is what runs when
 // the DB is torn down mid-background-pass, and it must still dedupe. The atomic
@@ -131,7 +131,7 @@ void main() {
       await center.emit(_ev('2026-07-23:illness'));
       expect(sink1.shown.length, 1);
 
-      // Second "session": same persisted store — the key is still remembered,
+      // Second "session": same persisted store - the key is still remembered,
       // so it must NOT fire again.
       final sink2 = _FakeSink();
       center.presentSink = sink2.call;
@@ -162,7 +162,7 @@ void main() {
       await center.emit(_ev('2026-07-23:illness', category: NotifCategory.health));
       expect(sink.shown, isEmpty);
 
-      // Re-enabling the category later must let the key fire — the gate, not the
+      // Re-enabling the category later must let the key fire - the gate, not the
       // dedupe guard, suppressed it, so no key should have been recorded.
       expect(await const FiredKeyStore().hasFired('2026-07-23:illness'), isFalse);
     });
@@ -231,7 +231,7 @@ void main() {
       final f1 = center.emit(_ev('2026-07-23:a'));
       final f2 = center.emit(_ev('2026-07-23:b'));
       // First emit is parked inside present; the second is held on the lock, so
-      // its record-key write can only run after the first's — no interleaving.
+      // its record-key write can only run after the first's - no interleaving.
       await sink.entered;
       sink.release();
       await Future.wait([f1, f2]);
@@ -247,7 +247,7 @@ void main() {
   group('stress-screen high-stress alert (now routed through emit)', () {
     // The exact event stress_screen.dart builds: health category, default
     // (normal) priority, no route. It used to call presentEvent directly,
-    // bypassing both the gate and the dedupe guard — now it goes through emit.
+    // bypassing both the gate and the dedupe guard - now it goes through emit.
     NotificationEvent highStress() => NotificationEvent(
           dedupeKey: '2026-07-23:high_stress',
           category: NotifCategory.health,
@@ -295,13 +295,13 @@ void main() {
       expect(await store.hasFired('a'), isTrue);
     });
 
-    test('independent per-key flags — a record never clobbers another key',
+    test('independent per-key flags - a record never clobbers another key',
         () async {
       SharedPreferences.setMockInitialValues({});
       const store = FiredKeyStore();
       await store.recordFired('${dayOffset(0)}:a');
       await store.recordFired('${dayOffset(0)}:b');
-      await store.recordFired('${dayOffset(0)}:a'); // repeat — idempotent no-op
+      await store.recordFired('${dayOffset(0)}:a'); // repeat - idempotent no-op
       expect(await store.hasFired('${dayOffset(0)}:a'), isTrue);
       expect(await store.hasFired('${dayOffset(0)}:b'), isTrue);
     });

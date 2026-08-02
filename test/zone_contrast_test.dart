@@ -6,7 +6,7 @@
 //
 //   1. In light mode the ramp handed back hues tuned for a white background
 //      and painted them on near-black.
-//   2. Even on the dark palette, Z0 mapped to `cool` — a SURFACE token, not an
+//   2. Even on the dark palette, Z0 mapped to `cool` - a SURFACE token, not an
 //      ink. As a foreground it measured 1.03:1 against nightAlt: invisible.
 //      Z0 is the RESTING zone, so it is what is on screen at the start of
 //      every workout and whenever heart rate is low or absent.
@@ -58,14 +58,14 @@ void main() {
             ratio,
             greaterThanOrEqualTo(minRatio),
             reason: 'Z$z renders at ${ratio.toStringAsFixed(2)}:1 on '
-                '${surface.key} — unreadable. Zone colours on the live '
+                '${surface.key} - unreadable. Zone colours on the live '
                 'session screen must be inks, not surface tokens.',
           );
         });
       }
     }
 
-    test('Z0 specifically — the regression that shipped', () {
+    test('Z0 specifically - the regression that shipped', () {
       // `cool` is what Z0 used to resolve to. Pin the old value as a failing
       // reference so the intent of the fix stays legible.
       final broken = _contrast(kDarkPalette.cool, AppColors.nightAlt);

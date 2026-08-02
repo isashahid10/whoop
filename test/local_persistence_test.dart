@@ -1,6 +1,6 @@
 // Local persistence round-trips for the v7 user-data tables (journal / cycle /
 // sessions / notifications). Runs the REAL LocalDb against an in-memory sqlite
-// via sqflite_common_ffi — no platform plugins needed.
+// via sqflite_common_ffi - no platform plugins needed.
 //
 // Covers: journal upsert+read (idempotent on date), a workout session
 // round-trip (live → done finalize), and notification idempotency (INSERT OR
@@ -384,7 +384,7 @@ void main() {
   );
   // ── resumable-sync cursor ──────────────────────────────────────────────────────
   // Kept in THIS file (not a separate suite) so it shares the single DB-test
-  // isolate — two test files both opening LocalDb's fixed openstrap.db path race
+  // isolate - two test files both opening LocalDb's fixed openstrap.db path race
   // on the on-disk sqlite file.
   test('sync cursor set/get round-trip + int parse', () async {
     expect(await LocalDb.getCursor('strap_trim'), isNull);

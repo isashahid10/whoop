@@ -1,4 +1,4 @@
-// Regression tests for readiness DRIFTING through the day (#128 — "morning it
+// Regression tests for readiness DRIFTING through the day (#128 - "morning it
 // was 49, now 45").
 //
 // Root cause: a day stays recomputable for ~48 h and every re-derive overwrites
@@ -65,7 +65,7 @@ void main() {
       expect(frozen, isNotNull);
       expect(frozen!.value, 49);
 
-      // Midday re-derive: baseline shifted, the live value dropped to 45 — the
+      // Midday re-derive: baseline shifted, the live value dropped to 45 - the
       // exact drift from #128. The pin must hold.
       frozen = nextFrozenHeadline(
         today: d1,

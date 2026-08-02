@@ -1,8 +1,8 @@
 // Hevy JSON parsing must tolerate loose field types.
 //
 // This is an UNDOCUMENTED API and its field types are not stable. Hard
-// `as String?` casts threw on real data — "type 'int' is not a subtype of type
-// 'String?'" — killing an entire sync mid-import. `superset_id` in particular
+// `as String?` casts threw on real data - "type 'int' is not a subtype of type
+// 'String?'" - killing an entire sync mid-import. `superset_id` in particular
 // comes back numeric, but any of these fields could.
 //
 // These tests pin the tolerant behaviour so a later "tidy up" back to hard
@@ -15,7 +15,7 @@ void main() {
   test('numeric superset_id does not blow up the parse', () {
     final ex = HevyExercise.fromJson({
       'title': 'Bench Press (Barbell)',
-      'superset_id': 3, // int, NOT a string — the real-world crash
+      'superset_id': 3, // int, NOT a string - the real-world crash
       'exercise_template_id': 12345, // also seen numeric
       'sets': [
         {'index': 0, 'weight_kg': 100, 'reps': 5, 'indicator': 'normal'},

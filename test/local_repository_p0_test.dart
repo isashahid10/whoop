@@ -6,7 +6,7 @@
 //     mean.round())` THROWS ArgumentError when lowerLimit > upperLimit. Two
 //     logged `start` markers 8 days apart is enough (a correction the user
 //     made, or a genuinely short cycle).
-// 10. getRecords() no longer reads day_result payloads at all — its day/night
+// 10. getRecords() no longer reads day_result payloads at all - its day/night
 //     counts come from SQL. It used to `recentDayResults(3650)` (SELECT r.*,
 //     hr_curve + hypnogram + HRV series for TEN YEARS) and jsonDecode every one
 //     on the main isolate for what is only a scalar-extremes screen.
@@ -79,7 +79,7 @@ void main() {
     expect(cycle['fertile_end'], isNotNull);
   });
 
-  test('exactly 10 days — the clamp boundary — does not throw', () async {
+  test('exactly 10 days - the clamp boundary - does not throw', () async {
     await LocalDb.putCycleLog('2026-06-01', 'start');
     await LocalDb.putCycleLog('2026-06-11', 'start');
     final cycle = await repo.getCycle();
@@ -89,7 +89,7 @@ void main() {
 
   // ── fix 10 ───────────────────────────────────────────────────────────────
   test(
-    'getRecords counts days/nights from SQL, with no payload decode — and a '
+    'getRecords counts days/nights from SQL, with no payload decode - and a '
     'corrupt bundle degrades instead of breaking the screen',
     () async {
       String bundle(int? tstSec) => tstSec == null

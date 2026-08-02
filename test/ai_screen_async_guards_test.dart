@@ -1,6 +1,6 @@
 // Async-lifecycle guards on the AI surfaces. All three bugs share a shape: a
 // callback lands after the world has moved on (a newer request started, or the
-// screen is gone) and clobbers what's on screen — or crashes the frame.
+// screen is gone) and clobbers what's on screen - or crashes the frame.
 
 import 'dart:async';
 
@@ -81,7 +81,7 @@ void main() {
     expect(calls, 1);
     expect(find.text('Recovered and ready.'), findsOneWidget);
 
-    // Two taps inside one frame — the button is still on screen for both.
+    // Two taps inside one frame - the button is still on screen for both.
     final regen = find.byType(InkWell).first;
     await t.tap(regen, warnIfMissed: false);
     await t.tap(regen, warnIfMissed: false);
@@ -90,7 +90,7 @@ void main() {
     await t.pump(const Duration(milliseconds: 700));
 
     // Without the in-flight guard both taps issued a generate, and whichever
-    // settled LAST won — an error arriving after a success discards the fresh
+    // settled LAST won - an error arriving after a success discards the fresh
     // briefing (and vice versa shows a stale one as current).
     expect(calls, 2);
     expect(find.text('Recovered and ready.'), findsOneWidget);

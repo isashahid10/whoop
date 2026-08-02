@@ -101,7 +101,7 @@ void main() {
       t.enforceCollectionOffUntilConsent(); // what main() calls at startup
       expect(applied, [false]);
       expect(t.enabled, isFalse);
-      expect(t.consentResolved, isFalse); // still unresolved — it is not consent
+      expect(t.consentResolved, isFalse); // still unresolved - it is not consent
     });
 
     test('enforceCollectionOffUntilConsent never revokes a loaded opt-in', () {

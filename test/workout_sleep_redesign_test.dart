@@ -1,9 +1,9 @@
-// Redesigned Workout + Sleep screens — render tests in BOTH palettes, plus the
+// Redesigned Workout + Sleep screens - render tests in BOTH palettes, plus the
 // sleep-stage visibility regression suite: Light AND Deep must actually PAINT
 // (pixel-probed) whenever they are present in the hypnogram, including the
 // live pipeline's 'wake' stage vocabulary and sub-pixel-short deep bouts.
 // (The old Sleep screen drew light/deep/rem as three near-identical corals
-// with no row labels — "Light/Deep lines do not even appear".)
+// with no row labels - "Light/Deep lines do not even appear".)
 
 import 'dart:ui' as ui;
 
@@ -112,7 +112,7 @@ void main() {
             reason: 'LIGHT row must paint ($name palette)');
         expect(colors.contains(deep), isTrue,
             reason: 'DEEP row must paint ($name palette)');
-        // The four stage colours must be four DISTINCT colours — the old
+        // The four stage colours must be four DISTINCT colours - the old
         // palette collapse (light/deep/rem as near-identical corals) is the
         // bug this guards against.
         expect({awake, rem, light, deep}.length, 4,
@@ -125,7 +125,7 @@ void main() {
     ) async {
       AppColors.active = kLightPalette;
       final deep = _rgb(DomainAccent.stageDeep);
-      // An 8 h night with only 1–2 min deep bouts — each under a pixel wide.
+      // An 8 h night with only 1–2 min deep bouts - each under a pixel wide.
       const m = 1 / 480.0;
       final segs = <HypnoSeg>[
         const HypnoSeg(SleepStage.light, 0.0, 0.40),
@@ -169,7 +169,7 @@ void main() {
       final wake = DateTime(now.year, now.month, now.day, 6, 42);
       final onset = wake.subtract(const Duration(hours: 7, minutes: 32));
       final onsetTs = onset.millisecondsSinceEpoch ~/ 1000;
-      // LIVE stage vocabulary ('wake', not 'awake') — what the pipeline emits.
+      // LIVE stage vocabulary ('wake', not 'awake') - what the pipeline emits.
       const stages = ['wake', 'light', 'deep', 'light', 'rem', 'wake', 'rem'];
       return {
         'has_sleep': true,
@@ -225,7 +225,7 @@ void main() {
             reason: 'Light must reach the hypnogram');
         expect(stages.contains(SleepStage.deep), isTrue,
             reason: 'Deep must reach the hypnogram');
-        // Labelled stage rows — the fix for "which line is which".
+        // Labelled stage rows - the fix for "which line is which".
         expect(find.text('Light'), findsWidgets);
         expect(find.text('Deep'), findsWidgets);
         // Stage minutes rows.
@@ -252,7 +252,7 @@ void main() {
         // "Awake" and "Consistency" summary tiles were deliberately removed
         // from this bento (Consistency still has its own honest-gated row
         // further down the screen; Awake/WASO still surfaces inline in the
-        // Efficiency tile's long-press detail) — assert they're GONE rather
+        // Efficiency tile's long-press detail) - assert they're GONE rather
         // than leaving a stale assumption they still render here.
         expect(find.text('AWAKE'), findsNothing);
         expect(find.text('CONSISTENCY'), findsNothing);
@@ -406,16 +406,16 @@ void main() {
       await t.pump(const Duration(milliseconds: 1400));
       // NOT asserting takeException() here: RouteCard's map makes a REAL
       // network tile fetch (CARTO), which the test sandbox always fails
-      // with a 400 (no network access) — a benign, expected-in-tests
+      // with a 400 (no network access) - a benign, expected-in-tests
       // ClientException unrelated to this screen's own correctness, not
       // something to assert away. The meaningful check is the widget tree
       // itself, below.
       t.takeException();
-      // The route (RouteCard's ROUTE label) appears — the hero, not the old
+      // The route (RouteCard's ROUTE label) appears - the hero, not the old
       // small end-of-card thumbnail.
       expect(find.text('ROUTE'), findsOneWidget);
       // Share is the REAL production flow here too (opens the OS share
-      // sheet) — not automated further: RouteCard's map has pending
+      // sheet) - not automated further: RouteCard's map has pending
       // network-image state (blocked in the offline test sandbox) that
       // keeps RenderRepaintBoundary.toImage() from ever resolving under
       // TestWidgetsFlutterBinding, a sandboxing limitation, not a product

@@ -19,7 +19,7 @@
 //
 // Sharing therefore worked perfectly in debug and failed on every real build.
 //
-// Nothing else catches this. `flutter analyze` is happy — it is a legal getter
+// Nothing else catches this. `flutter analyze` is happy - it is a legal getter
 // call. The entire test suite runs in DEBUG mode, where the assert executes and
 // the getter behaves, so no widget or unit test can reproduce it. Only a
 // release build on a device does, which is the slowest possible feedback loop.
@@ -32,7 +32,7 @@
 //       $FLUTTER_ROOT/packages/flutter/lib/src
 //
 // If a member here is genuinely needed, guard it inside an `assert(() {...})`
-// block — never on a code path that runs in release.
+// block - never on a code path that runs in release.
 
 import 'dart:io';
 
@@ -70,7 +70,7 @@ void main() {
       final lines = code.split('\n');
       for (var i = 0; i < lines.length; i++) {
         for (final member in _assertStrippedMembers) {
-          // `.member` — a call on an instance. A declaration of the same name
+          // `.member` - a call on an instance. A declaration of the same name
           // (we don't have one) wouldn't match the leading dot.
           if (lines[i].contains('.$member')) {
             offences.add('${entity.path}:${i + 1} → $member');

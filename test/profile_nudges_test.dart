@@ -2,7 +2,7 @@
 //
 // The bug this guards against is subtle. FiredKeyStore is a fire-ONCE guard, so
 // the obvious implementation (a static dedupe key) asks once, gets dismissed,
-// and then never asks again — leaving the stale weight in place forever, which
+// and then never asks again - leaving the stale weight in place forever, which
 // is the exact failure the nudge exists to prevent. These tests pin the
 // re-arming behaviour so a later "simplification" back to a static key fails
 // loudly here instead of silently in production.
@@ -79,14 +79,14 @@ void main() {
     final p = await SharedPreferences.getInstance();
     expect(p.getInt('weight_prompt_count'), 0);
 
-    // Freshly confirmed — must go quiet again.
+    // Freshly confirmed - must go quiet again.
     presented.clear();
     expect(await ProfileNudges.maybePromptWeight(), isFalse);
     expect(presented, isEmpty);
   });
 
   test(
-    're-arms after an ignored prompt — the whole point of the day-keyed '
+    're-arms after an ignored prompt - the whole point of the day-keyed '
     'dedupe key, since a static key would be consumed forever',
     () async {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;

@@ -1,4 +1,4 @@
-// Coach derived-only SQL views — verify they CREATE (json1 available) and that
+// Coach derived-only SQL views - verify they CREATE (json1 available) and that
 // CoachDb.runCoachSql reads them through a read-only handle while rejecting raw.
 import 'dart:convert';
 
