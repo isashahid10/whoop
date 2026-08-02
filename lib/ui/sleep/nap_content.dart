@@ -1,4 +1,4 @@
-// naps_card.dart — the day's daytime sleep, in the night's visual language.
+// nap_content.dart — the day's daytime sleep, in the night's visual language.
 //
 // This renders as a TAB alongside the night rather than as a card buried below
 // it. The reasoning is that a nap is a peer of the night, not a footnote to it:

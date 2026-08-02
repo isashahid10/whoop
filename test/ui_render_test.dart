@@ -17,7 +17,7 @@ library;
 import 'package:openstrap_edge/ui/readiness/readiness_detail_screen.dart';
 import 'package:openstrap_edge/compute/readiness_service.dart';
 import 'dart:convert';
-import 'package:openstrap_edge/ui/sleep/naps_card.dart';
+import 'package:openstrap_edge/ui/sleep/nap_content.dart';
 import 'package:openstrap_edge/compute/nap_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

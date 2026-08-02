@@ -1,5 +1,17 @@
 # Security Policy
 
+> [!IMPORTANT]
+> **Report privately, never in a public issue.** For this fork use
+> [GitHub security advisories](https://github.com/isashahid10/edge/security/advisories/new).
+> For anything in the shared codebase, upstream
+> [OpenStrap/edge](https://github.com/OpenStrap/edge/security/advisories/new)
+> is the right place, since a fix there protects every user.
+>
+> This app holds health data locally and talks to an AI provider with a
+> user-supplied key. The surfaces most worth scrutiny are the coach's SQL
+> guard, `postChat`'s fail-closed size limit, and the Google Drive backup
+> scope.
+
 ## Reporting a vulnerability
 
 Please **don't** open a public issue for a security problem.

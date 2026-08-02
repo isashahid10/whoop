@@ -1,0 +1,35 @@
+# Code owners for this fork.
+#
+# GitHub requests review from these owners automatically on a pull request.
+# On a single-maintainer fork this mostly serves as documentation of who is
+# responsible for what, and as a guard against an unreviewed change landing in
+# the parts where a mistake is expensive.
+
+# Default owner for everything not matched below.
+*                               @isashahid10
+
+# ── highest-consequence surfaces ────────────────────────────────────────────
+# Health metrics. A wrong number here is worse than a crash: a crash is
+# obvious, a plausible-but-wrong recovery score is acted on.
+/lib/compute/                   @isashahid10
+
+# Stored data. Migrations are one-way on a device that holds nights of
+# irreplaceable sleep history.
+/lib/data/                      @isashahid10
+
+# The coach's data boundary. Widening the guard rather than adding a view is
+# how health data would leave the device.
+/lib/coach/                     @isashahid10
+
+# Upstream bug-density hotspots, per AGENTS.md.
+/lib/state/app_state.dart       @isashahid10
+/lib/ble/                       @isashahid10
+
+# ── supply chain ────────────────────────────────────────────────────────────
+# Sibling packages are pinned to commit SHAs on purpose. A change from a SHA
+# to a branch ref lets upstream silently alter an already reviewed build.
+/pubspec.yaml                   @isashahid10
+/pubspec.lock                   @isashahid10
+
+# CI can read secrets and publish releases.
+/.github/                       @isashahid10

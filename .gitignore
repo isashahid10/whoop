@@ -98,3 +98,7 @@ test/failures/
 *.db-shm
 /backups/
 night*.csv
+
+# Debug dumps of day_result payloads. These contain REAL biometric data and
+# were sitting unreferenced at the repository root.
+payload*.json
