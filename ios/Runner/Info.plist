@@ -2,6 +2,42 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Google Sign-In callback. iOS hands the OAuth result back by opening
+	     the REVERSED client id as a URL scheme; without this registered the
+	     sign-in sheet completes and then simply never returns to the app. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.30703855498-j16qjjf20883cmi9m5bb1l6q10ouk2e3</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Names Siri will ACCEPT for this app, beyond CFBundleDisplayName.
+	     Without this Siri only matches the exact display name, and a phrase it
+	     cannot bind to an app falls through to whichever system intent claims
+	     the rest of the words — which is how "wake me up with Whoop" kept
+	     landing in the Clock app. -->
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Whoop Band</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>My Band</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Whoop Strap</string>
+		</dict>
+	</array>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>Schedules a backup wake alarm that can sound even when your phone is silenced or in a Focus mode, in case your band is off your wrist.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<!-- ── ZERO-COLLECTION BY DEFAULT (privacy tier 1) ──
@@ -60,13 +96,13 @@
 		<string>Bluetooth</string>
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>OpenStrap connects to your WHOOP band over Bluetooth to sync your health data.</string>
+	<string>Whoop connects to your WHOOP band over Bluetooth to sync your health data.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>OpenStrap reads recent samples to avoid writing duplicates into Apple Health.</string>
+	<string>Whoop reads recent samples to avoid writing duplicates into Apple Health.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>OpenStrap writes your sleep, resting heart rate, HRV, respiratory rate, energy and workouts into Apple Health.</string>
+	<string>Whoop writes your sleep, resting heart rate, HRV, respiratory rate, energy and workouts into Apple Health.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>OpenStrap connects to your WHOOP band over Bluetooth to sync your health data.</string>
+	<string>Whoop connects to your WHOOP band over Bluetooth to sync your health data.</string>
 	<!-- Calendar is READ-ONLY and event titles are never stored: only per-day
 	     counts and durations reach the database, so schedule load can be
 	     correlated against recovery without keeping a record of what the events
@@ -76,7 +112,7 @@
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Reads your calendar to measure how busy each day was, so recovery and sleep can be compared against schedule load. Event titles are never stored — only how many events and how long they ran.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>OpenStrap records your route during a run, ride or walk so you can see it, colored by heart-rate zone, when the workout ends. Recording continues while your screen is locked or you switch apps, but only while a workout is running — it stops the moment you finish. Your route stays on this device and is never uploaded.</string>
+	<string>Whoop records your route during a run, ride or walk so you can see it, colored by heart-rate zone, when the workout ends. Recording continues while your screen is locked or you switch apps, but only while a workout is running — it stops the moment you finish. Your route stays on this device and is never uploaded.</string>
 	<!-- NSLocationAlwaysAndWhenInUseUsageDescription: STILL not requested by app
 	     code. gps_source.dart asks for WHEN-IN-USE only; background delivery
 	     during a workout comes from the "location" UIBackgroundMode plus
@@ -88,14 +124,14 @@
 	     It must still describe the truth, because if it is ever shown, it is
 	     shown to a user deciding about location access. -->
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>OpenStrap never needs always-on location and does not ask for it. It records your route only while a run, ride or walk is actively running — including when your screen is locked — and stops as soon as you finish. Your route stays on this device and is never uploaded.</string>
+	<string>Whoop never needs always-on location and does not ask for it. It records your route only while a run, ride or walk is actively running — including when your screen is locked — and stops as soon as you finish. Your route stays on this device and is never uploaded.</string>
 	<!-- NSPhotoLibraryUsageDescription: not used by app code — import_screen.dart's
 	     only FilePicker call uses FileType.any (Files app / UIDocumentPicker),
 	     never .image/.media. file_picker's iOS podspec unconditionally bundles
 	     DKImagePickerController/PhotoGallery + DKPhotoGallery, which link
 	     PHPhotoLibrary APIs and trip the same ITMS-90683 static scan. -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>OpenStrap does not access your photo library. This permission is linked by a dependency but unused — importing your own exported WHOOP data uses the Files app, not Photos.</string>
+	<string>Whoop does not access your photo library. This permission is linked by a dependency but unused — importing your own exported WHOOP data uses the Files app, not Photos.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>OpenStrapAppGroupIdentifier</key>
@@ -152,6 +188,10 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
+		<!-- Find-my-phone must be able to start audio while backgrounded: the
+		     band gesture arrives over BLE with the app in the background, and
+		     without this iOS refuses to begin playback. -->
+		<string>audio</string>
 		<string>location</string>
 		<string>processing</string>
 		<string>fetch</string>

@@ -26,9 +26,12 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		A1A2M0010000000000000B01 /* AlarmIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A2M0010000000000000F01 /* AlarmIntents.swift */; };
+		A1A2M0020000000000000B02 /* AlarmBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A2M0020000000000000F02 /* AlarmBridge.swift */; };
+		A1A2M0030000000000000B03 /* AlarmKitBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A2M0030000000000000F03 /* AlarmKitBackup.swift */; };
+		A1A2M0040000000000000B04 /* FindMyPhone.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A2M0040000000000000F04 /* FindMyPhone.swift */; };
 		ACCE55E7000000000000B11D /* AccessorySetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACCE55E7000000000000F11E /* AccessorySetup.swift */; };
 		BEEF00000000000000000002 /* BreathingLiveActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF00000000000000000001 /* BreathingLiveActivityBridge.swift */; };
-		FADE0001FADE0001FADE0001 /* OpenStrapWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 53962EBE2FF6EF790061A61B /* OpenStrapWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -45,13 +48,6 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5348973A2FDC19C80033A4D9;
 			remoteInfo = OpenStrapWidgetExtension;
-		};
-		FADE0003FADE0003FADE0003 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 53962EBD2FF6EF790061A61B;
-			remoteInfo = "OpenStrapWatch Watch App";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -75,17 +71,6 @@
 			files = (
 			);
 			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		FADE0002FADE0002FADE0002 /* Embed Watch Content */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
-			dstSubfolderSpec = 16;
-			files = (
-				FADE0001FADE0001FADE0001 /* OpenStrapWatch Watch App.app in Embed Watch Content */,
-			);
-			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -125,6 +110,10 @@
 		97C146FD1CF9000F007C117D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1A2M0010000000000000F01 /* AlarmIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AlarmIntents.swift; sourceTree = "<group>"; };
+		A1A2M0020000000000000F02 /* AlarmBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AlarmBridge.swift; sourceTree = "<group>"; };
+		A1A2M0030000000000000F03 /* AlarmKitBackup.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AlarmKitBackup.swift; sourceTree = "<group>"; };
+		A1A2M0040000000000000F04 /* FindMyPhone.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FindMyPhone.swift; sourceTree = "<group>"; };
 		ACCE55E7000000000000F11E /* AccessorySetup.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccessorySetup.swift; sourceTree = "<group>"; };
 		B0B95B9F07C8083A2DB92078 /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		BEEF00000000000000000001 /* BreathingLiveActivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreathingLiveActivityBridge.swift; sourceTree = "<group>"; };
@@ -291,6 +280,10 @@
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				606824C7302BC5108CEC40DF /* BleRestoreManager.swift */,
 				ACCE55E7000000000000F11E /* AccessorySetup.swift */,
+				A1A2M0040000000000000F04 /* FindMyPhone.swift */,
+				A1A2M0030000000000000F03 /* AlarmKitBackup.swift */,
+				A1A2M0020000000000000F02 /* AlarmBridge.swift */,
+				A1A2M0010000000000000F01 /* AlarmIntents.swift */,
 				0BGTASK00000000000000002 /* BgSyncScheduler.swift */,
 			);
 			path = Runner;
@@ -387,6 +380,7 @@
 				2DCD42F2BAD7B7B913EF5123 /* [CP] Embed Pods Frameworks */,
 				FADE0005FADE0005FADE0005 /* Re-sign ad-hoc native-assets frameworks */,
 				AEFDDC7BFE6597FE6A6F1BB9 /* FlutterFire: "flutterfire upload-crashlytics-symbols" */,
+				2662416FAD09544B11680F47 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -484,6 +478,23 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		2662416FAD09544B11680F47 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		2DCD42F2BAD7B7B913EF5123 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -539,6 +550,21 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		47E3AF2498550A854A4821B6 /* Ensure GoogleService-Info.plist */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Ensure GoogleService-Info.plist";
+			outputPaths = (
+				"$(SRCROOT)/Runner/GoogleService-Info.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# GoogleService-Info.plist is gitignored (no committed credentials, real or\n# placeholder). The Resources phase below still statically references it, so\n# a fresh clone with no Firebase project configured needs SOMETHING on disk\n# at this path or the build fails outright. Generate a format-valid, inert\n# placeholder here (never committed, never overwrites a real file a\n# contributor has placed for their own local Firebase project) so Firebase\n# telemetry stays fully optional at build time, matching the Android side.\n# `-s` (exists AND non-empty), not `-f`: CI writes this file unconditionally\n# from a secret (base64 -d > ...), so an unset/blank secret leaves a 0-byte\n# file that `-f` would treat as \\\"already present\\\" and skip regenerating.\nPLIST=\"$SRCROOT/Runner/GoogleService-Info.plist\"\nif [ ! -s \"$PLIST\" ]; then\n  cat > \"$PLIST\" <<'EOF'\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>API_KEY</key>\n\t<string>AIzaSyDummyDummyDummyDummyDummyDummyDum</string>\n\t<key>GCM_SENDER_ID</key>\n\t<string>000000000000</string>\n\t<key>PLIST_VERSION</key>\n\t<string>1</string>\n\t<key>BUNDLE_ID</key>\n\t<string>wtf.openstrap.dummy</string>\n\t<key>PROJECT_ID</key>\n\t<string>dummy-project</string>\n\t<key>STORAGE_BUCKET</key>\n\t<string>dummy-project.appspot.com</string>\n\t<key>IS_ADS_ENABLED</key>\n\t<false/>\n\t<key>IS_ANALYTICS_ENABLED</key>\n\t<false/>\n\t<key>IS_APPINVITE_ENABLED</key>\n\t<false/>\n\t<key>IS_GCM_ENABLED</key>\n\t<false/>\n\t<key>IS_SIGNIN_ENABLED</key>\n\t<false/>\n\t<key>GOOGLE_APP_ID</key>\n\t<string>1:000000000000:ios:0000000000000000000000</string>\n</dict>\n</plist>\nEOF\nfi\n";
+		};
 		937F4BC2D23308952D408C29 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -575,21 +601,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
-		};
-		47E3AF2498550A854A4821B6 /* Ensure GoogleService-Info.plist */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Ensure GoogleService-Info.plist";
-			outputPaths = (
-				"$(SRCROOT)/Runner/GoogleService-Info.plist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# GoogleService-Info.plist is gitignored (no committed credentials, real or\n# placeholder). The Resources phase below still statically references it, so\n# a fresh clone with no Firebase project configured needs SOMETHING on disk\n# at this path or the build fails outright. Generate a format-valid, inert\n# placeholder here (never committed, never overwrites a real file a\n# contributor has placed for their own local Firebase project) so Firebase\n# telemetry stays fully optional at build time, matching the Android side.\n# `-s` (exists AND non-empty), not `-f`: CI writes this file unconditionally\n# from a secret (base64 -d > ...), so an unset/blank secret leaves a 0-byte\n# file that `-f` would treat as \\\"already present\\\" and skip regenerating.\nPLIST=\"$SRCROOT/Runner/GoogleService-Info.plist\"\nif [ ! -s \"$PLIST\" ]; then\n  cat > \"$PLIST\" <<'EOF'\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>API_KEY</key>\n\t<string>AIzaSyDummyDummyDummyDummyDummyDummyDum</string>\n\t<key>GCM_SENDER_ID</key>\n\t<string>000000000000</string>\n\t<key>PLIST_VERSION</key>\n\t<string>1</string>\n\t<key>BUNDLE_ID</key>\n\t<string>wtf.openstrap.dummy</string>\n\t<key>PROJECT_ID</key>\n\t<string>dummy-project</string>\n\t<key>STORAGE_BUCKET</key>\n\t<string>dummy-project.appspot.com</string>\n\t<key>IS_ADS_ENABLED</key>\n\t<false/>\n\t<key>IS_ANALYTICS_ENABLED</key>\n\t<false/>\n\t<key>IS_APPINVITE_ENABLED</key>\n\t<false/>\n\t<key>IS_GCM_ENABLED</key>\n\t<false/>\n\t<key>IS_SIGNIN_ENABLED</key>\n\t<false/>\n\t<key>GOOGLE_APP_ID</key>\n\t<string>1:000000000000:ios:0000000000000000000000</string>\n</dict>\n</plist>\nEOF\nfi\n";
 		};
 		AEFDDC7BFE6597FE6A6F1BB9 /* FlutterFire: "flutterfire upload-crashlytics-symbols" */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -663,6 +674,10 @@
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				46AF580757DC25648B6B0C95 /* BleRestoreManager.swift in Sources */,
 				ACCE55E7000000000000B11D /* AccessorySetup.swift in Sources */,
+				A1A2M0040000000000000B04 /* FindMyPhone.swift in Sources */,
+				A1A2M0030000000000000B03 /* AlarmKitBackup.swift in Sources */,
+				A1A2M0020000000000000B02 /* AlarmBridge.swift in Sources */,
+				A1A2M0010000000000000B01 /* AlarmIntents.swift in Sources */,
 				0BGTASK00000000000000001 /* BgSyncScheduler.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -679,11 +694,6 @@
 			isa = PBXTargetDependency;
 			target = 5348973A2FDC19C80033A4D9 /* OpenStrapWidgetExtension */;
 			targetProxy = 5348974C2FDC19C90033A4D9 /* PBXContainerItemProxy */;
-		};
-		FADE0004FADE0004FADE0004 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 53962EBD2FF6EF790061A61B /* OpenStrapWatch Watch App */;
-			targetProxy = FADE0003FADE0003FADE0003 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 

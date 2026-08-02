@@ -86,6 +86,11 @@ import BackgroundTasks
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ConfigBridge") {
       ConfigBridge.register(messenger: registrar.messenger())
     }
+    // Siri / Shortcuts alarm queue + the AlarmKit breakthrough backup. Siri can
+    // fire while Dart is not running, so the intent queues and Dart drains.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AlarmBridge") {
+      AlarmBridge.register(messenger: registrar.messenger())
+    }
     // BGTask channel: Dart handler for opportunistic headless sync + heavy derivation.
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BackgroundTaskManager") {
       BackgroundTaskManager.wireChannel(messenger: registrar.messenger())
@@ -153,8 +158,16 @@ enum ActionBridge {
   private static func perform(_ action: String) -> Bool {
     switch action {
     case "ring_phone":
-      AudioServicesPlaySystemSound(SystemSoundID(1005)) // loud alert tone
+      // AudioServicesPlaySystemSound is routed through the RINGER, so the old
+      // implementation played nothing with the mute switch flipped — i.e. it
+      // failed in exactly the situation it exists for. FindMyPhone uses an
+      // AVAudioSession .playback route, which ignores the mute switch and is
+      // unaffected by Focus/DND (those suppress notifications, not playback).
       AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+      return FindMyPhone.start()
+
+    case "stop_ring_phone":
+      FindMyPhone.stop()
       return true
     case "torch":
       // Torch via AVCaptureDevice — toggling it does NOT start a capture session, so

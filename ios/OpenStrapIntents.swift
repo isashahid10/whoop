@@ -30,7 +30,7 @@ enum OpenStrapShared {
     guard sleepMin >= 0 else { return "no sleep data yet" }
     return "\(sleepMin / 60) hours \(sleepMin % 60) minutes"
   }
-  static var noData: String { "I don't have today's numbers yet. Open OpenStrap and sync your strap." }
+  static var noData: String { "I don't have today's numbers yet. Open Whoop and sync your strap." }
 }
 
 // MARK: - Intents
@@ -38,7 +38,7 @@ enum OpenStrapShared {
 @available(iOS 16.0, *)
 struct RecoveryIntent: AppIntent {
   static var title: LocalizedStringResource = "Check Recovery"
-  static var description = IntentDescription("Ask OpenStrap for today's recovery.")
+  static var description = IntentDescription("Ask Whoop for today's recovery.")
   static var openAppWhenRun = false
 
   func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -54,7 +54,7 @@ struct RecoveryIntent: AppIntent {
 @available(iOS 16.0, *)
 struct StrainIntent: AppIntent {
   static var title: LocalizedStringResource = "Check Strain"
-  static var description = IntentDescription("Ask OpenStrap for today's strain.")
+  static var description = IntentDescription("Ask Whoop for today's strain.")
   static var openAppWhenRun = false
 
   func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -69,7 +69,7 @@ struct StrainIntent: AppIntent {
 @available(iOS 16.0, *)
 struct SleepIntent: AppIntent {
   static var title: LocalizedStringResource = "Check Sleep"
-  static var description = IntentDescription("Ask OpenStrap how you slept.")
+  static var description = IntentDescription("Ask Whoop how you slept.")
   static var openAppWhenRun = false
 
   func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -94,7 +94,7 @@ struct SleepIntent: AppIntent {
 struct StartBreathingIntent: AppIntent {
   static var title: LocalizedStringResource = "Start Breathing Session"
   static var description = IntentDescription(
-    "Start a guided resonance-breathing session in OpenStrap.")
+    "Start a guided resonance-breathing session in Whoop.")
   static var openAppWhenRun = true
 
   func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -146,5 +146,59 @@ struct OpenStrapShortcuts: AppShortcutsProvider {
       ],
       shortTitle: "Breathe",
       systemImageName: "wind")
+
+    // ── Band alarm (AlarmIntents.swift) ──
+    //
+    // Note what is NOT here: a bare "set an alarm" phrase. That belongs to the
+    // system Clock app, and Apple requires every phrase below to contain
+    // \(.applicationName), so the app name is always part of the utterance.
+    // PHRASING NOTE. Any phrase containing the word "alarm" competes with the
+    // system Clock intent, and Clock usually wins — the observed result is a
+    // normal iPhone alarm merely LABELLED "Whoop". Apple gives third-party
+    // intents no way to outrank a system one for its own vocabulary.
+    //
+    // So the phrases below lead with wordings that avoid "alarm" altogether
+    // ("wake me", "buzz me"), which Clock does not claim. The "alarm" variants
+    // are kept last as a fallback for the times Siri does route here.
+    AppShortcut(
+      intent: SetWhoopAlarmIntent(),
+      phrases: [
+        // CLOCK OWNS "alarm", "wake me" AND "wake up". All three fall through
+        // to the system intent no matter how the app name is placed, which is
+        // why every earlier variant still produced an iPhone alarm merely
+        // LABELLED Whoop. The phrases below use vocabulary Clock does not
+        // claim at all — "buzz" and "band" — so there is nothing for it to
+        // match on. The "alarm" wordings stay last, purely as a fallback for
+        // the cases Siri does route here.
+        "Buzz my \(.applicationName) band",
+        "\(.applicationName) band buzz",
+        "Set a \(.applicationName) buzz",
+        "Buzz me with \(.applicationName)",
+        "Set a \(.applicationName) band alarm",
+        "Set a \(.applicationName) alarm",
+      ],
+      shortTitle: "Set band alarm",
+      systemImageName: "alarm")
+
+    AppShortcut(
+      intent: CancelWhoopAlarmIntent(),
+      phrases: [
+        "Cancel my \(.applicationName) alarm",
+        "Turn off my \(.applicationName) alarm",
+      ],
+      shortTitle: "Cancel band alarm",
+      systemImageName: "alarm.slash")
+
+    AppShortcut(
+      intent: BuzzBandIntent(),
+      phrases: [
+        // Deliberately NOT "buzz my band" — that now belongs to the alarm
+        // SETTER above, and two shortcuts competing for one phrase means Siri
+        // picks arbitrarily.
+        "Test my \(.applicationName) band",
+        "Check my \(.applicationName) buzz",
+      ],
+      shortTitle: "Buzz band",
+      systemImageName: "waveform")
   }
 }
