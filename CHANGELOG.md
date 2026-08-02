@@ -98,10 +98,38 @@ what a given build computes.
 - **Naps in strain and stress.** Verified correct as-is: stress is computed from the main
   sleep's RR only, and a nap's near-resting heart rate contributes negligibly to TRIMP.
 
+### Fixed after first publish
+
+Three defects that were invisible on a developer machine and immediate for
+anyone else. All were found by pushing and letting CI run against a fresh
+checkout, which is the argument for publishing early.
+
+- **The repository did not build from a clean clone.** `pubspec.yaml` pinned
+  `openstrap_analytics` to *upstream's* repository, which does not contain the
+  metric modules this fork's UI imports. It only ever worked locally because
+  `pubspec_overrides.yaml` silently substituted the sibling checkout. CI, which
+  removes the overrides, failed with 16 undefined-class errors.
+- **`.fvmrc` was gitignored**, so the Flutter pin that the README, CI and every
+  document depend on did not exist in a clean clone. A fresh checkout fell back
+  to the system Flutter and failed on `CupertinoPageTransitionsBuilder`, the
+  documented 3.44 symptom, which reads as a code bug rather than a version
+  mismatch.
+- **Six tests depended on what time of day they ran.** Notification quiet hours
+  (22:00-07:00 local) suppressed the events four of them asserted on, and a
+  caffeine test read back "today" after logging six hours earlier. They passed
+  in a UTC+10 afternoon and failed at UTC, where CI runs at about 02:00. CI now
+  runs the suite a second time under `America/Los_Angeles`, because a
+  single-timezone run structurally cannot catch this.
+
 ### Infrastructure
 
 - Fork CI covering both `analytics` and `edge`, plus a secret scan over full history
+- Android release workflow: builds a debug-signed APK on an `android-v*` tag
+  and publishes it, with no repository secrets required
 - Upstream workflows requiring secrets guarded so they no-op on forks
+- Dependabot was added and then removed: on a single-maintainer fork with a
+  pinned Flutter it generated pull requests that could not be merged and a
+  stream of notification email
 - Golden render harness writing real PNGs of screens
 - `tool/deep_probe.dart` in analytics — runs the real stager over an exported night and
   reports which condition is binding, so this investigation is one command to repeat
