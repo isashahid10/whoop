@@ -51,7 +51,7 @@ class CalendarClient {
   Future<int> syncRecent({int days = 30}) async {
     try {
       if (!await hasPermission) {
-        debugPrint('[calendar] no permission — skipping');
+        debugPrint('[calendar] no permission - skipping');
         return 0;
       }
 

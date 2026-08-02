@@ -242,7 +242,7 @@ class CoachDb {
       }
       if (c == '"' || c == '`' || c == '[' || c == ']') {
         throw SqlGuardError(
-            'Quoted identifiers are not allowed — use bare view names.');
+            'Quoted identifiers are not allowed - use bare view names.');
       }
       out.write(c);
       i++;
@@ -348,7 +348,7 @@ class CoachDb {
         if (!n.ident) {
           if (n.text == '(') {
             throw SqlGuardError(
-                'Subqueries in FROM are not allowed — query a view directly.');
+                'Subqueries in FROM are not allowed - query a view directly.');
           }
           throw SqlGuardError('Expected a view name after FROM/JOIN.');
         }

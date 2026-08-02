@@ -224,7 +224,7 @@ class CoachEngine {
 
   static String _clipToolResult(String s) => s.length <= kMaxToolResultChars
       ? s
-      : '${s.substring(0, kMaxToolResultChars)}…(truncated — narrow the query)';
+      : '${s.substring(0, kMaxToolResultChars)}…(truncated - narrow the query)';
 
   int _historyChars() {
     var n = 0;
@@ -502,7 +502,7 @@ class CoachEngine {
         });
       }
     }
-    emit(CoachItem.assistant('I dug through several steps but couldn’t wrap that up — try narrowing the question.'));
+    emit(CoachItem.assistant('I dug through several steps but couldn’t wrap that up - try narrowing the question.'));
     onStatus(null);
   }
 
@@ -634,7 +634,7 @@ class CoachEngine {
         j = jsonDecode(utf8.decode(resp.bodyBytes));
       } catch (_) {
         throw CoachException(
-            'Provider returned a non-JSON response. Check the API base URL — '
+            'Provider returned a non-JSON response. Check the API base URL - '
             'it must point at an OpenAI-compatible /chat/completions endpoint.');
       }
       if (j is! Map) throw CoachException('Unexpected response from provider.');
@@ -655,7 +655,7 @@ class CoachEngine {
       if (text is String) return <String, dynamic>{'content': text};
       throw CoachException(
           'Provider returned an unsupported response shape (no message/delta). '
-          'Streaming-only endpoints are not supported — use a standard '
+          'Streaming-only endpoints are not supported - use a standard '
           'OpenAI-compatible /chat/completions endpoint.');
     } finally {
       if (client == null) c.close();
@@ -809,17 +809,17 @@ class CoachEngine {
         'sleep_efficiency,sleep_min,deep_min,rem_min,light_min,nap_min,steps,'
         'active_calories,total_calories,skin_temp_z,lf_hf,hrv_cv,dip_pct,'
         'odi_per_hour,worn_min,hrr_bpm,brv_cv,irregular_flag); '
-        'v_series(date,series,t,v) — series ∈ hr_curve,strain_curve,hrv_timeline,'
+        'v_series(date,series,t,v) - series ∈ hr_curve,strain_curve,hrv_timeline,'
         'hrv_day,resp_day,skin_temp_day,zone_timeline,activity_curve; ALWAYS filter '
         'WHERE date=\'YYYY-MM-DD\' AND series=\'…\'; '
         'v_hypnogram(date,start_ts,end_ts,stage); '
         'v_sessions(id,start_ts,end_ts,date,type,status,calories,strain,max_hr,'
-        'duration_min,steps,hrr_bpm,source,zone_min_json) — date is the LOCAL '
+        'duration_min,steps,hrr_bpm,source,zone_min_json) - date is the LOCAL '
         'calendar day; filter "today\'s workout" by date, never by converting '
         'start_ts/end_ts yourself; '
         'v_baselines(key,value,mean,z,delta,ratio,n,updated_at); '
         'v_insights(id,kind,title,body,date,created_at,read). '
-        'Read-only, derived only — no other tables. Dates are \'YYYY-MM-DD\'; '
+        'Read-only, derived only - no other tables. Dates are \'YYYY-MM-DD\'; '
         'timestamps are epoch seconds. Prefer aggregates (AVG/MIN/MAX/COUNT) over '
         'SELECT *. Results are capped at 200 rows.',
         {'sql': {'type': 'string', 'description': 'a single SELECT statement'}},

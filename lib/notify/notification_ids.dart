@@ -171,6 +171,6 @@ class NotificationIds {
           _owners.remove(ownerKey);
         }
       }
-    } catch (_) {/* bounding is best-effort — never break an allocation on it */}
+    } catch (_) {/* bounding is best-effort - never break an allocation on it */}
   }
 }

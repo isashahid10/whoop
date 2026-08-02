@@ -41,12 +41,22 @@ class WeatherClient {
       final perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.always ||
           perm == LocationPermission.whileInUse) {
-        final pos = await Geolocator.getLastKnownPosition();
-        if (pos != null) {
-          await LocalDb.setCursor(_kLat, pos.latitude.toString());
-          await LocalDb.setCursor(_kLon, pos.longitude.toString());
-          return (lat: pos.latitude, lon: pos.longitude);
-        }
+        // getLastKnownPosition returns NULL immediately after the grant — iOS
+        // has no cached fix yet, and with no stored cursor either the whole
+        // sync silently gave up. That made granting location look like it did
+        // nothing at all. So fall through to an actual fix.
+        var pos = await Geolocator.getLastKnownPosition();
+        pos ??= await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            // Weather is resolved to 3 decimal places (~100 m); a coarse fix
+            // is both sufficient and far quicker to acquire.
+            accuracy: LocationAccuracy.low,
+            timeLimit: Duration(seconds: 15),
+          ),
+        );
+        await LocalDb.setCursor(_kLat, pos.latitude.toString());
+        await LocalDb.setCursor(_kLon, pos.longitude.toString());
+        return (lat: pos.latitude, lon: pos.longitude);
       }
     } catch (_) {
       /* fall through to the cache */
@@ -66,7 +76,7 @@ class WeatherClient {
     try {
       final loc = await _location();
       if (loc == null) {
-        debugPrint('[weather] no location available — skipping');
+        debugPrint('[weather] no location available - skipping');
         return 0;
       }
 

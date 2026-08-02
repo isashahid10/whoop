@@ -190,7 +190,7 @@ class HevyStore {
     final diag = 'sessions=$n in31d=$recent ${d(lo)}..${d(hi)}'
         '${trace.isEmpty ? '' : '\n$trace'}';
 
-    debugPrint('[hevy] stored ${workouts.length} workouts, $setCount sets — $diag');
+    debugPrint('[hevy] stored ${workouts.length} workouts, $setCount sets - $diag');
     return HevySyncResult(HevySyncOutcome.ok,
         workouts: workouts.length, sets: setCount, message: diag);
   }

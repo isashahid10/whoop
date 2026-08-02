@@ -287,7 +287,7 @@ class HealthExporter {
                 '[health] day $date export incomplete (attempt $nextAttempts/$_kMaxExportAttempts)');
             if (nextAttempts >= _kMaxExportAttempts) {
               debugPrint(
-                  '[health] day $date exceeded $_kMaxExportAttempts export attempts — giving up, will stop blocking newer days');
+                  '[health] day $date exceeded $_kMaxExportAttempts export attempts - giving up, will stop blocking newer days');
             }
           }
         }
