@@ -11,14 +11,14 @@ This page is written so that **copying one block of text is enough**.
 
 | You want | Go here |
 |---|---|
-| **Android, easiest possible** | [Download the APK](https://github.com/isashahid10/edge/releases) — no setup at all. Skip this page. |
+| **Android, easiest possible** | [Download the APK](https://github.com/isashahid10/whoop/releases) — no setup at all. Skip this page. |
 | **Android, built yourself** | This page → [Android prompt](#android) |
 | **iPhone** | This page → [iPhone prompt](#iphone) |
 | **To understand each step** | [SETUP.md](SETUP.md) instead |
 
 > [!TIP]
 > **If you just want it working on Android, do not use this page.** Download the APK from
-> [Releases](https://github.com/isashahid10/edge/releases), open it on your phone, done.
+> [Releases](https://github.com/isashahid10/whoop/releases), open it on your phone, done.
 > Building from source is only worth it if you want to change something.
 
 ---
@@ -53,7 +53,7 @@ I want to build and install an Android app from source. I am not a developer,
 so please explain what you are doing in plain language and ask me before
 anything that needs a decision from me.
 
-The project is https://github.com/isashahid10/edge — a personal fork of
+The project is https://github.com/isashahid10/whoop — a personal fork of
 OpenStrap Edge that makes a WHOOP 4.0 band work without a subscription.
 
 Please do all of this:
@@ -113,7 +113,7 @@ I want to build and install an iPhone app from source. I am not a developer, so
 please explain what you are doing in plain language and ask me before anything
 that needs a decision from me.
 
-The project is https://github.com/isashahid10/edge — a personal fork of
+The project is https://github.com/isashahid10/whoop — a personal fork of
 OpenStrap Edge that makes a WHOOP 4.0 band work without a subscription.
 
 Please do all of this:
