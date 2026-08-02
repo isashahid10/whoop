@@ -1,5 +1,17 @@
 # Contributing
 
+> [!NOTE]
+> **This is a personal fork.** Most of this codebase is
+> [OpenStrap/edge](https://github.com/OpenStrap/edge)'s work, and a fix to
+> anything upstream already shipped belongs **there**, where it helps everyone
+> rather than one person.
+>
+> Open a PR here for the additions this fork owns: Hevy, nutrition, calendar,
+> weather, prayer times, naps, readiness breakdown, correlations, training
+> analysis and the UI theme. See the [README](README.md#what-this-fork-adds).
+>
+> The guidance below is upstream's and applies to both.
+
 Thanks for looking. This is a small project and PRs genuinely get read.
 
 ## Which repo does my change go in?

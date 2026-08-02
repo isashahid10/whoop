@@ -1,0 +1,65 @@
+# Dependency updates.
+#
+# Deliberately conservative. This project holds irreplaceable health data on a
+# device, and an automatic dependency bump that breaks a migration or the BLE
+# stack is worse than a slightly stale package.
+version: 2
+
+updates:
+  # ── Dart / Flutter ────────────────────────────────────────────────────────
+  - package-ecosystem: pub
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "needs-verification"]
+    commit-message:
+      prefix: "chore(deps)"
+    ignore:
+      # PINNED ON PURPOSE, and the pin is load-bearing.
+      #
+      # phosphor_flutter declares `class PhosphorIconData extends IconData`.
+      # IconData became a `final class` in Flutter 3.44, so any bump that
+      # forces a newer Flutter stops this project compiling. The symptom is
+      # ~22 test files failing at LOAD while logic tests still pass, which
+      # reads as a test bug and is not.
+      - dependency-name: phosphor_flutter
+
+      # Sibling packages are pinned to commit SHAs rather than branch refs so
+      # an upstream commit cannot silently change the behaviour of a build
+      # that was already reviewed. Updating them is a deliberate act.
+      - dependency-name: openstrap_protocol
+      - dependency-name: openstrap_analytics
+
+      # Major bumps to the storage and BLE layers are reviewed by hand. Both
+      # sit on top of data that cannot be regenerated if a migration goes
+      # wrong or a connection regresses.
+      - dependency-name: sqflite
+        update-types: ["version-update:semver-major"]
+      - dependency-name: flutter_blue_plus
+        update-types: ["version-update:semver-major"]
+
+  # ── GitHub Actions ────────────────────────────────────────────────────────
+  # These run with repository write access on release, so a compromised or
+  # abandoned action matters. Grouped into one PR: reviewing five one-line
+  # version bumps separately is noise.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # ── Android / Gradle ──────────────────────────────────────────────────────
+  - package-ecosystem: gradle
+    directory: "/android"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "android"]
+    commit-message:
+      prefix: "chore(android)"

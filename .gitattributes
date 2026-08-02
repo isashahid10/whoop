@@ -1,0 +1,95 @@
+# Line endings — normalise to LF in the repository, check out native.
+# Without this, a Windows contributor's first commit rewrites every file.
+* text=auto eol=lf
+
+# Scripts must keep LF even when checked out on Windows, or they will not run
+# under WSL or in CI.
+*.sh text eol=lf
+*.bash text eol=lf
+gradlew text eol=lf
+
+# Windows-native files keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# ── binary ──────────────────────────────────────────────────────────────────
+# Marking these explicitly stops git attempting line-ending conversion, which
+# corrupts them, and stops diffs printing megabytes of noise.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.jks binary
+*.keystore binary
+*.apk binary
+*.aab binary
+*.zip binary
+
+# ── linguist: what this repository IS ───────────────────────────────────────
+# GitHub's language bar is computed from file contents, and by default it
+# counts generated code, vendored dependencies and platform scaffolding. On a
+# Flutter project that produces a wildly misleading result: the language bar
+# reports C++, CMake, Swift and HTML rather than the Dart the project is
+# actually written in.
+
+# Generated. Not written by hand, must not count toward language stats.
+*.g.dart linguist-generated=true
+*.freezed.dart linguist-generated=true
+*.mocks.dart linguist-generated=true
+lib/firebase_options.dart linguist-generated=true
+pubspec.lock linguist-generated=true
+ios/Podfile.lock linguist-generated=true
+
+# Platform scaffolding created by `flutter create`. Real code lives in
+# ios/Runner/*.swift and android/app/src/main, which are NOT excluded here.
+linux/** linguist-vendored=true
+windows/** linguist-vendored=true
+macos/Runner/** linguist-vendored=true
+ios/Runner.xcodeproj/** linguist-vendored=true
+ios/Runner.xcworkspace/** linguist-vendored=true
+android/gradle/** linguist-vendored=true
+android/gradlew* linguist-vendored=true
+
+# Bundled third-party assets.
+assets/fonts/** linguist-vendored=true
+
+# The docs/ directory is the project website plus written documentation.
+# Counting its HTML and CSS as project source is misleading.
+docs/*.html linguist-documentation=true
+docs/*.css linguist-documentation=true
+docs/*.svg linguist-documentation=true
+*.md linguist-documentation=true
+
+# Test goldens are rendered PNG output, not authored assets.
+test/goldens/** linguist-generated=true
+
+# ── diff behaviour ──────────────────────────────────────────────────────────
+# Give git a language hint so hunk headers name the enclosing declaration
+# rather than showing a bare line number.
+*.dart diff=java
+*.kt diff=java
+*.swift diff=swift
+*.md diff=markdown
+
+# Collapse these in pull request diffs by default: they are large, generated,
+# and reviewing them line by line is never useful.
+pubspec.lock -diff
+ios/Podfile.lock -diff
+*.png -diff
+
+# ── export-ignore ───────────────────────────────────────────────────────────
+# Excluded from `git archive` and source tarballs. Development tooling has no
+# business in a release artefact.
+.github/ export-ignore
+.gitattributes export-ignore
+.gitignore export-ignore
+.vscode/ export-ignore
+test/ export-ignore
+tool/ export-ignore

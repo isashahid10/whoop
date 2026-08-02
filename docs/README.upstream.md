@@ -1,3 +1,11 @@
+> [!NOTE]
+> This is **upstream's** README, preserved verbatim for attribution.
+> It describes [OpenStrap/edge](https://github.com/OpenStrap/edge), not this
+> fork: its badges, TestFlight link, releases and donation addresses are theirs.
+> For this fork, see [the root README](../README.md).
+
+---
+
 # Openstrap Edge
 
 An app that makes a WHOOP 4.0 useful without a WHOOP subscription. Connects to the band over Bluetooth, computes everything on your phone locally iOS and Android.
@@ -39,7 +47,7 @@ Quit the official WHOOP app before you pair. Bluetooth only lets one app own the
 band at a time.
 
 Prefer to sideload the unsigned IPA instead of using TestFlight? That still
-works — see [`guides/IOS_SIDELOAD.md`](guides/IOS_SIDELOAD.md).
+works — see [`guides/IOS_SIDELOAD.md`](../guides/IOS_SIDELOAD.md).
 
 ---
 
@@ -58,7 +66,7 @@ If OpenStrap gave your band a second life, a small tip genuinely helps.
 
 `0x8310C89393366b7eBCD47ABa82e1dfB5ECeFFbD9`
 
-[**What donations actually pay for →**](DONATE.md)
+[**What donations actually pay for →**](../DONATE.md)
 
 *Nothing is gated behind paying, and nothing ever will be.<br>
 Bug reports from real bands are worth more than money — there's only one
@@ -210,7 +218,7 @@ turn on yourself:
   your local database wholesale, which is the entire point of it. It's the only thing
   here that sends the whole database rather than a slice.
 
-Full detail in [PRIVACY.md](PRIVACY.md).
+Full detail in [PRIVACY.md](../PRIVACY.md).
 
 ## Repo layout
 
@@ -233,12 +241,12 @@ send the PR. Protocol-level stuff (new record types, opcodes) belongs in the pro
 repo, metric/formula changes belong in analytics, anything about the app itself —
 Bluetooth, storage, UI — belongs here.
 
-[**CONTRIBUTING.md**](CONTRIBUTING.md) has the details: which repo a change belongs in,
+[**CONTRIBUTING.md**](../CONTRIBUTING.md) has the details: which repo a change belongs in,
 how to run the three packages together locally, and the two rules that matter most —
 never fabricate a number when the data isn't there, and cite the published method you're
 implementing.
 
-Security problems shouldn't go in a public issue — see [SECURITY.md](SECURITY.md) for
+Security problems shouldn't go in a public issue — see [SECURITY.md](../SECURITY.md) for
 private reporting.
 
 ## Contributors
@@ -253,7 +261,7 @@ wrist and reporting what came out wrong.
 The most useful contribution isn't necessarily code. There's one person's
 physiology in the test data, so a bug report from a different body on a
 different band is worth a great deal — see
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
+[`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 ## Star history
 
@@ -268,5 +276,5 @@ covering it on the same day.
 ## Support the work
 
 Free, MIT, no company behind it. If it gave your band a second life,
-[**DONATE.md**](DONATE.md) has the BTC and EVM addresses and explains what they
+[**DONATE.md**](../DONATE.md) has the BTC and EVM addresses and explains what they
 actually pay for. Bug reports from real bands are worth more than money, though.

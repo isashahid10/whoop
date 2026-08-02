@@ -5,6 +5,17 @@ body:
   - type: markdown
     attributes:
       value: |
+        **Two things this fork documents, which answer most reports:**
+
+        - A **blank** number is usually correct. This app abstains rather than
+          showing a population average as your own figure. Correlations need 14
+          paired days, bulk quality needs 10 weigh-ins, readiness needs a
+          baseline. Each card says what it is waiting for.
+        - **Deep sleep reading low is known**, was investigated with real
+          measurements, and was deliberately left unchanged. See
+          [docs/METHODOLOGY.md](../../docs/METHODOLOGY.md#deep-sleep) before
+          filing about it.
+
         Worth saying up front, so nobody wastes time: **OpenStrap's numbers are
         not meant to match WHOOP's.** Different algorithms, published methods,
         computed from a reverse-engineered byte stream. "It doesn't match the

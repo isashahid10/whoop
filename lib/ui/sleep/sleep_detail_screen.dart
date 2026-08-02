@@ -11,7 +11,7 @@
 // the row says so in words instead of leaving an invisible gap.
 
 import 'nap_history_screen.dart';
-import 'naps_card.dart';
+import 'nap_content.dart';
 import '../../compute/nap_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
