@@ -135,7 +135,7 @@ class _CycleScreenState extends State<CycleScreen> {
           title: 'Cycle tracking',
           body:
               'Predictions use the calendar method anchored on your logged '
-              'period starts — an estimate that sharpens as you log more '
+              'period starts - an estimate that sharpens as you log more '
               'cycles. Everything stays on this phone.',
           bullets: const [
             'Not medical or contraceptive guidance.',
@@ -323,7 +323,7 @@ class CycleContent extends StatelessWidget {
                 title: 'Body this cycle',
                 body:
                     'Skin temp and resting HR often rise, and HRV dips, in the '
-                    'luteal phase. Shown for context — the prediction is based '
+                    'luteal phase. Shown for context - the prediction is based '
                     'on your logged periods, not these.',
               ),
             ],
@@ -356,7 +356,7 @@ class CycleContent extends StatelessWidget {
               ),
               const SizedBox(height: Sp.x3),
               Text(
-                'Symptoms ride along with your phase + recovery — over time '
+                'Symptoms ride along with your phase + recovery - over time '
                 'they sharpen the picture.',
                 style: AppText.captionMuted,
               ),

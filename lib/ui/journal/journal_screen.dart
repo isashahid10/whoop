@@ -138,7 +138,7 @@ class _JournalScreenState extends State<JournalScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Couldn\'t save — ${_shortErr(e)}')),
+        SnackBar(content: Text('Couldn\'t save - ${_shortErr(e)}')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -153,7 +153,7 @@ class _JournalScreenState extends State<JournalScreen> {
   Widget build(BuildContext context) {
     return AppScaffold(
       title: 'Journal',
-      subtitle: 'What you did — what it moved',
+      subtitle: 'What you did - what it moved',
       actions: [
         // Talk-it-through entry point (manual + AI chat compose).
         RoundIconButton(
@@ -214,7 +214,7 @@ class _JournalScreenState extends State<JournalScreen> {
           InfoDot(
             title: 'What moves your body',
             body:
-                'How each tag tracks with your recovery, sleep and heart data — '
+                'How each tag tracks with your recovery, sleep and heart data - '
                 'computed from your own tagged days only.',
             methodNote: 'Correlation, not cause · needs ≥3 tagged days per tag',
           ),
@@ -334,9 +334,9 @@ class _JournalScreenState extends State<JournalScreen> {
           icon: OsIcon.activity,
           title: 'Insights build over time',
           message:
-              'Tag at least 3 days with how you lived, and OpenStrap starts '
+              'Tag at least 3 days with how you lived, and Whoop starts '
               'surfacing how each habit tracks with your recovery, sleep and '
-              'heart rate — drawn from your own data.',
+              'heart rate - drawn from your own data.',
         ),
       ];
     }
@@ -348,7 +348,7 @@ class _JournalScreenState extends State<JournalScreen> {
       const SizedBox(height: Sp.x4),
       Center(
         child: Text(
-          'Patterns from your own data — correlation, not cause.',
+          'Patterns from your own data - correlation, not cause.',
           style: AppText.captionMuted,
         ),
       ),

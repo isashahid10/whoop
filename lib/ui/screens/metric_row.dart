@@ -11,14 +11,14 @@ import '../design/design.dart';
 /// One-line, honest explanation per metric key. Lives behind the (i) so users
 /// can learn what they're looking at without the screen reading like a manual.
 const Map<String, String> kMetricInfo = {
-  'recovery': "How recovered you are — tonight's HRV vs your own baseline.",
+  'recovery': "How recovered you are - tonight's HRV vs your own baseline.",
   'hrv':
       'Beat-to-beat variability in sleep. Higher usually means better recovery.',
   'rmssd':
       'Beat-to-beat variability in sleep. Higher usually means better recovery.',
   'sdnn': 'Overall heart-rate variability across the night.',
   'lf_hf': 'Balance of stress-related (LF) vs rest (HF) activity.',
-  'resting_hr': 'Your lowest heart rate while asleep — a core fitness marker.',
+  'resting_hr': 'Your lowest heart rate while asleep - a core fitness marker.',
   'stress': 'Sympathetic activation read from your HRV (Baevsky index).',
   'strain': 'Cardiovascular load for the day, on a 0–21 scale.',
   'load': 'Recent (7d) vs habitual (28d) load. 0.8–1.3 is the sweet spot.',
@@ -30,30 +30,30 @@ const Map<String, String> kMetricInfo = {
   'regularity': 'How consistent your sleep timing is, 0–100.',
   // 4-class wrist staging (estimate): Awake / Light / Deep / REM. Light & Deep
   // split NREM via heart rate + motion (no EEG); Deep is a low-confidence overlay.
-  'light': 'Lighter non-REM sleep — the bulk of the night.',
+  'light': 'Lighter non-REM sleep - the bulk of the night.',
   'deep':
-      'Deep (slow-wave) non-REM — the body’s most restorative sleep. '
+      'Deep (slow-wave) non-REM - the body’s most restorative sleep. '
       'A low-confidence wrist estimate.',
-  'nrem': 'Core (NREM) — non-REM sleep (Light + Deep combined).',
-  'rem': 'Dreaming sleep — mental restoration and memory.',
+  'nrem': 'Core (NREM) - non-REM sleep (Light + Deep combined).',
+  'rem': 'Dreaming sleep - mental restoration and memory.',
   'nocturnal_dip':
-      'How far your heart rate falls in sleep — a bigger dip is better.',
+      'How far your heart rate falls in sleep - a bigger dip is better.',
   'sleeping_hr': 'Average heart rate while you slept.',
   'resp': 'Breaths per minute, derived from heart-rate variability.',
-  'spo2': 'Relative blood-oxygen dip signal from your PPG — not an absolute reading.',
-  'skin_temp': 'Skin temperature vs your personal overnight baseline — relative, not absolute.',
+  'spo2': 'Relative blood-oxygen dip signal from your PPG - not an absolute reading.',
+  'skin_temp': 'Skin temperature vs your personal overnight baseline - relative, not absolute.',
   'hrr60':
-      'How fast your HR drops a minute after peak effort — fitness marker.',
+      'How fast your HR drops a minute after peak effort - fitness marker.',
   'illness':
       'A combined resting-HR / HRV / temperature signal that can flag early illness.',
   'debt': 'Sleep you owe from falling short of your need on recent nights.',
-  'hrv_cv': 'How steady your nightly HRV is — lower, stable is better.',
-  'readiness': 'A blend of HRV recovery and sleep — your day-ahead capacity.',
+  'hrv_cv': 'How steady your nightly HRV is - lower, stable is better.',
+  'readiness': 'A blend of HRV recovery and sleep - your day-ahead capacity.',
   'vo2max': 'Estimated aerobic fitness from your max vs resting heart rate.',
   'form': 'Freshness: fitness minus fatigue. Positive means well-rested.',
-  'fatigue': 'Acute training load — recent fatigue (Banister).',
-  'monotony': 'Sameness of daily strain — very high can raise injury risk.',
-  'dip': 'How far your heart rate falls in sleep — a bigger dip is better.',
+  'fatigue': 'Acute training load - recent fatigue (Banister).',
+  'monotony': 'Sameness of daily strain - very high can raise injury risk.',
+  'dip': 'How far your heart rate falls in sleep - a bigger dip is better.',
 };
 
 String? infoFor(String key) => kMetricInfo[key];

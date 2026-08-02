@@ -15,7 +15,7 @@ import '../onboarding/welcome_screen.dart' show AffiliationDisclaimer;
 
 /// Hosted Privacy Policy (GitHub Pages, docs/legal-site). Both app stores
 /// require a live hosted URL, not a repo file — this is that URL.
-const String kPrivacyPolicyUrl = 'https://openstrap.github.io/edge/privacy.html';
+const String kPrivacyPolicyUrl = 'https://whoop.github.io/edge/privacy.html';
 
 const String kNoticeUrl =
     'https://github.com/OpenStrap/edge/blob/main/NOTICE.md';

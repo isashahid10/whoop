@@ -112,14 +112,14 @@ class _ImportScreenState extends State<ImportScreen> {
           ImportOptionCard(
             icon: OsIcon.heartRate,
             title: 'Import from NOOP',
-            body: 'Raw 1 Hz CSV — re-analyzed end-to-end on this phone.',
+            body: 'Raw 1 Hz CSV - re-analyzed end-to-end on this phone.',
             onTap: _busy ? null : _importNoop,
           ),
           const SizedBox(height: Sp.x3),
           ImportOptionCard(
             icon: OsIcon.server,
             title: 'Import from Edge backup',
-            body: 'A .db exported from another OpenStrap device.',
+            body: 'A .db exported from another Whoop device.',
             onTap: _busy ? null : _importEdge,
           ),
           const SizedBox(height: Sp.x3),
@@ -127,7 +127,7 @@ class _ImportScreenState extends State<ImportScreen> {
             icon: OsIcon.history,
             title: 'Import from WHOOP',
             tag: 'BETA',
-            body: 'WHOOP export CSVs — derived summaries only.',
+            body: 'WHOOP export CSVs - derived summaries only.',
             onTap: _busy ? null : _importWhoop,
           ),
         ]),
@@ -145,7 +145,7 @@ class _ImportScreenState extends State<ImportScreen> {
             const InfoDot(
               title: 'How imports work',
               bullets: [
-                'NOOP CSVs carry raw 1 Hz sensor data — they get the same '
+                'NOOP CSVs carry raw 1 Hz sensor data - they get the same '
                     'full analysis as a live sync.',
                 'Edge backups merge another device\'s complete history.',
                 'WHOOP exports have no raw 1 Hz, so those days import as '

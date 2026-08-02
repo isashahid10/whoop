@@ -147,7 +147,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
       ],
       children: [
         // ── Typography ────────────────────────────────────────────────
-        const SectionHeader('Typography — Manrope'),
+        const SectionHeader('Typography - Manrope'),
         SurfaceCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,10 +161,10 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
               Text('Heading two', style: AppText.h2),
               Text('Title', style: AppText.title),
               Text(
-                'Body — the quick warm ember jumps over the char.',
+                'Body - the quick warm ember jumps over the char.',
                 style: AppText.body,
               ),
-              Text('Body soft — supporting copy.', style: AppText.bodySoft),
+              Text('Body soft - supporting copy.', style: AppText.bodySoft),
               Text('Label', style: AppText.label),
               Text('Caption', style: AppText.caption),
               Text('OVERLINE', style: AppText.overline),
@@ -484,7 +484,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
         MedalCard(
           medal: '5K',
           overline: 'Personal record',
-          title: 'Fastest 5k — 24:31',
+          title: 'Fastest 5k - 24:31',
           subtitle: 'Tuesday morning run',
           onTap: () {},
         ),
@@ -494,7 +494,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
         const SectionHeader('AiHero'),
         AiHero(
           overline: 'Good morning',
-          line: 'Solid recovery — a strong day to push your intervals.',
+          line: 'Solid recovery - a strong day to push your intervals.',
           hint: 'Ask about your day…',
           cta: 'Tap for the breakdown',
           onTap: () {},
@@ -729,7 +729,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
                     title: 'The (i) affordance',
                     body:
                         'Every explanatory sentence in the app lives behind one '
-                        'of these — the main view stays numbers-first.',
+                        'of these - the main view stays numbers-first.',
                   ),
                 ],
               ),
@@ -799,11 +799,11 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
         const SectionHeader('Workout preview (fake GPS route)'),
         const SizedBox(height: Sp.x2),
         Text(
-          'Static fake run (~3.2 km, 20 min) — not a real recording. '
+          'Static fake run (~3.2 km, 20 min) - not a real recording. '
           'Reviews the live map + BPM/zone stat bar, and the finish '
           'screen’s route-hero layout. The Share button on the finish '
           'screen is the REAL share flow (opens the OS share sheet with '
-          'this fake workout\'s card) — same as production, not a preview.',
+          'this fake workout\'s card) - same as production, not a preview.',
           style: AppText.captionMuted,
         ),
         const SizedBox(height: Sp.x3),
@@ -850,7 +850,7 @@ class _DesignGalleryScreenState extends State<DesignGalleryScreen> {
         const SectionHeader('Share card'),
         const SizedBox(height: Sp.x2),
         Text(
-          'What actually gets posted — composed for a feed, not a capture of '
+          'What actually gets posted - composed for a feed, not a capture of '
           'the finish screen. Map full-bleed, one headline figure, three '
           'supporting stats, nothing else. Both cards below are the REAL '
           'widget with the fake run\'s data and your current units; tap either '

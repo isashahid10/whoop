@@ -810,7 +810,7 @@ class _StrainDetailScreenState extends State<StrainDetailScreen> {
               const SizedBox(width: Sp.x4),
               Expanded(
                 child: Text(
-                  'No workouts auto-detected — strain still accrues from all-day '
+                  'No workouts auto-detected - strain still accrues from all-day '
                   'heart rate.',
                   style: AppText.bodySoft,
                 ),

@@ -230,7 +230,7 @@ class WorkoutShareCard extends StatelessWidget {
                       AppIcon(OsIcon.activity, size: 13, color: data.accent),
                       const SizedBox(width: Sp.x2),
                       Text(
-                        'OpenStrap',
+                        'Whoop',
                         style: AppText.caption.copyWith(
                           color: AppColors.onNightMuted,
                           fontWeight: FontWeight.w700,
@@ -378,7 +378,7 @@ class _WorkoutSharePreviewScreenState extends State<WorkoutSharePreviewScreen> {
       // a ~1080 px PNG; a unique name per tap left every one of them sitting in
       // the temp directory until the OS felt like reclaiming it. The share
       // sheet has finished reading the file before the next share overwrites.
-      final file = File('${dir.path}/openstrap_share.png');
+      final file = File('${dir.path}/whoop_share.png');
       await file.writeAsBytes(bytes.buffer.asUint8List());
 
       if (!mounted) return;
@@ -397,7 +397,7 @@ class _WorkoutSharePreviewScreenState extends State<WorkoutSharePreviewScreen> {
       debugPrint('[share] failed: $e\n$st');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't prepare the image — try again")),
+        const SnackBar(content: Text("Couldn't prepare the image - try again")),
       );
     } finally {
       if (mounted) setState(() => _sharing = false);

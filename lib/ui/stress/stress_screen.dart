@@ -127,7 +127,7 @@ class _StressScreenState extends State<StressScreen> {
             title: 'No stress reading for this day',
             message:
                 'Stress is computed from your overnight HRV (beat-to-beat '
-                'heart data). Wear your strap through the night and sync — it '
+                'heart data). Wear your strap through the night and sync - it '
                 'needs a few nights of baseline before it can score you '
                 'against your own normal.',
             actionLabel: 'Try again',
@@ -202,12 +202,12 @@ class StressDayContent extends StatelessWidget {
 
   /// The relief line — what to do with this number, one sentence.
   String _relief(int v) => v < 25
-      ? 'Your system is settled — a good day to take on load.'
+      ? 'Your system is settled - a good day to take on load.'
       : v < 50
           ? 'Normal daily activation. Nothing to manage here.'
           : v < 75
-              ? 'Running warm — slow breaths, a walk or daylight all help it settle.'
-              : 'High sympathetic load — favour easy movement and an early night.';
+              ? 'Running warm - slow breaths, a walk or daylight all help it settle.'
+              : 'High sympathetic load - favour easy movement and an early night.';
 
   String _hm(int m) {
     if (m <= 0) return '0m';
@@ -274,7 +274,7 @@ class StressDayContent extends StatelessWidget {
               body:
                   'Sympathetic "fight-or-flight" activation read from your '
                   'overnight HRV (Baevsky Stress Index), scored against your '
-                  'own baseline — a body signal, not a mood. It needs a few '
+                  'own baseline - a body signal, not a mood. It needs a few '
                   'nights of HRV to be meaningful.',
               methodNote: 'Baevsky SI vs your rolling baseline · 0–100',
             ),
@@ -344,7 +344,7 @@ class StressDayContent extends StatelessWidget {
               trailing: InfoDot(
                 title: 'Stress index (Baevsky)',
                 body:
-                    'Baevsky SI from your HRV — higher means more sympathetic '
+                    'Baevsky SI from your HRV - higher means more sympathetic '
                     'activation. Scored vs your own baseline.',
               ),
             ),
@@ -448,7 +448,7 @@ class StressDayContent extends StatelessWidget {
               trailing: InfoDot(
                 title: 'Through the day',
                 body:
-                    'Your heart rate across the day — shown as context for the '
+                    'Your heart rate across the day - shown as context for the '
                     'stress score, not what it is computed from.',
               ),
             ),
@@ -494,7 +494,7 @@ class StressDayContent extends StatelessWidget {
                   trailing: InfoDot(
                     title: 'Sleep stress',
                     body:
-                        'Possible arousals overnight — brief heart-rate surges '
+                        'Possible arousals overnight - brief heart-rate surges '
                         'with movement during sleep. Not nightmares.',
                   ),
                 ),
@@ -523,7 +523,7 @@ class StressDayContent extends StatelessWidget {
                     trailing: InfoDot(
                       title: 'Restlessness',
                       body:
-                          'How fragmented the night was — the number of times '
+                          'How fragmented the night was - the number of times '
                           'you shifted, and your longest unbroken still '
                           'stretch.',
                     ),

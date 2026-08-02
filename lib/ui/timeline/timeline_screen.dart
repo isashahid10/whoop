@@ -396,7 +396,7 @@ class _TimelineContentState extends State<TimelineContent>
                 body:
                     'All vitals are drawn together on one time axis, each '
                     'normalized to its own range. The axis shows the selected '
-                    'vital in its real units — tap a chip to switch. Scrub '
+                    'vital in its real units - tap a chip to switch. Scrub '
                     'the chart to read every vital at a moment.',
                 methodNote:
                     'Only continuously-recorded vitals are shown. Daytime HRV '

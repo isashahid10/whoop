@@ -425,7 +425,7 @@ class JourneyContent extends StatelessWidget {
               body:
                   'The fraction of each 5-minute block that looked physically '
                   'active.',
-              methodNote: 'A motion signal from the wrist — not steps.',
+              methodNote: 'A motion signal from the wrist - not steps.',
             ),
           ),
           const SizedBox(height: Sp.x3),

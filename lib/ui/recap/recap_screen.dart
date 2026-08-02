@@ -231,13 +231,13 @@ class _RecapScreenState extends State<RecapScreen> {
 
       final dir = await getTemporaryDirectory();
       final file = File(
-        '${dir.path}/openstrap_recap_${DateTime.now().millisecondsSinceEpoch}.png',
+        '${dir.path}/whoop_recap_${DateTime.now().millisecondsSinceEpoch}.png',
       );
       await file.writeAsBytes(bytes.buffer.asUint8List());
 
       await Share.shareXFiles(
         [XFile(file.path)],
-        text: 'My OpenStrap recap',
+        text: 'My Whoop recap',
         sharePositionOrigin: origin,
       );
     } catch (e) {
@@ -403,7 +403,7 @@ class RecapShareCard extends StatelessWidget {
               ),
               const SizedBox(width: Sp.x2),
               Text(
-                'OpenStrap',
+                'Whoop',
                 style: AppText.title.copyWith(color: AppColors.onNight),
               ),
               const Spacer(),
@@ -552,7 +552,7 @@ class RecapShareCard extends StatelessWidget {
                   const SizedBox(width: Sp.x2),
                   Expanded(
                     child: Text(
-                      'Top workout — '
+                      'Top workout - '
                       '${_titleCase((top['type'] ?? 'workout').toString())}',
                       style: AppText.caption.copyWith(
                         color: AppColors.onNight,
@@ -585,7 +585,7 @@ class RecapShareCard extends StatelessWidget {
               AppIcon(OsIcon.shield, size: 13, color: AppColors.onNightSoft),
               const SizedBox(width: 6),
               Text(
-                'your data · your device · openstrap',
+                'your data · your device · whoop',
                 style: AppText.caption.copyWith(color: AppColors.onNightSoft),
               ),
             ],

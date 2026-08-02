@@ -183,7 +183,7 @@ class _GrantCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             'Android needs your permission to read which app posted a notification. '
-            'We only use it to decide whether to buzz the band — nothing leaves your phone.',
+            'We only use it to decide whether to buzz the band - nothing leaves your phone.',
             style: AppText.captionMuted,
           ),
           const SizedBox(height: Sp.x4),

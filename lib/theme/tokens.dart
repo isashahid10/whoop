@@ -135,34 +135,64 @@ const Palette kLightPalette = Palette(
 /// Night — "Ember on Char". Warm charcoal, never cold black. Ink is the paper
 /// colour; coral lifts ~8% so it reads cleanly on dark; the pale "*Soft" tints
 /// become deep warm ember/earth fills so light ink sits on them comfortably.
+/// Night — the performance palette.
+///
+/// REWRITTEN to drop the warm sepia cast the previous values carried. That
+/// palette was a "cozy" one: a brown-black ground (#14110D), cream ink and a
+/// spread of decorative hues. It read as a lifestyle app, and the warmth
+/// actively fought the data — a sepia ground tints every accent laid on it, so
+/// the greens went olive and the blues went muddy.
+///
+/// The rules this replacement follows:
+///
+///   1. THE GROUND IS NEUTRAL AND NEAR-BLACK. Pure #000000 for the page so the
+///      OLED cutoff is real and the cards float off it, with a neutral grey
+///      ramp above. No hue in the greys at all — every one is r == g == b.
+///   2. COLOUR IS DATA, NEVER DECORATION. The accent set is deliberately
+///      small: green means recovered, blue means exertion, yellow means
+///      middling, red means don't. A hue that carries no meaning does not
+///      appear, which is why there is no separate decorative "brand" hue
+///      distinct from the data colours.
+///   3. INK IS WHITE. Not cream. Off-white on neutral grey reads as a colour
+///      cast rather than as warmth.
 const Palette kDarkPalette = Palette(
   brightness: Brightness.dark,
-  bg: Color(0xFF14110D), // warm near-black char
-  surface: Color(0xFF1E1A15), // cards, lifted off bg
-  surfaceAlt: Color(0xFF2A251F), // inset / skeleton base
-  surfaceSunk: Color(0xFF100E0A), // wells, darker than bg
-  cool: Color(0xFF20242E), // cool secondary, darkened
-  coolInk: Color(0xFFC3CADB), // ink on the cool surface
-  divider: Color(0xFF302A22),
-  ink: Color(0xFFF1ECE3), // warm off-white — the paper becomes the ink
-  inkSoft: Color(0xFFB6AB9C),
-  inkMuted: Color(0xFF7E7466),
-  coral: Color(0xFFFF6B47), // a hair brighter on dark
-  coralDeep: Color(0xFFFF8159), // "deep" = stronger/lighter coral on dark text
-  coralSoft: Color(0xFF3A2018), // deep warm ember tint fill
-  coralInk: Color(0xFFFFB59E), // light coral text on coralSoft
-  brand: Color(0xFF3FD3E3), // a hair brighter on dark, same family as light
-  brandDeep: Color(0xFF63E3EF),
-  brandSoft: Color(0xFF102E32), // deep teal tint fill
-  brandInk: Color(0xFFA6ECF2), // light cyan text on brandSoft
-  good: Color(0xFF34C988),
-  goodSoft: Color(0xFF15281F),
-  warn: Color(0xFFF7B53A),
-  warnSoft: Color(0xFF31280F),
-  bad: Color(0xFFF26168),
-  badSoft: Color(0xFF331A1B),
-  confLow: Color(0xFF5A5248),
-  loadDetraining: Color(0xFF8FB4F2),
+  // Pure black page: on OLED the pixels are genuinely off, which is what makes
+  // the cards read as floating rather than as lighter rectangles.
+  bg: Color(0xFF000000),
+  surface: Color(0xFF121212), // cards
+  surfaceAlt: Color(0xFF1C1C1E), // inset / skeleton / pressed
+  surfaceSunk: Color(0xFF000000), // wells sit at page level, not below it
+  cool: Color(0xFF1C1C1E), // no separate cool family — greys are neutral
+  coolInk: Color(0xFFB0B0B0),
+  divider: Color(0xFF262626),
+  ink: Color(0xFFFFFFFF), // white, not cream
+  inkSoft: Color(0xFFB3B3B3),
+  inkMuted: Color(0xFF767676), // clears 4.5:1 on both #000 and #121212
+  // Red — the low/urgent evaluative colour. Kept under the `coral` name so
+  // every existing call site keeps working; the VALUE is what changed.
+  coral: Color(0xFFFF0026),
+  coralDeep: Color(0xFFFF3D57),
+  coralSoft: Color(0xFF2A0007),
+  coralInk: Color(0xFFFF8A99),
+  // Blue — exertion/strain, and the chrome accent. One hue doing both is
+  // deliberate: strain is the app's routine state, so its colour is the
+  // natural non-alarming accent.
+  brand: Color(0xFF0093E7),
+  brandDeep: Color(0xFF3FB2F0),
+  brandSoft: Color(0xFF00243A),
+  brandInk: Color(0xFF7FCBF5),
+  // Green — recovered. The signature high-recovery colour.
+  good: Color(0xFF00F19F),
+  goodSoft: Color(0xFF003322),
+  // Yellow — the middle band. Not orange: orange sits too close to red at a
+  // glance, and these two must be separable in a 10 pt ring.
+  warn: Color(0xFFFFDE00),
+  warnSoft: Color(0xFF332C00),
+  bad: Color(0xFFFF0026),
+  badSoft: Color(0xFF2A0007),
+  confLow: Color(0xFF4A4A4A),
+  loadDetraining: Color(0xFF7FCBF5),
 );
 
 /// Palette — warm paper + coral. Same public names as before; mode-varying roles
@@ -193,8 +223,11 @@ class AppColors {
 
   // ── Dark hero surfaces — INVARIANT across modes (always-dark cards: the
   //    device card, the live-workout screen, splash overlays). ──
-  static const night = Color(0xFF181613);
-  static const nightAlt = Color(0xFF24211D);
+  // Neutralised along with the rest of the palette: these were warm browns
+  // (#181613 / #24211D), which on a now-neutral page read as a colour cast
+  // rather than as a deeper surface.
+  static const night = Color(0xFF0A0A0A);
+  static const nightAlt = Color(0xFF1C1C1E);
 
   // ── Ink ramp for permanently-dark surfaces (the live session screen) ──
   //
@@ -218,13 +251,13 @@ class AppColors {
   /// already pass — the live session screen simply wasn't using them, and
   /// reached for raw `Colors.whiteNN` instead. This adds the third step that
   /// was missing so there is a token for every role and no reason to.
-  static const onNightMuted = Color(0xFF9C9B99);
+  static const onNightMuted = Color(0xFF9A9A9A);
 
   /// Primary ink on a dark session surface — 14.23:1.
-  static const onNight = Color(0xFFF4F1EC);
+  static const onNight = Color(0xFFFFFFFF);
 
   /// Secondary ink (values, unselected controls) — 6.21:1.
-  static const onNightSoft = Color(0xFFA8A096);
+  static const onNightSoft = Color(0xFFB3B3B3);
 
   // ── Accent — ember coral (mode-varying). Alert/urgent semantics ONLY —
   //    see `brand` below for the routine identity accent. ──
@@ -413,11 +446,17 @@ class Sp {
 }
 
 /// Radii — soft, generous (modern rounded cards).
+/// Corner radii.
+///
+/// TIGHTENED from 28/20/14. The larger radii belonged to the soft "paper"
+/// design; at 28 pt a card reads as a rounded blob and, stacked, the gaps
+/// between cards turn into visible pinch points. A performance UI wants
+/// rectangles with the corners taken off, not lozenges.
 class R {
   R._();
-  static const card = 28.0;
-  static const cardSm = 20.0;
-  static const chip = 14.0;
+  static const card = 16.0;
+  static const cardSm = 12.0;
+  static const chip = 8.0;
   static const pill = 999.0;
 }
 

@@ -105,7 +105,7 @@ class _SleepCoachCardState extends State<SleepCoachCard> {
     if (!when.isAfter(now)) when = when.add(const Duration(days: 1));
     try {
       await app.setAlarm(when);
-      _snack('Band alarm set for ${_hhmm(wakeMin)} — confirming with the strap…');
+      _snack('Band alarm set for ${_hhmm(wakeMin)} - confirming with the strap…');
     } catch (e) {
       _snack("Couldn't set alarm: $e");
     }
@@ -382,7 +382,7 @@ class _FitnessAgeCardState extends State<FitnessAgeCard> {
         accent: AppColors.good,
         title: 'Fitness age',
         body: 'Your VO₂max and physiological age build from resting heart rate, '
-            'HRV, sleep and activity — keep wearing the strap.',
+            'HRV, sleep and activity - keep wearing the strap.',
       );
     }
     final pa = (_age?['physio_age'] as num?)?.round();
@@ -425,7 +425,7 @@ class _FitnessAgeCardState extends State<FitnessAgeCard> {
             ]),
         ]),
         const SizedBox(height: Sp.x2),
-        Text('An estimate from your own data — directional, not a lab test.',
+        Text('An estimate from your own data - directional, not a lab test.',
             style: AppText.captionMuted),
       ]),
     );

@@ -32,7 +32,6 @@
 // suddenly fails to resolve, re-add:
 //   import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'page_transitions.dart';
 import 'tokens.dart';
 
@@ -42,6 +41,26 @@ class AppText {
   AppText._();
 
   static const _tnum = [FontFeature.tabularFigures()];
+
+  // ── Text — Manrope. Bundled locally for the same reason Barlow Condensed is
+  // (see pubspec `flutter.fonts`): google_fonts downloads on FIRST LAUNCH, so
+  // the first render of a fresh install used a fallback face and needed
+  // network. `_manrope` is a drop-in for _manrope(...) — same named
+  // arguments, no network.
+  static TextStyle _manrope({
+    double? fontSize,
+    FontWeight? fontWeight,
+    double? height,
+    double? letterSpacing,
+    Color? color,
+  }) => TextStyle(
+    fontFamily: 'Manrope',
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    height: height,
+    letterSpacing: letterSpacing,
+    color: color,
+  );
 
   // ── Display / numerics — Barlow Condensed: heavy, tight, tabular, kinetic ──
   // Bundled as a local asset (pubspec.yaml `flutter.fonts`), NOT fetched at
@@ -89,14 +108,14 @@ class AppText {
   );
 
   // ── Headings ──
-  static TextStyle get h1 => GoogleFonts.manrope(
+  static TextStyle get h1 => _manrope(
     fontSize: 28,
     fontWeight: FontWeight.w800,
     height: 1.05,
     letterSpacing: -0.7,
     color: AppColors.ink,
   );
-  static TextStyle get h2 => GoogleFonts.manrope(
+  static TextStyle get h2 => _manrope(
     fontSize: 20,
     fontWeight: FontWeight.w700,
     height: 1.1,
@@ -105,41 +124,41 @@ class AppText {
   );
 
   // ── Body / labels ──
-  static TextStyle get title => GoogleFonts.manrope(
+  static TextStyle get title => _manrope(
     fontSize: 16,
     fontWeight: FontWeight.w700,
     letterSpacing: -0.15,
     color: AppColors.ink,
   );
-  static TextStyle get body => GoogleFonts.manrope(
+  static TextStyle get body => _manrope(
     fontSize: 14.5,
     fontWeight: FontWeight.w500,
     height: 1.45,
     color: AppColors.ink,
   );
-  static TextStyle get bodySoft => GoogleFonts.manrope(
+  static TextStyle get bodySoft => _manrope(
     fontSize: 14.5,
     fontWeight: FontWeight.w500,
     height: 1.45,
     color: AppColors.inkSoft,
   );
-  static TextStyle get label => GoogleFonts.manrope(
+  static TextStyle get label => _manrope(
     fontSize: 13,
     fontWeight: FontWeight.w700,
     color: AppColors.inkSoft,
     letterSpacing: 0.1,
   );
-  static TextStyle get caption => GoogleFonts.manrope(
+  static TextStyle get caption => _manrope(
     fontSize: 12,
     fontWeight: FontWeight.w600,
     color: AppColors.inkSoft,
   );
-  static TextStyle get captionMuted => GoogleFonts.manrope(
+  static TextStyle get captionMuted => _manrope(
     fontSize: 12,
     fontWeight: FontWeight.w600,
     color: AppColors.inkMuted,
   );
-  static TextStyle get overline => GoogleFonts.manrope(
+  static TextStyle get overline => _manrope(
     fontSize: 11,
     fontWeight: FontWeight.w800,
     letterSpacing: 1.5,
@@ -174,7 +193,7 @@ ThemeData buildOpenStrapTheme(Palette p) {
     dividerColor: p.divider,
     splashColor: p.brand.withValues(alpha: 0.08),
     highlightColor: p.brand.withValues(alpha: 0.05),
-    textTheme: GoogleFonts.manropeTextTheme().apply(
+    textTheme: ThemeData.dark().textTheme.apply(fontFamily: 'Manrope').apply(
       bodyColor: p.ink,
       displayColor: p.ink,
     ),
@@ -201,7 +220,7 @@ ThemeData buildOpenStrapTheme(Palette p) {
       foregroundColor: p.ink,
       elevation: 0,
       centerTitle: false,
-      titleTextStyle: GoogleFonts.manrope(
+      titleTextStyle: AppText._manrope(
         fontSize: 20,
         fontWeight: FontWeight.w700,
         height: 1.1,
@@ -216,12 +235,12 @@ ThemeData buildOpenStrapTheme(Palette p) {
         horizontal: Sp.x5,
         vertical: Sp.x4,
       ),
-      hintStyle: GoogleFonts.manrope(
+      hintStyle: AppText._manrope(
         fontSize: 14.5,
         fontWeight: FontWeight.w500,
         color: p.inkMuted,
       ),
-      labelStyle: GoogleFonts.manrope(
+      labelStyle: AppText._manrope(
         fontSize: 14.5,
         fontWeight: FontWeight.w500,
         color: p.inkSoft,
@@ -253,7 +272,7 @@ ThemeData buildOpenStrapTheme(Palette p) {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(R.pill),
         ),
-        textStyle: GoogleFonts.manrope(
+        textStyle: AppText._manrope(
           fontSize: 16,
           fontWeight: FontWeight.w800,
         ),
@@ -267,7 +286,7 @@ ThemeData buildOpenStrapTheme(Palette p) {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(R.pill),
         ),
-        textStyle: GoogleFonts.manrope(
+        textStyle: AppText._manrope(
           fontSize: 15,
           fontWeight: FontWeight.w700,
         ),
@@ -276,7 +295,7 @@ ThemeData buildOpenStrapTheme(Palette p) {
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: p.brandDeep,
-        textStyle: GoogleFonts.manrope(
+        textStyle: AppText._manrope(
           fontSize: 14,
           fontWeight: FontWeight.w700,
         ),
@@ -285,7 +304,7 @@ ThemeData buildOpenStrapTheme(Palette p) {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: p.isDark ? p.surfaceAlt : AppColors.night,
-      contentTextStyle: GoogleFonts.manrope(color: AppColors.onNight),
+      contentTextStyle: AppText._manrope(color: AppColors.onNight),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(R.chip),
       ),

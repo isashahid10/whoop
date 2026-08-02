@@ -7,6 +7,7 @@
 // invisible: pull-to-refresh quietly asks the strap for fresh data — there is
 // deliberately NO "stored to / syncs every / last data" copy on this screen.
 
+import '../readiness/readiness_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -28,6 +29,9 @@ import '../recap/recap_screen.dart';
 import '../ai/ai_breakdown_screen.dart';
 import '../coach/coach_screen.dart';
 import '../profile/profile_screen.dart';
+import 'day_cards.dart';
+import 'day_details_sheet.dart';
+import 'score_trio.dart';
 import '../screens/screens.dart';
 import 'step_goal_screen.dart';
 import '../journey/journey_screen.dart';
@@ -69,6 +73,12 @@ class _TodayScreenState extends State<TodayScreen>
   /// [kLookbackMinDataHours]), not stored precomputed — so the card appears as
   /// soon as enough time has elapsed, not only on the next loader refresh.
   int? _earliestRecordSec;
+
+  /// Newest decoded record (unix seconds). Wear time counts minutes that have
+  /// a RECORD, and records only exist once drained off the band — so when this
+  /// is hours old the wear figure is provably incomplete, and the UI has to
+  /// say so rather than present a short number as fact.
+  int? _lastRecordSec;
 
   // Cache for the onboarding collection-progress FutureBuilder below — without
   // this, `LocalDb.firstAndLastRecordTs()` called inline in `future:` builds a
@@ -162,8 +172,13 @@ class _TodayScreenState extends State<TodayScreen>
       // `now - earliest` on every build and the card can appear purely by wall
       // clock crossing the threshold. Best-effort — a failure just leaves the
       // card hidden until the next successful load.
-      final (first, _) = await LocalDb.firstAndLastRecordTs();
-      if (mounted) setState(() => _earliestRecordSec = first);
+      final (first, last) = await LocalDb.firstAndLastRecordTs();
+      if (mounted) {
+        setState(() {
+          _earliestRecordSec = first;
+          _lastRecordSec = last;
+        });
+      }
     } catch (_) {}
     return today;
   }
@@ -204,6 +219,21 @@ class _TodayScreenState extends State<TodayScreen>
         overflow: TextOverflow.ellipsis,
       ),
       actions: [
+        // The day's contextual detail — prayer times, nutrition, conditions,
+        // schedule. Everything in here is optional and time-of-day specific,
+        // which is exactly why it lives behind a tap instead of taking
+        // permanent space on a screen built around three scores.
+        RoundIconButton(
+          OsIcon.info,
+          onTap: () => showDayDetailsSheet(
+            context,
+            bandAlarmEpoch: context.read<AppState>().alarmEpoch,
+            // Cancelling clears the phone alarm unconditionally and queues the
+            // band's disable if the strap is out of range, so this cannot
+            // leave an alarm the user believes they turned off.
+            onCancelAlarm: () => context.read<AppState>().disableAlarm(),
+          ),
+        ),
         RoundIconButton(
           OsIcon.edit,
           onTap: () => _push(() => const JournalScreen()),
@@ -224,8 +254,18 @@ class _TodayScreenState extends State<TodayScreen>
         // Sync is invisible: the pull quietly asks the strap for fresh data
         // AND reloads the screen — no sync copy anywhere on Today.
         onRefresh: () async {
+          // Pull EVERYTHING, not just the band. This used to kick a strap
+          // resync and re-read the local DB, which meant the spinner ran and
+          // nothing on screen could actually change unless the band happened
+          // to hand over new data — Apple Health steps and Hevy workouts were
+          // never fetched at all. Awaited so the indicator stays up until the
+          // work is genuinely done.
+          final app = context.read<AppState>();
           try {
-            context.read<AppState>().forceResync();
+            app.forceResync();
+          } catch (_) {}
+          try {
+            await app.forceExternalSync();
           } catch (_) {}
           await refresh();
         },
@@ -234,7 +274,7 @@ class _TodayScreenState extends State<TodayScreen>
           physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
           ),
-          padding: const EdgeInsets.fromLTRB(Sp.screen, Sp.x2, Sp.screen, 120),
+          padding: const EdgeInsets.fromLTRB(Sp.screen, Sp.x2, Sp.screen, Sp.x6),
           children: [
             // OTA update prompt + admin alert banner (self-hiding).
             const StatusBanner(),
@@ -350,6 +390,7 @@ class _TodayScreenState extends State<TodayScreen>
             sparks: _sparks,
             stepsWeek: _stepsWeek,
             liveSteps: context.read<AppState>().liveSteps,
+            lastRecordSec: _lastRecordSec,
             onOpen: _open,
             hasAiBriefing: hasAiBriefing,
             aiBriefing: hasAiBriefing ? BriefingStore.read(period) : null,
@@ -391,8 +432,14 @@ class _TodayScreenState extends State<TodayScreen>
   void _open(String id) {
     switch (id) {
       case 'readiness':
+        // The glass-box breakdown, which the score has always carried and
+        // nothing ever displayed. Falls back to the coach, then to the info
+        // sheet, so a day with no composite still opens something useful.
+        final hasBreakdown = !TodayData.fromJson(data).readiness.isEmpty;
         final coach = TodayData.fromJson(data).coach;
-        if (coach != null) {
+        if (hasBreakdown) {
+          _push(() => ReadinessDetailScreen(date: todayLabel()));
+        } else if (coach != null) {
           _push(() => CoachScreen(coach: coach));
         } else {
           showInfoSheet(
@@ -420,6 +467,10 @@ class _TodayScreenState extends State<TodayScreen>
         _push(() => const OxygenScreen());
       case 'records':
         _push(() => const RecordsScreen());
+      case 'workouts':
+        // Jump the NAV rather than pushing: Workouts is a root tab, and
+        // pushing it would stack a second copy on top of Today.
+        context.read<AppState>().navRequest.value = 4;
     }
   }
 
@@ -438,7 +489,7 @@ class _TodayScreenState extends State<TodayScreen>
         InfoDot(
           title: title,
           body: note,
-          methodNote: 'A signal from your own baselines — not a diagnosis',
+          methodNote: 'A signal from your own baselines - not a diagnosis',
         ),
         const Spacer(),
       ],
@@ -497,7 +548,7 @@ class _TodayScreenState extends State<TodayScreen>
           const SizedBox(height: Sp.x3),
           Text(
             hasData
-                ? 'Heart rate, HRV, temp — your whole day'
+                ? 'Heart rate, HRV, temp - your whole day'
                 : 'No data yet today',
             style: AppText.body,
           ),
@@ -562,9 +613,9 @@ class _TodayScreenState extends State<TodayScreen>
           final last = snap.data?.$2;
           final message = first == null
               ? 'Stored $raw raw record${raw == 1 ? '' : 's'} from your strap. '
-                  'Analysis runs automatically after a sync — or run it now.'
+                  'Analysis runs automatically after a sync - or run it now.'
               : 'Data from ${_fmtCollectionDate(first)} is being collected. '
-                  'Analysis runs automatically after a sync — or run it now.';
+                  'Analysis runs automatically after a sync - or run it now.';
           return StateCard(
             icon: OsIcon.history,
             title: 'Data collection has started',
@@ -585,7 +636,7 @@ class _TodayScreenState extends State<TodayScreen>
           'Put your strap on and keep the app open. Your daily metrics '
           'appear after the next sync and analytics run. If your strap has '
           'been recording for a while, the first sync can take a few '
-          "minutes — it's just pulling everything it's been holding onto. "
+          "minutes - it's just pulling everything it's been holding onto. "
           'After that, syncs are quick.',
     );
   }
@@ -626,10 +677,10 @@ class _TodayScreenState extends State<TodayScreen>
     if (stale &&
         (captureActive || deriveRunning || pendingLight || pendingHeavy)) {
       label =
-          'Your latest band data is more than an hour behind. OpenStrap is catching up now and this page will refresh automatically when sleep and today\'s metrics are ready.';
+          'Your latest band data is more than an hour behind. Whoop is catching up now and this page will refresh automatically when sleep and today\'s metrics are ready.';
     } else if (stale && app.isConnected) {
       label =
-          'Your latest band data is more than an hour behind. OpenStrap is connected and waiting for the next data handoff.';
+          'Your latest band data is more than an hour behind. Whoop is connected and waiting for the next data handoff.';
     } else if (stale) {
       label =
           'Your latest band data is more than an hour behind. Reconnect the band and this page will refresh automatically once new data is captured and computed.';
@@ -693,6 +744,10 @@ class TodayVitals extends StatelessWidget {
   /// Steps from the in-flight live session, not yet folded into the day metric.
   final int liveSteps;
 
+  /// Newest decoded record (unix seconds), or null when nothing is stored.
+  /// Drives the wear-time caption — see [_wearRow].
+  final int? lastRecordSec;
+
   /// Tap-through router: readiness | sleep | heart | body | activity | wear |
   /// stress | oxygen | records.
   final void Function(String id) onOpen;
@@ -725,6 +780,7 @@ class TodayVitals extends StatelessWidget {
     this.sparks = const {},
     this.stepsWeek = const [],
     this.liveSteps = 0,
+    this.lastRecordSec,
     required this.onOpen,
     this.hasAiBriefing = false,
     this.aiBriefing,
@@ -769,8 +825,19 @@ class TodayVitals extends StatelessWidget {
           const SizedBox(height: Sp.x3),
           statusChip,
         ],
-        // The hero floats directly on the page — no card chrome around it.
-        _orbitHero().dsEnter(index: 1),
+        // The three headline rings — Sleep, Readiness, Strain — floating
+        // directly on the page with no card chrome. See score_trio.dart for
+        // why it is exactly these three and why Strain is not a percentage.
+        const SizedBox(height: Sp.x2),
+        _scoreTrio().dsEnter(index: 1),
+        // The band word — Push / Focus / Recover — under the rings.
+        //
+        // This used to be the centre of a second, full-size readiness ring
+        // sitting directly below the trio, which meant the screen said
+        // "READINESS" twice with two different renderings of the same score.
+        // The word is the part that carried meaning; the duplicate ring was
+        // just weight, so only the word survives.
+        _readinessWord().dsEnter(index: 1),
         // The AI insight — a compact, collapsed-by-default line directly
         // under the ring's status word, not a leading card. Opening the app
         // shows the ring first, full stop; this never renders above it.
@@ -784,6 +851,15 @@ class TodayVitals extends StatelessWidget {
         // Same data, one tap away either way; it just no longer competes
         // with the score for attention.
         _QuickStatsRow(t: t, onOpen: onOpen).dsEnter(index: 2),
+        const SizedBox(height: Sp.x3),
+        // MY DAY — the actionable half of the screen, under the rings that
+        // describe a state. Each card hides itself when it has nothing to say,
+        // so this section shrinks to nothing rather than filling with dashes.
+        SupplementCard().dsEnter(index: 2),
+        const SizedBox(height: Sp.x3),
+        PrayerCard().dsEnter(index: 3),
+        const SizedBox(height: Sp.x3),
+        LastLiftCard(onTap: () => onOpen('workouts')).dsEnter(index: 3),
         const SizedBox(height: Sp.x3),
         BentoColumns(
           left: [
@@ -815,13 +891,7 @@ class TodayVitals extends StatelessWidget {
           ),
           child: Column(
             children: [
-              ListRow(
-                icon: OsIcon.wear,
-                title: 'Wear time',
-                value: _hm(t.wearTime) ?? '—',
-                divider: true,
-                onTap: () => onOpen('wear'),
-              ),
+              _wearRow(),
               ListRow(
                 icon: OsIcon.records,
                 title: 'Records & streaks',
@@ -944,75 +1014,142 @@ class TodayVitals extends StatelessWidget {
     );
   }
 
-  // ── the orbit hero ──────────────────────────────────────────────────────────
+  /// Wear time, with an honest caption when the count is incomplete.
+  ///
+  /// Wear counts distinct minutes that have a 1 Hz RECORD — and records only
+  /// exist on the phone once they have been drained off the band. So a day
+  /// spent wearing it reads as "1h 12m" until the rest is synced: the figure
+  /// is not wrong, it is PARTIAL, and presenting it bare invites the
+  /// reasonable conclusion that the app is broken.
+  Widget _wearRow() {
+    final last = lastRecordSec;
+    String? caption;
+    if (last != null) {
+      final at = DateTime.fromMillisecondsSinceEpoch(last * 1000);
+      final behindMin = DateTime.now().difference(at).inMinutes;
+      // Under ~20 minutes is just the normal gap between syncs; saying
+      // anything then would be noise on an accurate number.
+      if (behindMin >= 20) {
+        final h = at.hour % 12 == 0 ? 12 : at.hour % 12;
+        final hhmm = '$h:${at.minute.toString().padLeft(2, '0')}'
+            '${at.hour < 12 ? 'am' : 'pm'}';
+        caption = behindMin >= 60
+            ? 'synced to $hhmm - sync to count the rest'
+            : 'synced to $hhmm';
+      }
+    }
+    return ListRow(
+      icon: OsIcon.wear,
+      title: 'Wear time',
+      subtitle: caption,
+      value: _hm(t.wearTime) ?? '—',
+      divider: true,
+      onTap: () => onOpen('wear'),
+    );
+  }
 
-  Widget _orbitHero() {
-    final r = t.readiness;
-    // Only headline today's SETTLED readiness — never a prior night's value
-    // held over while today's overnight is still building (that made the ring
-    // flash a stale score before snapping to today's real one).
+  // ── the three headline rings ────────────────────────────────────────────────
+
+  Widget _scoreTrio() {
+    final sleepScore = t.sleepScore;
+    final readiness = t.settledReadinessScore;
+    final strain = t.strain;
+
+    return ScoreTrio(
+      rings: [
+        ScoreRingData(
+          label: 'Sleep',
+          color: DomainAccent.sleep,
+          value: sleepScore.isEmpty ? null : sleepScore.value!.toDouble(),
+          display: sleepScore.isEmpty ? null : '${sleepScore.value!.round()}',
+          unit: '%',
+          fill: sleepScore.isEmpty ? null : sleepScore.value! / 100,
+          // Coverage drives the fade: a score built on half a night LOOKS
+          // less certain rather than sitting beside its caveat unread.
+          confidence: t.sleepScoreCoverage ?? 1,
+          absentHint: 'no night yet',
+          onTap: () => onOpen('sleep'),
+        ),
+        ScoreRingData(
+          label: 'Readiness',
+          color: readiness == null
+              ? AppColors.accent
+              : AppColors.scoreColor(readiness / 100),
+          value: readiness?.toDouble(),
+          display: readiness?.toString(),
+          unit: '%',
+          fill: readiness == null ? null : readiness / 100,
+          confidence: t.readiness.confidence,
+          absentHint: 'still learning',
+          onTap: () => onOpen('readiness'),
+        ),
+        ScoreRingData(
+          label: 'Strain',
+          color: DomainAccent.strain,
+          value: strain.isEmpty ? null : strain.value!.toDouble(),
+          // One decimal and NO percent sign: strain is a 0-21 logarithmic
+          // scale, so "14.2%" would be a different, wrong number.
+          display: strain.isEmpty ? null : strain.value!.toStringAsFixed(1),
+          fill: strain.isEmpty ? null : (strain.value! / 21).clamp(0.0, 1.0),
+          confidence: strain.confidence,
+          absentHint: 'nothing logged',
+          onTap: () => onOpen('body'),
+        ),
+      ],
+    );
+  }
+
+  /// The one-word verdict on today, derived from the SAME band cuts
+  /// briefing_engine's readinessBand uses — the chip and the AI briefing must
+  /// never be able to say different things about one score.
+  Widget _readinessWord() {
     final score = t.settledReadinessScore;
-    final fill = _baselineFill(r);
-    final accent = score == null
-        ? AppColors.accent
-        : AppColors.scoreColor(score / 100);
-    // Derived from the SAME band cuts briefing_engine.dart's readinessBand
-    // uses (40/66) — the ring's word and the AI briefing's band must always
-    // agree, or the app can tell the user two different things about the
-    // same score again (exactly the bug this shared source of truth fixes).
-    //
-    // The word is a state you're in, phrased as what today's training should
-    // be, and renders as a state chip inside the ring (see OrbitScore.word).
-    final (word, wordIcon) = score == null
-        ? (null, null)
-        : switch (readinessBand(score)) {
-            'good' => ('Push', OsIcon.intensity),
-            'moderate' => ('Focus', OsIcon.activity),
-            _ => ('Recover', OsIcon.calm),
-          };
-
-    // Honest "still learning you" center: nights-to-go over a dashed
-    // progress ring; plain em-dash center when there is nothing at all.
-    Widget? center;
-    if (score == null && fill != null) {
+    if (score == null) {
+      // Still calibrating: say how many nights are left rather than showing a
+      // word the data cannot support yet.
+      final fill = _baselineFill(t.readiness);
+      if (fill == null) return const SizedBox.shrink();
       final left = fill.$2 - fill.$1;
-      center = Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('$left', style: AppText.display.copyWith(fontSize: 40)),
-          Text(
-            left == 1 ? 'NIGHT' : 'NIGHTS',
-            style: AppText.overline.copyWith(fontSize: 9),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'Learning you',
-            style: AppText.caption.copyWith(
-              color: AppColors.accent,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
+      if (left <= 0) return const SizedBox.shrink();
+      return Center(
+        child: Text(
+          left == 1 ? 'Learning you - 1 night to go'
+                    : 'Learning you - $left nights to go',
+          style: AppText.captionMuted,
+        ),
       );
     }
 
-    return OrbitScore(
-      score: score,
-      label: 'Readiness',
-      word: word,
-      wordIcon: wordIcon,
-      color: accent,
-      confidence: score == null ? 0.3 : r.confidence,
-      ringFill: (score == null && fill != null) ? fill.$1 / fill.$2 : null,
-      center: center,
-      onTap: () => onOpen('readiness'),
-      height: 340,
-      glow: true,
-      // No satellites here anymore (redesign): Sleep/Heart/Strain/Stress used
-      // to float around the ring at near-equal visual weight to the score
-      // itself — that data already lives one tap away on its own tab, so it's
-      // demoted to the quiet `_QuickStatsRow` below the fold instead of
-      // competing with the hero. The bigger, uncluttered ring is the point.
+    final (word, icon) = switch (readinessBand(score)) {
+      'good' => ('Push', OsIcon.intensity),
+      'moderate' => ('Focus', OsIcon.activity),
+      _ => ('Recover', OsIcon.calm),
+    };
+    final color = AppColors.scoreColor(score / 100);
+
+    return Center(
+      child: Pressable(
+        onTap: () => onOpen('readiness'),
+        borderRadius: BorderRadius.circular(R.pill),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: Sp.x4, vertical: Sp.x2),
+          decoration: BoxDecoration(
+            color: AppColors.tonalFill(color),
+            borderRadius: BorderRadius.circular(R.pill),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(icon, size: 15, color: color),
+              const SizedBox(width: 6),
+              Text(word,
+                  style: AppText.label.copyWith(
+                      color: color, fontWeight: FontWeight.w800)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1126,7 +1263,12 @@ class TodayVitals extends StatelessWidget {
 
   Widget _stepsTile() {
     final base = t.steps.isEmpty ? 0 : t.steps.value!.round();
-    final steps = base + liveSteps;
+    // Fold in the live band count ONLY when the base is the band's own
+    // figure. Apple Health's total already contains the walk in progress, so
+    // adding the live count to it double-counts every step of the session.
+    // `isEstimate` is the tier the resolver set: HIGH for a phone count,
+    // ESTIMATE for the band's.
+    final steps = t.steps.isEstimate ? base + liveSteps : base;
     final goal = t.stepGoal ?? StepGoalScreen.defaultGoal;
     return BentoTile(
       tone: BentoTone.soft,
@@ -1137,7 +1279,13 @@ class TodayVitals extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const TileHeader('Steps', trailing: Tag('est')),
+          // The badge follows the SOURCE. A phone-counted step is a real
+          // measurement; badging it "est" alongside the band's guess told the
+          // user the two were equally uncertain when they are not.
+          TileHeader(
+            'Steps',
+            trailing: t.steps.isEstimate ? const Tag('est') : null,
+          ),
           const SizedBox(height: Sp.x2),
           BigStat(
             value: steps > 0 ? '$steps' : null,
@@ -1247,10 +1395,16 @@ class _QuickStatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Deliberately does NOT repeat the trio. Sleep and Strain moved up into
+    // the three rings, and showing them again here meant the same figure
+    // rendered twice on one screen in two different styles — the classic way a
+    // dashboard stops being scannable. What is left is the two domains the
+    // trio has no room for, plus how long the night actually was, which the
+    // sleep SCORE deliberately abstracts away.
     final items = [
       (
         icon: OsIcon.sleep,
-        label: 'Sleep',
+        label: 'In bed',
         value: t.sleepDuration.isEmpty
             ? null
             : '${t.sleepDuration.value!.toInt() ~/ 60}h '
@@ -1260,24 +1414,16 @@ class _QuickStatsRow extends StatelessWidget {
       ),
       (
         icon: OsIcon.heart,
-        label: 'Heart',
+        label: 'Resting HR',
         value: t.restingHr.isEmpty ? null : '${t.restingHr.value!.round()}',
         color: DomainAccent.heart,
         route: 'heart',
       ),
       (
-        icon: OsIcon.bodyStrain,
-        label: 'Strain',
-        value: t.strain.isEmpty ? null : t.strain.value!.toStringAsFixed(1),
-        color: DomainAccent.strain,
-        route: 'body',
-      ),
-      (
         icon: OsIcon.stress,
         label: 'Stress',
-        // Rounded like its siblings (RHR uses .round(), Strain uses
-        // toStringAsFixed(1)) — score is a num, so a raw toString() could
-        // render "34.0" beside "52"/"12.4".
+        // Rounded like its siblings — score is a num, so a raw toString()
+        // could render "34.0" beside "52".
         value: t.stress?.score?.round().toString(),
         color: DomainAccent.stress,
         route: 'stress',
@@ -1436,10 +1582,10 @@ class _RecoveryStoryState extends State<_RecoveryStory>
                 style: AppText.display.copyWith(color: Colors.white)),
           ),
           line: widget.recoveredPct >= 66
-              ? 'You’re primed — a strong day to push.'
+              ? 'You’re primed - a strong day to push.'
               : widget.recoveredPct >= 40
-                  ? 'Moderately recovered — train to feel.'
-                  : 'Run low today — favour easy movement.',
+                  ? 'Moderately recovered - train to feel.'
+                  : 'Run low today - favour easy movement.',
         ));
     // 2. Sleep.
     if (widget.sleptMin != null && widget.needMin != null) {

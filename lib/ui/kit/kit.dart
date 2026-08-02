@@ -479,7 +479,7 @@ class AppearanceSelector extends StatelessWidget {
     );
     if (!labeled) return toggle;
     final desc = ctrl.choice == AppThemeChoice.system
-        ? 'Following your phone — ${ctrl.isDark ? 'Ember on Char' : 'Ember on Paper'}'
+        ? 'Following your phone - ${ctrl.isDark ? 'Ember on Char' : 'Ember on Paper'}'
         : 'Ember on ${ctrl.isDark ? 'Char' : 'Paper'}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

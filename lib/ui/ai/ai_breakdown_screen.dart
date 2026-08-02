@@ -139,7 +139,7 @@ class _AiBreakdownScreenState extends State<AiBreakdownScreen> {
           title: 'Bring your own AI',
           message:
               'Add your AI key to enable daily briefings. Your health data '
-              'stays on this phone — the only network call is to your own '
+              'stays on this phone - the only network call is to your own '
               'provider, with your own key.',
           actionLabel: 'Add your AI key',
           onAction: () async {
@@ -186,7 +186,7 @@ class _AiBreakdownScreenState extends State<AiBreakdownScreen> {
           icon: OsIcon.cancel,
           title: 'Couldn\'t reach your AI provider',
           message: _error.isEmpty
-              ? 'Check your connection and try again — nothing is lost, your '
+              ? 'Check your connection and try again - nothing is lost, your '
                   'data never left the phone.'
               : _error,
           actionLabel: 'Try again',

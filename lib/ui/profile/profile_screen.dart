@@ -15,7 +15,9 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../data/backup_service.dart';
 import '../../data/db.dart';
+import 'backups_screen.dart';
 import '../../health/health_export.dart';
 import '../../platform/tasker_bridge.dart';
 import '../../integrations/hevy_login_screen.dart';
@@ -228,9 +230,13 @@ class ProfileScreen extends StatelessWidget {
                   final box = rowCtx.findRenderObject() as RenderBox?;
                   try {
                     final path = await LocalDb.exportCopy();
+                    // Record it: local snapshots do not survive deleting the
+                    // app, so an off-device copy is the only thing that does,
+                    // and the nudge needs to know when one last happened.
+                    await BackupService.markExported();
                     await Share.shareXFiles(
                       [XFile(path)],
-                      text: 'OpenStrap data export',
+                      text: 'Whoop data export',
                       sharePositionOrigin: box != null
                           ? box.localToGlobal(Offset.zero) & box.size
                           : null,
@@ -241,6 +247,17 @@ class ProfileScreen extends StatelessWidget {
                     );
                   }
                 },
+                divider: true,
+              ),
+            ),
+            Builder(
+              builder: (rowCtx) => ListRow(
+                icon: OsIcon.history,
+                title: 'Backups',
+                subtitle: 'Automatic local snapshots',
+                onTap: () => Navigator.of(rowCtx).push(
+                  MaterialPageRoute(builder: (_) => const BackupsScreen()),
+                ),
                 divider: true,
               ),
             ),
@@ -314,7 +331,7 @@ class ProfileScreen extends StatelessWidget {
             title: 'Track menstrual cycle',
             subtitle:
                 'Log periods and see phase, next period & fertile window. '
-                'Off by default — nothing is computed until you turn this on.',
+                'Off by default - nothing is computed until you turn this on.',
             value: user['track_cycle'] == true || user['track_cycle'] == 1,
             onChanged: (v) async {
               try {
@@ -332,7 +349,7 @@ class ProfileScreen extends StatelessWidget {
             title: 'Send anonymous diagnostics',
             subtitle:
                 'Crash/error reports plus basic device info. No health data. '
-                'On by default — switch off anytime.',
+                'On by default - switch off anytime.',
             value: app.telemetryConsent,
             onChanged: (v) => app.setTelemetryConsent(v),
           ),
@@ -348,7 +365,7 @@ class ProfileScreen extends StatelessWidget {
               title: 'Contribute my health data',
               subtitle:
                   'Periodically upload your on-device database (over Wi-Fi, '
-                  'while charging) to improve the algorithms. On by default — '
+                  'while charging) to improve the algorithms. On by default - '
                   'switch off anytime.',
               value: app.healthShareConsent,
               onChanged: (v) => app.setHealthShareConsent(v),
@@ -398,7 +415,7 @@ class ProfileScreen extends StatelessWidget {
               'Send a Broadcast intent from Tasker or any automation app to '
               'vibrate your WHOOP strap. On Android 12+, set Package to '
               'wtf.openstrap.openstrap_edge. Requires a String extra "token" '
-              'matching the automation token below (long-press to copy) — '
+              'matching the automation token below (long-press to copy) - '
               'without it, the strap won\'t buzz. Optional int extra '
               '"pattern" (default 2).',
             ),
@@ -583,7 +600,7 @@ class ProfileScreen extends StatelessWidget {
     };
 
     return DeviceTile(
-      name: app.strapName ?? 'OpenStrap',
+      name: app.strapName ?? 'Whoop',
       statusText: statusText,
       statusTone: statusTone,
       battery: d.batteryPct == null
@@ -643,7 +660,7 @@ class ProfileScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'The one backend the app connects to — app updates, announcements, '
+              'The one backend the app connects to - app updates, announcements, '
               'opt-in diagnostics and existing-user import. Leave blank to use '
               'the build default.',
               style: AppText.captionMuted,
@@ -678,7 +695,7 @@ class ProfileScreen extends StatelessWidget {
       SnackBar(
         content: Text(
           url.isEmpty
-              ? 'Companion URL cleared — using the build default.'
+              ? 'Companion URL cleared - using the build default.'
               : 'Companion URL saved.',
         ),
       ),
@@ -1134,7 +1151,7 @@ class _HealthSection extends StatelessWidget {
         ? 'New days are written automatically. If they don’t appear in Apple '
               'Health, tap Allow access and turn ON every category.'
         : 'New days are written automatically. If they don’t appear, open '
-              'Health Connect → App permissions → OpenStrap → Allow all.';
+              'Health Connect → App permissions → Whoop → Allow all.';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1181,7 +1198,7 @@ class _HealthSection extends StatelessWidget {
                     content: Text(
                       n > 0
                           ? 'Synced $n day${n == 1 ? '' : 's'} to $store.'
-                          : 'Up to date — new days sync as they’re computed.',
+                          : 'Up to date - new days sync as they’re computed.',
                     ),
                   ),
                 );
@@ -1277,7 +1294,7 @@ class _KeepAliveRowState extends State<_KeepAliveRow> {
               icon: OsIcon.battery,
               title: 'Allow auto-start',
               subtitle: 'Your phone maker needs one more step to keep '
-                  'syncing overnight — tap to open it',
+                  'syncing overnight - tap to open it',
               onTap: () => context.read<AppState>().openOemAutostartSettings(),
             ),
         ]),
@@ -1307,18 +1324,18 @@ class _ForceQuitInfoRow extends StatelessWidget {
           ListRow(
             icon: OsIcon.battery,
             title: 'Force-quitting pauses background sync',
-            subtitle: 'If you swipe OpenStrap away, reopen it once to resume',
+            subtitle: 'If you swipe Whoop away, reopen it once to resume',
             onTap: () => showInfoSheet(
               context,
               title: 'Force-quitting pauses background sync',
-              body: 'Swiping OpenStrap away in the app switcher tells iOS to '
-                  'stop it completely — including background sync. This is '
+              body: 'Swiping Whoop away in the app switcher tells iOS to '
+                  'stop it completely - including background sync. This is '
                   'an iOS rule that applies to every app, not something '
-                  'OpenStrap can change.',
+                  'Whoop can change.',
               bullets: const [
-                'Your data is never lost — the band keeps recording, and '
+                'Your data is never lost - the band keeps recording, and '
                     'the next sync catches everything up.',
-                'To resume background syncing, just open OpenStrap once — '
+                'To resume background syncing, just open Whoop once - '
                     'you don\'t need to do anything else.',
                 'If you get a "hasn\'t synced in a while" notification, '
                     'this is usually why.',
@@ -1351,14 +1368,14 @@ class _DeviceSheet extends StatelessWidget {
     final alarm = live.alarmEpoch;
 
     return _SheetShell(
-      title: live.strapName ?? 'OpenStrap',
+      title: live.strapName ?? 'Whoop',
       children: [
         if (!connected)
           _Notice('Connect to your strap to rename it or change the alarm.'),
         ListRow(
           icon: OsIcon.edit,
           title: 'Rename strap',
-          value: live.strapName ?? 'OpenStrap',
+          value: live.strapName ?? 'Whoop',
           divider: true,
           onTap: connected ? () => _rename(context, live) : null,
         ),
@@ -1539,7 +1556,7 @@ class _DeviceSheet extends StatelessWidget {
       if (context.mounted) {
         _snack(
           context,
-          'Alarm set for ${picked.format(context)} — confirming with the strap…',
+          'Alarm set for ${picked.format(context)} - confirming with the strap…',
         );
       }
     } catch (e) {
@@ -1550,7 +1567,7 @@ class _DeviceSheet extends StatelessWidget {
   /// Live alarm caption driven by the strap's confirmation events (see AppState's
   /// alarm state machine): confirmed ✓ / pending / soft unconfirmed warning.
   String _alarmStatusText(AppState app) {
-    if (app.alarmConfirmed) return 'Alarm set ✓ — confirmed by your strap.';
+    if (app.alarmConfirmed) return 'Alarm set ✓ - confirmed by your strap.';
     if (app.alarmPending) return 'Setting alarm… waiting for the strap to confirm.';
     return 'Alarm sent, but the strap hasn\'t confirmed it yet. '
         'Tap "Test buzz" to check it fires, and keep a backup alarm.';
@@ -1885,7 +1902,7 @@ class _HevySectionState extends State<_HevySection> {
                     const SizedBox(height: 1),
                     Text(
                       _linked
-                          ? 'Sets, reps, load and RPE — the coach can see your lifts.'
+                          ? 'Sets, reps, load and RPE - the coach can see your lifts.'
                           : 'Sign in once to pull your resistance training in.',
                       style: AppText.captionMuted,
                     ),
@@ -1901,7 +1918,7 @@ class _HevySectionState extends State<_HevySection> {
               const SizedBox(width: Sp.x2),
               Expanded(
                 child: Text(
-                  last?.message ?? 'Hevy sign-in expired — sign in again.',
+                  last?.message ?? 'Hevy sign-in expired - sign in again.',
                   style: AppText.captionMuted.copyWith(color: AppColors.bad),
                 ),
               ),

@@ -111,7 +111,7 @@ class SpotCheckView extends StatelessWidget {
                 const SizedBox(width: Sp.x3),
                 Expanded(
                   child: Text(
-                    'Keep the band snug and sit still. Breathe normally — '
+                    'Keep the band snug and sit still. Breathe normally - '
                     'movement adds noise to the reading.',
                     style: AppText.captionMuted,
                   ),

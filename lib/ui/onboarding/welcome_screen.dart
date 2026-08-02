@@ -161,7 +161,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         const SizedBox(height: Sp.x4),
         WelcomeOptionCard(
           icon: OsIcon.sync,
-          title: 'I used OpenStrap before',
+          title: 'I used Whoop before',
           body: 'Sign in and pull your history onto this phone.',
           onTap: () => _set(() {
             _step = _Step.email;
@@ -273,7 +273,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               Text(_progress ?? 'Importing…',
                   style: AppText.title, textAlign: TextAlign.center),
               const SizedBox(height: Sp.x2),
-              Text('This runs once — your data stays on this device.',
+              Text('This runs once - your data stays on this device.',
                   textAlign: TextAlign.center, style: AppText.captionMuted),
             ],
           ),
@@ -362,12 +362,12 @@ class WelcomeHero extends StatelessWidget {
             ),
             const SizedBox(height: Sp.x5),
             Text(
-              'Welcome to\nOpenStrap',
+              'Welcome to\nWhoop',
               style: AppText.display.copyWith(color: tone.fg, height: 1.05),
             ),
             const SizedBox(height: Sp.x3),
             Text(
-              'Your band, your data — computed entirely on this phone.',
+              'Your band, your data - computed entirely on this phone.',
               style: AppText.bodySoft.copyWith(color: tone.fgMuted),
             ),
           ],
@@ -387,7 +387,7 @@ class AffiliationDisclaimer extends StatelessWidget {
       'Edge is an independent, open-source project. It is not affiliated '
       'with, sponsored by, or endorsed by WHOOP, Inc. You must own a genuine '
       'WHOOP 4.0 band to use this app. Health metrics are wellness estimates '
-      'from published research methods — not medical diagnoses.';
+      'from published research methods - not medical diagnoses.';
 
   @override
   Widget build(BuildContext context) {

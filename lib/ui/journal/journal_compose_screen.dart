@@ -116,7 +116,7 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
       await app.refreshAiReminders(); // tonight's prompt stands down
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Logged for tonight — sleep well.')),
+        const SnackBar(content: Text('Logged for tonight - sleep well.')),
       );
       Navigator.of(context).maybePop();
     } catch (e) {
@@ -166,7 +166,7 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
         _chatBusy = false;
         _msgs.add(_ChatMsg(
             false,
-            'I couldn\'t reach your AI provider — your words above aren\'t '
+            'I couldn\'t reach your AI provider - your words above aren\'t '
             'lost. Try again, or switch to Quick log.'));
       });
     }
@@ -224,7 +224,7 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
                 enabled: _loaded,
                 style: AppText.body,
                 decoration: InputDecoration(
-                  hintText: 'Anything notable — mood, energy, what happened…',
+                  hintText: 'Anything notable - mood, energy, what happened…',
                   hintStyle:
                       AppText.bodySoft.copyWith(color: AppColors.inkMuted),
                   filled: true,
@@ -299,7 +299,7 @@ class _JournalComposeScreenState extends State<JournalComposeScreen> {
         SurfaceCard(
           level: 0,
           child: Text(
-            'Tell me about your day — training, caffeine, stress, how you '
+            'Tell me about your day - training, caffeine, stress, how you '
             'feel. I\'ll turn it into a journal entry you can review before '
             'it\'s saved.',
             style: AppText.bodySoft,

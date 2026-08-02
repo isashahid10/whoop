@@ -34,30 +34,36 @@ class SegmentedControl extends StatelessWidget {
   Widget build(BuildContext context) {
     assert(options.isNotEmpty);
     final n = options.length;
+    // UNDERLINE tabs, not a filled pill.
+    //
+    // The pill version painted a solid white lozenge behind the selected
+    // option — the single brightest object on the screen, sitting above the
+    // data it was filtering. On a black ground that inverts the hierarchy: the
+    // eye lands on the timeframe switch before the number it is switching. An
+    // underline marks the selection just as clearly and weighs nothing.
     final control = Container(
-      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(R.pill),
+        border: Border(
+          bottom: BorderSide(color: AppColors.divider, width: 1),
+        ),
       ),
       child: Stack(
         children: [
-          // Sliding thumb — one segment wide, eased to the selection.
-          AnimatedAlign(
-            duration: Motion.med,
-            curve: Motion.emphatic,
-            alignment: Alignment(
-              n == 1 ? 0 : -1 + 2 * (index.clamp(0, n - 1) / (n - 1)),
-              0,
-            ),
-            child: FractionallySizedBox(
-              widthFactor: 1 / n,
-              child: Container(
-                height: 34,
-                decoration: BoxDecoration(
-                  color: AppColors.ink,
-                  borderRadius: BorderRadius.circular(R.pill),
-                ),
+          // Sliding indicator — a short rule under the selected label.
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: AnimatedAlign(
+              duration: Motion.med,
+              curve: Motion.emphatic,
+              alignment: Alignment(
+                n == 1 ? 0 : -1 + 2 * (index.clamp(0, n - 1) / (n - 1)),
+                0,
+              ),
+              child: FractionallySizedBox(
+                widthFactor: 1 / n,
+                child: Container(height: 2, color: AppColors.ink),
               ),
             ),
           ),
@@ -77,12 +83,15 @@ class SegmentedControl extends StatelessWidget {
                         child: AnimatedDefaultTextStyle(
                           duration: Motion.fast,
                           style: AppText.label.copyWith(
-                            // Thumb is ink → contrast with surface;
-                            // unselected labels stay soft.
+                            // White when selected, muted otherwise — the same
+                            // active-state vocabulary the nav bar uses, so
+                            // "current" looks the same everywhere.
                             color: i == index
-                                ? AppColors.surface
-                                : AppColors.inkSoft,
-                            fontWeight: FontWeight.w800,
+                                ? AppColors.ink
+                                : AppColors.inkMuted,
+                            fontWeight: i == index
+                                ? FontWeight.w800
+                                : FontWeight.w600,
                           ),
                           child: Text(
                             options[i],

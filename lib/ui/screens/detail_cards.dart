@@ -540,7 +540,7 @@ class HeartDayContent extends StatelessWidget {
                 accent: AppColors.inkSoft,
                 label: 'Baseline (trend)',
                 info: 'Your typical RMSSD over recent history (simple '
-                    'trailing average) — recovery is measured against this.',
+                    'trailing average) - recovery is measured against this.',
                 value: '${(_n(hrv['baseline']) ?? 0).round()}',
                 unit: 'ms',
               ),
@@ -654,7 +654,7 @@ class HeartDayContent extends StatelessWidget {
                     InfoDot(
                       title: 'Rhythm screen',
                       body:
-                          "A screen, not a diagnosis — wrist pulse can't see "
+                          "A screen, not a diagnosis - wrist pulse can't see "
                           "the heart's electrical signal. See a clinician if "
                           'you have symptoms (palpitations, dizziness, '
                           'breathlessness).',
@@ -669,8 +669,8 @@ class HeartDayContent extends StatelessWidget {
                 // acronyms are opt-in detail, collapsed by default.
                 Disclosure(
                   summary: flag
-                      ? 'Beat-timing pattern irregular — see the numbers.'
-                      : 'Beat-timing pattern normal — see the numbers.',
+                      ? 'Beat-timing pattern irregular - see the numbers.'
+                      : 'Beat-timing pattern normal - see the numbers.',
                   child: Row(
                     children: [
                       Expanded(
@@ -1006,7 +1006,7 @@ class OxygenNightContent extends StatelessWidget {
         icon: OsIcon.hydration,
         title: 'No overnight oxygen signal yet',
         message:
-            'Wear the strap through the night — the red/IR channels need a '
+            'Wear the strap through the night - the red/IR channels need a '
             'full night of stable contact to read.',
       );
     }
@@ -1016,7 +1016,7 @@ class OxygenNightContent extends StatelessWidget {
         title: 'Overnight oxygen tracking is off',
         message:
             'This screen is temporarily disabled pending hardware-verified '
-            'decoding — it will come back once that lands.',
+            'decoding - it will come back once that lands.',
       );
     }
 
@@ -1040,7 +1040,7 @@ class OxygenNightContent extends StatelessWidget {
                       body: infoFor('spo2')!,
                       methodNote:
                           'Relative red/IR ratio vs your own nightly baseline '
-                          '— a screening signal, never an absolute SpO₂%.',
+                          '- a screening signal, never an absolute SpO₂%.',
                     ),
                   ],
                 ),
@@ -1498,7 +1498,7 @@ Widget _legendPill(String label, Color color) {
       color: AppColors.inkSoft,
       reason:
           'The overnight dip metrics weren’t computed for this night, so '
-          'there is nothing to grade — this is not an all-clear.',
+          'there is nothing to grade - this is not an all-clear.',
     );
   }
 
@@ -1776,7 +1776,7 @@ class _IllnessCard extends StatelessWidget {
     final accent = signal ? AppColors.warn : AppColors.good;
     final title = signal ? 'Elevated body signal' : 'All clear';
     final blurb = signal
-        ? 'Your resting HR, HRV and temperature are deviating together — a '
+        ? 'Your resting HR, HRV and temperature are deviating together - a '
               'pattern that can precede illness. A signal, not a diagnosis.'
         : 'Your resting HR, HRV and temperature are within your normal range.';
 
@@ -1808,7 +1808,7 @@ class _IllnessCard extends StatelessWidget {
                 body: blurb,
                 methodNote:
                     'NightSignal CUSUM over resting HR / HRV / skin temp vs '
-                    'your own baselines — a signal, not a diagnosis.',
+                    'your own baselines - a signal, not a diagnosis.',
               ),
             ],
           ),
@@ -1871,7 +1871,7 @@ class _IrregularCard extends StatelessWidget {
                 title: 'Irregular-beat watch',
                 body: flag
                     ? 'Your beat-to-beat timing was unusually irregular '
-                          'overnight. A screen, not a diagnosis — if it '
+                          'overnight. A screen, not a diagnosis - if it '
                           'persists, see a clinician.'
                     : 'Beat-to-beat timing was within a normal range overnight.',
                 methodNote: 'Poincaré SD1/SD2 + pNN from nocturnal RR',
@@ -1885,8 +1885,8 @@ class _IrregularCard extends StatelessWidget {
             // opt-in, collapsed by default.
             Disclosure(
               summary: flag
-                  ? 'Overnight beat-timing irregular — see the numbers.'
-                  : 'Overnight beat-timing normal — see the numbers.',
+                  ? 'Overnight beat-timing irregular - see the numbers.'
+                  : 'Overnight beat-timing normal - see the numbers.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1979,7 +1979,7 @@ class WearDayContent extends StatelessWidget {
         icon: OsIcon.wear,
         title: 'Wear time wasn’t recorded',
         message:
-            'This day has no wear measurement stored — imported days don’t '
+            'This day has no wear measurement stored - imported days don’t '
             'carry one. That is not the same as the strap being off, so '
             'nothing is claimed either way.',
       );
@@ -1988,7 +1988,7 @@ class WearDayContent extends StatelessWidget {
       return const _QuietState(
         icon: OsIcon.wear,
         title: 'Not worn on this day',
-        message: 'No wrist contact was recorded — nothing to analyze.',
+        message: 'No wrist contact was recorded - nothing to analyze.',
       );
     }
 
@@ -2097,7 +2097,7 @@ class WearDayContent extends StatelessWidget {
                 const SizedBox(width: Sp.x3),
                 Expanded(
                   child: Text(
-                    'Hour-by-hour wear isn’t stored for this day — only the '
+                    'Hour-by-hour wear isn’t stored for this day - only the '
                     'day totals above are. Nothing has been estimated to '
                     'fill the gap.',
                     style: AppText.caption.copyWith(color: AppColors.inkSoft),
@@ -2349,7 +2349,7 @@ class _SectionExtrasState extends State<SectionExtras> {
                   trailing: InfoDot(
                     title: 'Patterns',
                     body:
-                        'How your tagged journal days compare with the rest — '
+                        'How your tagged journal days compare with the rest - '
                         'descriptive, not causal.',
                   ),
                 ),
