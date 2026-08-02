@@ -16,6 +16,19 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     ignore:
+      # MAJOR BUMPS ARE NEVER AUTOMATIC.
+      #
+      # Flutter is pinned to 3.41.6 because the project does not compile on
+      # newer versions. A major bump of almost any package assumes a current
+      # Flutter, so these open as PRs that cannot pass and never will. On the
+      # first run this produced five such PRs (geolocator 13->14,
+      # flutter_map 7->8, Android Gradle 8->9, Kotlin 2.2->2.4,
+      # gradle-wrapper 8->9), which is noise that trains you to ignore CI.
+      #
+      # Majors are a deliberate act here, done alongside a Flutter bump.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
       # PINNED ON PURPOSE, and the pin is load-bearing.
       #
       # phosphor_flutter declares `class PhosphorIconData extends IconData`.
@@ -30,14 +43,6 @@ updates:
       # that was already reviewed. Updating them is a deliberate act.
       - dependency-name: openstrap_protocol
       - dependency-name: openstrap_analytics
-
-      # Major bumps to the storage and BLE layers are reviewed by hand. Both
-      # sit on top of data that cannot be regenerated if a migration goes
-      # wrong or a connection regresses.
-      - dependency-name: sqflite
-        update-types: ["version-update:semver-major"]
-      - dependency-name: flutter_blue_plus
-        update-types: ["version-update:semver-major"]
 
   # ── GitHub Actions ────────────────────────────────────────────────────────
   # These run with repository write access on release, so a compromised or
@@ -63,3 +68,8 @@ updates:
     labels: ["dependencies", "android"]
     commit-message:
       prefix: "chore(android)"
+    ignore:
+      # Same reasoning as above: the Android toolchain is coupled to the
+      # pinned Flutter, so a major Gradle or Kotlin bump cannot pass.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
