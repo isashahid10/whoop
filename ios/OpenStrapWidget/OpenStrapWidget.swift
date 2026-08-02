@@ -410,7 +410,7 @@ struct OpenStrapWidget: Widget {
     StaticConfiguration(kind: kind, provider: Provider()) { entry in
       OpenStrapWidgetEntryView(entry: entry)
     }
-    .configurationDisplayName("OpenStrap")
+    .configurationDisplayName("Whoop")
     .description("Readiness, strain, sleep and HRV at a glance.")
     .supportedFamilies(supportedFamilies)
   }
