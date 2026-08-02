@@ -353,8 +353,13 @@ void main() {
     );
   });
 
-  // Readiness breakdown, rendered with the REAL 2026-08-02 decomposition so the
-  // design is judged against data that exists.
+  // Readiness breakdown.
+  //
+  // The numbers are SYNTHETIC but realistically shaped: they were derived from
+  // a real decomposition and then shifted, so the layout is still exercised by
+  // a plausible spread (one large negative driver, one moderate, one positive,
+  // one negligible) without publishing anyone's actual readings. This golden
+  // is used in the README, which is a public page.
   testWidgets('render: readiness breakdown', (t) async {
     _phone(t, height: 1100);
     AppColors.active = kDarkPalette;
@@ -368,8 +373,8 @@ void main() {
                 'clinical': {
                   'readiness_composite': {
                     'value': {
-                      'score': 25.037188,
-                      'composite_z': -1.09663,
+                      'score': 31.482,
+                      'composite_z': -0.7793,
                       'meaningful': true,
                     },
                     'confidence': 0.9,
@@ -377,23 +382,23 @@ void main() {
                     'drivers': [
                       {
                         'label': 'RHR',
-                        'contribution': -0.900333,
-                        'detail': 'oriented robust-z (median+MAD)=-3.001111',
+                        'contribution': -0.6402,
+                        'detail': 'oriented robust-z (median+MAD)=-2.134',
                       },
                       {
                         'label': 'HRV',
-                        'contribution': -0.514371,
-                        'detail': 'oriented robust-z (median+MAD)=-1.285928',
+                        'contribution': -0.3717,
+                        'detail': 'oriented robust-z (median+MAD)=-0.929',
                       },
                       {
                         'label': 'RR',
-                        'contribution': 0.312401,
-                        'detail': 'oriented robust-z (median+MAD)=1.562006',
+                        'contribution': 0.2214,
+                        'detail': 'oriented robust-z (median+MAD)=1.107',
                       },
                       {
                         'label': 'temp',
-                        'contribution': 0.005674,
-                        'detail': 'oriented robust-z (median+MAD)=0.056735',
+                        'contribution': 0.0113,
+                        'detail': 'oriented robust-z (median+MAD)=0.113',
                       },
                     ],
                   },
