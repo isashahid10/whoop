@@ -103,27 +103,25 @@ void main() {
 
     test(
       'a queued job stays parked for the session, then runs on release',
-      // RETRIED because this one is genuinely flaky on shared CI runners, and
-      // retrying is honest where weakening the assertion would not be.
-      //
-      // The job is DURABLE (a row in compute_jobs) but the drain timer is
-      // armed off an IN-MEMORY pending flag. Releasing the gate calls _arm(),
-      // which returns early unless that flag is still set, so the outcome
-      // depends on async ordering between the enqueue, the snapshot refresh
-      // and the release. On a contended runner that ordering can differ.
-      //
-      // It has never reproduced locally across many runs on macOS, including
-      // under UTC and America/Los_Angeles. The assertion itself is unchanged
-      // and still fails if the job is genuinely dropped; the retry only
-      // absorbs the scheduling race. The underlying asymmetry between durable
-      // job and in-memory flag is upstream's and worth fixing properly there.
-      retry: 2,
       () async {
         // This MUST enqueue real work. An earlier version asserted runs == 0
         // without queueing anything, so it passed even with the gate deleted —
         // CodeRabbit caught it on the PR, and it was right.
         s.setWorkoutActive(true);
         s.markStoredData(); // enqueues a durable derive_light job
+
+        // WAIT FOR THE ENQUEUE TO ACTUALLY LAND before asserting anything.
+        //
+        // markStoredData is fire-and-forget: it starts an async DB write and
+        // returns immediately. Everything below depends on that write having
+        // happened, and the first open of this database runs the whole
+        // migration ladder, which is fast locally and much slower on a cold,
+        // contended CI runner. Without this wait the release below found no
+        // pending work, armed nothing, and the job never drained - which is
+        // exactly how this test failed on CI while passing on every local run.
+        await _until(() => s.snapshot()['pending_light'] == true);
+        expect(s.snapshot()['pending_light'], isTrue,
+            reason: 'the job must be queued before the gate is tested');
 
         // A fixed wait is correct HERE and only here: you cannot poll for
         // "this never happens". Comfortably past the 10 ms settle.
