@@ -90,11 +90,11 @@ class DeriveScheduler {
     if (active) {
       _timer?.cancel();
       _timer = null;
-      log('[derive-scheduler] workout live — holding derive work');
+      log('[derive-scheduler] workout live - holding derive work');
       onChanged();
       return;
     }
-    log('[derive-scheduler] workout ended — derive may run');
+    log('[derive-scheduler] workout ended - derive may run');
     onChanged();
     _arm();
   }
@@ -105,11 +105,11 @@ class DeriveScheduler {
     if (active) {
       _timer?.cancel();
       _timer = null;
-      log('[derive-scheduler] capture active — holding derive work');
+      log('[derive-scheduler] capture active - holding derive work');
       onChanged();
       return;
     }
-    log('[derive-scheduler] capture settled — derive may run');
+    log('[derive-scheduler] capture settled - derive may run');
     onChanged();
     _arm();
   }
@@ -125,11 +125,11 @@ class DeriveScheduler {
     if (_background) {
       _timer?.cancel();
       _timer = null;
-      log('[derive-scheduler] backgrounded — deferring derive to foreground');
+      log('[derive-scheduler] backgrounded - deferring derive to foreground');
       onChanged();
       return;
     }
-    log('[derive-scheduler] foregrounded — draining deferred derive work');
+    log('[derive-scheduler] foregrounded - draining deferred derive work');
     onChanged();
     _arm();
   }

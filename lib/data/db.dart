@@ -9,7 +9,9 @@
 // read from canonical decoded tables keyed by physiological time so replayed or
 // duplicated historical seconds cannot bloat compute.
 
+import 'dart:async';
 import 'dart:convert';
+import 'backup_service.dart';
 import 'dart:io';
 
 import 'package:openstrap_analytics/onehz.dart' as ana;
@@ -23,7 +25,7 @@ import 'models.dart';
 
 class LocalDb {
   static Database? _db;
-  static String dbName = 'openstrap.db';
+  static String dbName = 'whoop.db';
 
   static Future<Database> get instance async {
     final db = _db;
@@ -91,7 +93,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 28;
+  static const int schemaVersion = 29;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -167,9 +169,25 @@ class LocalDb {
         await _createNotifFired(db);
         await _createHevy(db);
         await _createGoals(db);
+        await _createCaffeine(db);
         await _ensureCoachViews(db);
       },
       onUpgrade: (db, oldV, newV) async {
+        // Snapshot BEFORE touching the schema. A migration is the single most
+        // dangerous thing this app does to irreplaceable data: it rewrites
+        // tables in place, and a bug in a v(n) → v(n+1) step is not noticed
+        // until the data it mangled is needed. Best-effort — a failed backup
+        // must never block the upgrade, or a full disk would brick the app.
+        // TIMEBOXED. A backup must never delay the migration it protects, and
+        // it must never be able to hang it: `path_provider` resolves over a
+        // platform channel that simply does not answer in a test binding, so
+        // an unbounded await blocked the migration-ladder suite for 12 minutes
+        // instead of failing. Bounded and swallowed — losing the snapshot is a
+        // far smaller problem than a migration that never finishes.
+        try {
+          await BackupService.snapshot(reason: 'premigrate_v$oldV', db: db)
+              .timeout(const Duration(seconds: 10));
+        } catch (_) {}
         if (oldV < 2) await _createEvents(db);
         if (oldV < 3) {
           // Re-key raw_records by frame hex so LIVE packets (0x28/0x33) — which
@@ -404,6 +422,11 @@ class LocalDb {
           // target is set, which every consumer must already handle.
           await _createGoals(db);
         }
+        if (oldV < 29) {
+          // Caffeine log. Additive — an empty table just means the residual
+          // model has nothing to work with and abstains.
+          await _createCaffeine(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -626,6 +649,25 @@ class LocalDb {
   /// past day is always judged against the target that applied AT THE TIME. A
   /// single mutable row would silently rewrite months of "goal met" history the
   /// moment a target changed.
+  /// Caffeine intakes. One row per drink.
+  ///
+  /// Stored as (epoch ms, mg) rather than a per-day total: the residual model
+  /// is a decay from the moment of consumption, so a 200 mg total for the day
+  /// is unusable — an espresso at 8am and one at 8pm are the same daily figure
+  /// and opposite bedtime outcomes.
+  static Future<void> _createCaffeine(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS caffeine_log (
+        ts INTEGER PRIMARY KEY,
+        day TEXT NOT NULL,
+        mg REAL NOT NULL,
+        label TEXT
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_caffeine_day ON caffeine_log(day)');
+  }
+
   static Future<void> _createGoals(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS goals (
@@ -1408,8 +1450,10 @@ class LocalDb {
       'v_insights',
       'v_lifts',
       'v_lift_sessions',
-      'v_goals',
-      'v_baseline_trust',
+      // 'v_goals' was dropped here but never CREATEd — a leftover from a
+      // reverted change. The DROP was harmless (IF EXISTS), but leaving it
+      // implied a view that does not exist. Apple Health goals live on
+      // metric_series under hk_* keys and reach the coach via v_metric.
     ];
     for (final v in views) {
       await db.execute('DROP VIEW IF EXISTS $v');
@@ -1433,6 +1477,15 @@ class LocalDb {
         MAX(CASE WHEN key='stress' THEN value END)         AS stress,
         MAX(CASE WHEN key='efficiency' THEN value END)     AS sleep_efficiency,
         MAX(CASE WHEN key='tst_min' THEN value END)        AS sleep_min,
+        MAX(CASE WHEN key='waso_min' THEN value END)       AS waso_min,
+        -- 0-100 composite (analytics/sleep_score.dart). NULL when too little of
+        -- the night was measurable to justify a headline; `sleep_score_coverage`
+        -- (0-1) says how much of the intended weight was actually measured, so a
+        -- low-coverage score can be read as the partial figure it is.
+        MAX(CASE WHEN key='sleep_score' THEN value END)    AS sleep_score,
+        MAX(CASE WHEN key='sleep_score_coverage' THEN value END)
+                                                           AS sleep_score_coverage,
+        MAX(CASE WHEN key='sleep_confidence' THEN value END) AS sleep_confidence,
         MAX(CASE WHEN key='deep_min' THEN value END)       AS deep_min,
         MAX(CASE WHEN key='rem_min' THEN value END)        AS rem_min,
         MAX(CASE WHEN key='light_min' THEN value END)      AS light_min,
@@ -1464,7 +1517,7 @@ class LocalDb {
         -- Weather (wx_) and calendar (cal_) context. The band cannot measure
         -- either, and both plausibly move recovery: heat drives cardiac load,
         -- schedule density drives stress and cuts sleep. Calendar is COUNTS
-        -- ONLY — event titles are never stored (see calendar_client.dart).
+        -- ONLY - event titles are never stored (see calendar_client.dart).
         MAX(CASE WHEN key='wx_temp_max_c' THEN value END)      AS temp_max_c,
         MAX(CASE WHEN key='wx_feels_max_c' THEN value END)     AS feels_max_c,
         MAX(CASE WHEN key='wx_humidity_pct' THEN value END)    AS humidity_pct,
@@ -3041,7 +3094,7 @@ class LocalDb {
     final db = await instance;
     final tmp = await getTemporaryDirectory();
     final stamp = DateTime.now().millisecondsSinceEpoch;
-    final dest = p.join(tmp.path, 'openstrap_export_$stamp.db');
+    final dest = p.join(tmp.path, 'whoop_export_$stamp.db');
     final f = File(dest);
     if (await f.exists()) await f.delete(); // VACUUM INTO requires a fresh path
     await db.execute('VACUUM INTO ?', [dest]);
@@ -3159,7 +3212,7 @@ class LocalDb {
     final src = await instance;
     final tmp = await getTemporaryDirectory();
     final stamp = DateTime.now().millisecondsSinceEpoch;
-    final dest = p.join(tmp.path, 'openstrap_days_$stamp.db');
+    final dest = p.join(tmp.path, 'whoop_days_$stamp.db');
     await deleteDatabase(dest);
     final out = await openDatabase(
       dest,
