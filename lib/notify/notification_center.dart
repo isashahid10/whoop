@@ -187,9 +187,9 @@ class NotificationCenter {
       category: NotifCategory.reminders,
       title: 'Time to sleep',
       body: bedtimeMinOfDay != null
-          ? 'To meet your sleep need, aim to be in bed around now — a consistent '
+          ? 'To meet your sleep need, aim to be in bed around now - a consistent '
               'bedtime steadies your recovery.'
-          : 'A consistent bedtime steadies your recovery — start easing off '
+          : 'A consistent bedtime steadies your recovery - start easing off '
               'screens and lights now.',
       hour: bedHour,
       minute: bedMin,
@@ -202,7 +202,7 @@ class NotificationCenter {
       id: NotificationService.idWeeklyRecap,
       category: NotifCategory.reminders,
       title: 'Your week in review',
-      body: 'A new weekly recap is ready — see how your sleep, strain and '
+      body: 'A new weekly recap is ready - see how your sleep, strain and '
           'recovery trended.',
       weekday: recapWeekday,
       hour: recapHour,

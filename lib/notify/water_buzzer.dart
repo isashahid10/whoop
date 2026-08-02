@@ -59,7 +59,7 @@ class WaterBuzzer {
     if (_enabled && isConnected()) {
       try {
         await buzz();
-      } catch (_) {/* link dropped mid-write — best effort */}
+      } catch (_) {/* link dropped mid-write - best effort */}
     }
     _reschedule(); // arm the next slot
   }

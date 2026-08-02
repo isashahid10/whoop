@@ -119,6 +119,9 @@ class NotificationService {
   static const int idMorningBrief = 2005; // scheduled daily (AI morning briefing)
   static const int idEveningBrief = 2006; // scheduled daily (AI evening recap)
   static const int idStillness = 2200; // provisional one-shot ("time to move", issue #123)
+  /// "Your Drive backup has stopped" — sits above the prayer band (2400+) and
+  /// the supplement band (2500+), see prayer_times.dart for the id map.
+  static const int idBackupStale = 2600;
 
   /// Hydration reminders occupy a contiguous slot band [idWaterBase ..
   /// idWaterBase + maxWaterSlots) — one daily-repeating slot per fire time across

@@ -106,7 +106,7 @@ class FiredKeyStore {
         if (p.getBool('$_prefix$dedupeKey') ?? false) return false;
         await p.setBool('$_prefix$dedupeKey', true);
         await _prunePrefs(p);
-      } catch (_) {/* best-effort — better a repeat alert than a silent one */}
+      } catch (_) {/* best-effort - better a repeat alert than a silent one */}
       return true;
     }
 
@@ -131,7 +131,7 @@ class FiredKeyStore {
         await p.setBool('$_prefix$dedupeKey', true);
       }
       await LocalDb.pruneNotifFired(_cutoffLabel());
-    } catch (_) {/* bookkeeping is best-effort — the claim stands */}
+    } catch (_) {/* bookkeeping is best-effort - the claim stands */}
     return true;
   }
 
@@ -198,7 +198,7 @@ class FiredKeyStore {
       }
       try {
         await LocalDb.seedNotifFired(legacy);
-      } catch (_) {/* degraded — the prefs mirror above still carries them */}
+      } catch (_) {/* degraded - the prefs mirror above still carries them */}
       await p.remove(legacyListKey);
     } catch (_) {/* migration is best-effort; worst case is one repeat alert */}
   }
@@ -214,7 +214,7 @@ class FiredKeyStore {
         final d = leadingDate(k.substring(_prefix.length));
         if (d != null && d.compareTo(cutoff) < 0) await p.remove(k);
       }
-    } catch (_) {/* bounding is best-effort — never break a record on it */}
+    } catch (_) {/* bounding is best-effort - never break a record on it */}
   }
 
   /// The leading "YYYY-MM-DD" of a dedupeKey, or null if it isn't dated.

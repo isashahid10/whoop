@@ -372,7 +372,7 @@ class HevyClient {
     // say the actionable thing rather than leaking a status code.
     if (resp.statusCode != 200) {
       await clear();
-      throw HevyAuthExpired('Hevy sign-in expired — sign in again');
+      throw HevyAuthExpired('Hevy sign-in expired - sign in again');
     }
 
     final Object? decoded;

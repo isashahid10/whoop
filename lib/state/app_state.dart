@@ -38,6 +38,8 @@ import '../compute/derivation_engine.dart';
 import '../compute/derive_scheduler.dart';
 import '../compute/hr_max.dart';
 import '../compute/profile.dart';
+import '../data/backup_service.dart';
+import '../data/drive_backup.dart';
 import '../data/day_label.dart';
 import '../data/db.dart';
 import '../data/live_coverage_policy.dart';
@@ -46,6 +48,8 @@ import '../gps/gps_source.dart';
 import '../gps/route_tracker.dart';
 import '../gps/screen_wake.dart';
 import '../data/local_repository_impl.dart';
+import '../notify/prayer_times.dart';
+import '../notify/supplement_reminder.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../notify/notification_prefs.dart';
@@ -59,6 +63,7 @@ import '../integrations/weather_client.dart';
 import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
 import '../gestures/gesture_dispatcher.dart';
+import '../platform/alarm_intents.dart';
 import '../platform/tasker_bridge.dart';
 import '../data/models.dart';
 import '../live/live_activity.dart';
@@ -300,7 +305,20 @@ class AppState extends ChangeNotifier {
     }
     // The companion-URL override is loaded in _initCompanion (single source of
     // truth for every network call — announcements, OTA, telemetry, import).
-    healthSyncEnabled = prefs.getBool(_kHealthSync) ?? false;
+    // Defaults ON in this fork.
+    //
+    // Upstream defaulted it off because writing your health data into a shared
+    // store is a choice a stranger should opt into. Here the same flag also
+    // gates READING Apple Health — which is where steps, active energy and
+    // years of history come from — so leaving it off meant the phone's own
+    // step count was silently ignored and the screen showed a barely-worn
+    // band's estimate instead. Off-by-default made the app quietly wrong
+    // rather than quietly private.
+    //
+    // Safe without permission: the importer catches per-type failures and
+    // returns 0, and nothing is EXPORTED until the OS grant is actually given.
+    // A stored `false` is a deliberate opt-out and is still honoured.
+    healthSyncEnabled = prefs.getBool(_kHealthSync) ?? true;
     // Best-effort, no prompt: learn the current health-permission state so the
     // Profile toggle reflects reality on open.
     if (healthSyncEnabled) unawaited(checkHealth());
@@ -436,6 +454,7 @@ class AppState extends ChangeNotifier {
   Future<HevySyncResult> hevyInitialSync() async {
     final r = await _hevy.sync(full: true);
     lastHevySync = r;
+    bumpDataRevision();
     notifyListeners();
     return r;
   }
@@ -448,6 +467,7 @@ class AppState extends ChangeNotifier {
     }
     final r = await _hevy.sync(full: full);
     lastHevySync = r;
+    bumpDataRevision();
     notifyListeners();
     return r;
   }
@@ -456,6 +476,7 @@ class AppState extends ChangeNotifier {
   Future<void> hevyUnlink() async {
     await _hevy.unlink();
     lastHevySync = null;
+    bumpDataRevision();
     notifyListeners();
   }
   HealthLinkState healthState = HealthLinkState.unknown;
@@ -548,6 +569,15 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> get calendarLinked => _calendar.hasPermission;
+
+  /// Static probe for UI that has no AppState in scope yet.
+  static Future<bool> calendarGranted() async {
+    try {
+      return await CalendarClient().hasPermission;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Re-read the full backfill window on the next sync. For "re-import
   /// everything" after granting a permission that was previously denied — the
@@ -797,6 +827,20 @@ class AppState extends ChangeNotifier {
   /// A tapped notification asks the shell to switch to this tab index. The shell
   /// listens; it resets to -1 after consuming. Kept off the ChangeNotifier path so
   /// a deep-link doesn't repaint the whole tree.
+  /// Bumped whenever locally-stored data changes in a way a already-built
+  /// widget cannot otherwise notice — a Hevy sync, an import, a derive pass.
+  ///
+  /// WHY THIS EXISTS: the home-screen cards are StatefulWidgets that load in
+  /// initState. Rebuilding their parent does NOT re-run initState — Flutter
+  /// reuses the State — so after a Hevy sync the "Last lift" card kept showing
+  /// the previous workout while the Workouts tab showed the new one. Listening
+  /// to this notifier gives them an explicit "go and re-read" signal instead of
+  /// querying on every rebuild.
+  static final ValueNotifier<int> dataRevision = ValueNotifier<int>(0);
+
+  /// Announce that stored data changed.
+  static void bumpDataRevision() => dataRevision.value++;
+
   final ValueNotifier<int> navRequest = ValueNotifier<int>(-1);
 
   /// A tapped notification may also ask for a SUB-SCREEN on top of the tab
@@ -885,6 +929,7 @@ class AppState extends ChangeNotifier {
     _tapSub = NotificationService.instance.taps.listen(_handleTapRoute);
     unawaited(NotificationService.instance.consumeLaunchRoute());
     unawaited(checkPendingSiriRoute());
+    unawaited(drainPendingAlarmIntent());
   }
 
   /// Build the object graph WITHOUT running [_init] and without touching a
@@ -923,6 +968,59 @@ class AppState extends ChangeNotifier {
   Future<void> checkPendingSiriRoute() async {
     final route = await WidgetService.consumePendingRoute();
     if (route != null) _handleTapRoute(route);
+  }
+
+  // ── Siri band alarm ────────────────────────────────────────────────────────
+  //
+  // Siri can fire with the band out of range, so a request is HELD here until
+  // there is a live connection rather than failed on the spot. Held in memory
+  // only: a request that survived an app restart would arm an alarm the user
+  // asked for hours ago and has long forgotten.
+
+  PendingAlarm? _heldAlarmIntent;
+
+  /// Whether a Siri alarm request is waiting on the band to connect. The UI
+  /// uses this to say so, instead of leaving the user wondering.
+  bool get hasPendingAlarmIntent => _heldAlarmIntent != null;
+
+  /// Drain whatever Siri queued natively, then try to apply it.
+  Future<void> drainPendingAlarmIntent() async {
+    final p = await AlarmIntents.takePending();
+    if (!p.isEmpty) {
+      _heldAlarmIntent = p;
+      _log('[alarm] Siri request queued: '
+          'epoch=${p.epoch} clear=${p.clear} buzz=${p.buzz}');
+      notifyListeners();
+    }
+    await _tryApplyAlarmIntent();
+  }
+
+  /// Apply a held request once the band is reachable. Silent no-op otherwise —
+  /// this is called on every device-state tick, so it must stay cheap and quiet.
+  Future<void> _tryApplyAlarmIntent() async {
+    final p = _heldAlarmIntent;
+    if (p == null || !engine.isConnected) return;
+    // Cleared BEFORE the awaits: _onEngineState fires repeatedly while
+    // connected, and a request still held during a slow BLE write would be
+    // applied several times over.
+    _heldAlarmIntent = null;
+    try {
+      if (p.buzz) {
+        await testAlarmBuzz();
+      } else if (p.clear) {
+        await disableAlarm();
+      } else if (p.epoch != null) {
+        await setAlarm(
+          DateTime.fromMillisecondsSinceEpoch(p.epoch! * 1000),
+        );
+      }
+      _log('[alarm] Siri request applied');
+    } catch (e) {
+      // Do NOT re-hold: the write was attempted and refused, and silently
+      // retrying forever would arm an alarm long after the user gave up.
+      _log('[alarm] Siri request FAILED: $e');
+    }
+    notifyListeners();
   }
 
   /// Central disposal guard.
@@ -1189,10 +1287,32 @@ class AppState extends ChangeNotifier {
     try {
       if (!isPaired) return;
       await _ensureRemindersScheduled();
+      // Pull Apple Health forward. Steps and active energy are counted by the
+      // PHONE continuously, but this only ran on a permission grant or a manual
+      // tap in Profile — so the figures on Today were frozen at whenever that
+      // last happened, which read as "steps don't update". The import is
+      // idempotent (metric_series is REPLACE-keyed on (date,key) and the last
+      // week is rewritten wholesale), so re-running is safe; the throttle is
+      // only to keep a rapid app-switch from hammering HealthKit.
+      await _maybeImportHealth();
+      // Weather + calendar. These used to live ONLY inside healthSyncNow(),
+      // which is reached from a permission grant or a manual tap in Profile —
+      // and behind a toggle that defaulted OFF. So neither had ever run, and
+      // every weather/calendar surface in the app was permanently empty with
+      // nothing to explain why. They are ambient context, independent of
+      // Health, so they belong on the ordinary cadence.
+      await _maybeSyncAmbient();
       await _maybeNotifyStepGoal();
       await _maybeNotifyInactivity();
       await _maybeGenerateBriefing();
       unawaited(_checkSchemaHealth()); // throttled internally to 24h
+      // Rolling local snapshot, at most once every 20h. Cheap (a VACUUM INTO
+      // of a few MB) and the only thing standing between a corrupted store and
+      // records the band can no longer re-supply.
+      unawaited(BackupService.maybeSnapshot());
+      // Then push the newest snapshot off-device. Local snapshots die with the
+      // app container; this is the only copy that survives deleting the app.
+      unawaited(_driveBackupPass());
       // Staleness-escalation meta-layer: the SAME check the headless path
       // runs (shared cooldown via SharedPreferences, so foreground and
       // background never double-fire) — a foreground open is exactly when a
@@ -1289,7 +1409,7 @@ class AppState extends ChangeNotifier {
           priority: NotifPriority.low,
           title: 'Step goal reached',
           body:
-              'You hit about $steps steps — at or above your $goal goal. Nice work.',
+              'You hit about $steps steps - at or above your $goal goal. Nice work.',
           date: date,
           route: '/today',
         ),
@@ -1373,7 +1493,7 @@ class AppState extends ChangeNotifier {
         category: NotifCategory.reminders,
         title: 'Time to move',
         body:
-            "You've been still for a couple of hours — a short walk keeps your energy and circulation up.",
+            "You've been still for a couple of hours - a short walk keeps your energy and circulation up.",
         at: at,
         route: '/today',
       );
@@ -1647,11 +1767,11 @@ class AppState extends ChangeNotifier {
             // wake handler (ios_ble_restore.dart) — stuck true with no live
             // connection means every subsequent wake silently no-ops forever,
             // and the only way back is the user manually opening the app.
-            _log('[init] bg connect returned false — arming recovery');
+            _log('[init] bg connect returned false - arming recovery');
             await _armRecovery();
           }
         } catch (e) {
-          _log('[init] bg connect failed: $e — arming recovery');
+          _log('[init] bg connect failed: $e - arming recovery');
           await _armRecovery();
         }
       } else {
@@ -1690,7 +1810,7 @@ class AppState extends ChangeNotifier {
         const Duration(seconds: 20),
       );
       if (!connected) {
-        _log('[tasker] pending buzz (pattern=$pattern) still queued — '
+        _log('[tasker] pending buzz (pattern=$pattern) still queued - '
             'no connection within 20s, will retry on the next reconnect');
         return;
       }
@@ -1717,6 +1837,116 @@ class AppState extends ChangeNotifier {
 
   /// (Re)register standing scheduled reminders per the user's prefs. Idempotent;
   /// safe to call repeatedly (cancels + re-schedules). Best-effort.
+  DateTime? _lastAmbientSync;
+
+  /// Weather + calendar, at most every [_ambientInterval].
+  ///
+  /// Both return 0 rather than throwing when unavailable (no location fix, no
+  /// calendar grant), so neither can break the other or the pass around them.
+  static const Duration _ambientInterval = Duration(hours: 3);
+
+  /// Pull weather + calendar NOW, ignoring the cadence throttle.
+  ///
+  /// For the moment a permission is granted: waiting up to three hours for the
+  /// next scheduled pass would make the grant look like it did nothing.
+  Future<void> syncAmbientNow() async {
+    _lastAmbientSync = null;
+    await _maybeSyncAmbient();
+    notifyListeners();
+  }
+
+  Future<void> _maybeSyncAmbient() async {
+    final now = DateTime.now();
+    final last = _lastAmbientSync;
+    if (last != null && now.difference(last) < _ambientInterval) return;
+    _lastAmbientSync = now;
+    try {
+      await _weather.syncRecent();
+    } catch (e) {
+      _log('[weather] sync skipped: $e');
+    }
+    try {
+      await _calendar.syncRecent();
+    } catch (e) {
+      _log('[calendar] sync skipped: $e');
+    }
+  }
+
+  DateTime? _lastHealthImport;
+
+  /// Foreground Health pull, at most every [_healthImportInterval].
+  ///
+  /// Import only, never export: export is the user's explicit opt-in and
+  /// belongs on its own trigger, whereas reading the phone's own step count is
+  /// just keeping the screen honest.
+  static const Duration _healthImportInterval = Duration(minutes: 10);
+
+  /// Pull external context NOW, ignoring the foreground throttle.
+  ///
+  /// For pull-to-refresh: that gesture is an explicit "go and get it", and
+  /// honouring a 10-minute throttle there is exactly the "it animates but
+  /// nothing changes" behaviour the refresh control is supposed to rule out.
+  Future<void> forceExternalSync() async {
+    _lastHealthImport = null;
+    await _maybeImportHealth();
+    try {
+      if (await _hevy.client.isLinked) {
+        lastHevySync = await _hevy.sync();
+        bumpDataRevision();
+      }
+    } catch (_) {
+      // A dead Hevy token must not break the pull-to-refresh.
+    }
+    notifyListeners();
+  }
+
+  Future<void> _maybeImportHealth() async {
+    if (!healthSyncEnabled) return;
+    final now = DateTime.now();
+    final last = _lastHealthImport;
+    if (last != null && now.difference(last) < _healthImportInterval) return;
+    _lastHealthImport = now;
+    try {
+      final n = await _healthImport.importRecent();
+      if (n > 0) {
+        lastHealthImportCount = n;
+        notifyListeners();
+      }
+    } catch (e) {
+      _log('[health] foreground import skipped: $e');
+    }
+  }
+
+  /// Push the newest snapshot to Drive, and SAY SO if it has stopped working.
+  ///
+  /// A backup that fails silently is worse than none — you discover it at the
+  /// moment you needed it. Fires at most once a day (fire-once-per-day claim
+  /// in NotificationCenter), so a genuinely dead connection nags without
+  /// becoming noise.
+  Future<void> _driveBackupPass() async {
+    try {
+      await DriveBackup.maybeUpload();
+      if (!await DriveBackup.isStale()) return;
+      final day = todayLabel();
+      await NotificationCenter.instance.emitOncePerDay(
+        prefsKey: 'last_backup_stale_day',
+        dayId: day,
+        e: NotificationEvent(
+          dedupeKey: '$day:backup_stale',
+          category: NotifCategory.reminders,
+          priority: NotifPriority.normal,
+          title: 'Backup has stopped',
+          body: 'Your Google Drive backup has not run in days. Open Profile → '
+              'Backups and reconnect.',
+          route: '/profile',
+          date: day,
+        ),
+      );
+    } catch (e) {
+      _log('[drive] backup pass failed: $e');
+    }
+  }
+
   Future<void> _ensureRemindersScheduled() async {
     try {
       final prefs = await NotificationPrefs.load();
@@ -1749,13 +1979,19 @@ class AppState extends ChangeNotifier {
         bedtimeMinOfDay: bedtimeMin,
         journalDoneToday: BriefingStore.journalDoneToday(),
       );
+      // Supplements + prayer times. Both own their own enable flags and their
+      // own id bands, so they are rescheduled alongside — prayer times in
+      // particular MUST be rebuilt daily: they move a minute or two each day
+      // and change entirely when the user travels.
+      await SupplementReminder.reschedule();
+      await PrayerTimesService.reschedule();
     } catch (e) {
       _log('[notify] schedule reminders skipped: $e');
     }
   }
 
   void _log(String line) {
-    debugPrint('[OpenStrap] $line');
+    debugPrint('[Whoop] $line');
     FileLog.write(line);
     logLines.insert(0, line);
     if (logLines.length > 200) logLines.removeLast();
@@ -1832,13 +2068,13 @@ class AppState extends ChangeNotifier {
           true; // "app owns the band" — don't let restore compete
       await IosBleRestore.setOwnsBand(true);
       _log(
-        'Backgrounded — holding live connection for continuous background capture',
+        'Backgrounded - holding live connection for continuous background capture',
       );
     } else {
       // No live connection to hold — fall back to the restore path so iOS relaunches us
       // when the band reappears.
       await _armRecovery();
-      _log('Backgrounded — no live connection; armed iOS restore recovery');
+      _log('Backgrounded - no live connection; armed iOS restore recovery');
     }
   }
 
@@ -2120,6 +2356,9 @@ class AppState extends ChangeNotifier {
   }
 
   void _onEngineState(DeviceState s) {
+    // A Siri alarm request may have been waiting for exactly this — the band
+    // becoming reachable. Cheap and self-clearing when there is nothing held.
+    if (_heldAlarmIntent != null) unawaited(_tryApplyAlarmIntent());
     // Battery-low / charging OS notifications (edge-triggered + de-duped inside).
     _deviceAlerts.onDeviceState(batteryPct: s.batteryPct, charging: s.charging);
     final roundedPct = s.batteryPct?.round();
@@ -2170,7 +2409,7 @@ class AppState extends ChangeNotifier {
       // (best-effort; only credible walking updates it) and reset the counter.
       unawaited(_finalizeLivePedometer());
       if (_keepAlive && isPaired && !_reconnecting && !device.autoReconnectPaused) {
-        _log('Connection dropped — reconnecting…');
+        _log('Connection dropped - reconnecting…');
         _stopBackfillTimer();
         if (_background) {
           // Backgrounded: arm the OS-durable restore path FIRST and wait for it to
@@ -2219,12 +2458,12 @@ class AppState extends ChangeNotifier {
     if (!_keepAlive || paired == null || busy || _reconnecting) return;
     if (!engine.isConnected) return;
     if (_syncBurst != null) {
-      _log('Periodic history refresh skipped — a sync burst is already running.');
+      _log('Periodic history refresh skipped - a sync burst is already running.');
       return;
     }
     try {
       await _refreshHighFreqWakeWindow();
-      _log('Periodic history refresh — requesting another offload.');
+      _log('Periodic history refresh - requesting another offload.');
       final report = await _kickSyncBurst(kickFirst: true);
       _log(
         'Periodic backlog check: ${report.records} records '
@@ -2318,18 +2557,18 @@ class AppState extends ChangeNotifier {
         },
       );
       if (report.batches == 0) {
-        _log('Backfill stop — no batch ACKs; trim did not advance.');
+        _log('Backfill stop - no batch ACKs; trim did not advance.');
         break;
       }
       if (report.complete && !backlogRemains) {
-        _log('Backfill stop — history complete acknowledged by strap.');
+        _log('Backfill stop - history complete acknowledged by strap.');
         break;
       }
       if (!frontierAdvanced && !backlogRemains) {
         // Frontier didn't advance AND the strap reports nothing newer than what
         // we already hold → genuinely nothing more to pull (or a pure re-send).
         _log(
-          'Backfill stop — frontier did not advance and no backlog remains '
+          'Backfill stop - frontier did not advance and no backlog remains '
           '(strap newest=$strapNewest, frontier=$frontierAfter).',
         );
         break;
@@ -2343,7 +2582,7 @@ class AppState extends ChangeNotifier {
         // so DON'T stop — drain through the stale block to reach the newer,
         // correctly-stamped records behind it. Bounded by maxSessions.
         _log(
-          'Backfill continuation ${i + 1}/$maxSessions — frontier stuck on a '
+          'Backfill continuation ${i + 1}/$maxSessions - frontier stuck on a '
           'stale-timestamp block but strap reports backlog '
           '(newest=$strapNewest > frontier=$frontierAfter); draining through.',
         );
@@ -2351,7 +2590,7 @@ class AppState extends ChangeNotifier {
       }
       if (!backlogRemains) break;
       _log(
-        'Backfill continuation ${i + 1}/$maxSessions — '
+        'Backfill continuation ${i + 1}/$maxSessions - '
         'frontier still behind strap newest ($strapNewest > $frontierAfter).',
       );
     }
@@ -2473,22 +2712,54 @@ class AppState extends ChangeNotifier {
   int? get alarmLastEventId => _alarm.lastEventId;
   int? get alarmFiredAt => _alarm.firedAt;
 
+  /// Arm an alarm on BOTH the phone and the band.
+  ///
+  /// The phone side goes first and is INDEPENDENT of the band. It used to run
+  /// last and only after a successful BLE write, behind an early
+  /// `if (!isConnected) throw` — so with the strap out of range you got no
+  /// alarm at all, not even the phone one. For something whose entire job is
+  /// waking you up, "the band was not paired at 11pm so nothing rings" is the
+  /// worst possible failure, and the phone alarm has no reason to depend on
+  /// the band being present.
+  ///
+  /// Throws only when NEITHER side could be armed.
   Future<void> setAlarm(DateTime when) async {
-    if (!isConnected) throw Exception('Connect to your strap first');
     final epoch =
         when.millisecondsSinceEpoch ~/ 1000; // local wall-clock → unix
-    // Pass the DateTime through so the engine computes REAL sub-seconds for the
-    // rich 20-byte firing form (a hardcoded 0 subsec would still fire, but the
-    // engine owns the exact on-wire layout).
-    final ok = await engine.setAlarm(when);
-    if (!ok) {
-      // The arm write never reached the band — do NOT persist or start the
-      // confirmation machine, or we'd strand a phantom alarm "waiting for the
-      // strap to confirm" that can never fire. Surface it so the UI reflects
-      // "couldn't send" (the coach/profile callers snackbar on a throw).
-      _log('[alarm] arm write FAILED — not persisting; alarm not set.');
-      throw Exception('Alarm not sent — the strap did not accept the write');
+
+    // 1. PHONE. Breaks through silent mode and Focus (AlarmKit), and works
+    //    whether or not the strap is anywhere nearby.
+    final phoneOk = await AlarmIntents.scheduleBackup(when);
+
+    // 2. BAND. Runs off the strap's own RTC, so it fires even with the phone
+    //    dead — but only if it is connected right now to receive the write.
+    var bandOk = false;
+    if (isConnected) {
+      try {
+        bandOk = await engine.setAlarm(when);
+      } catch (e) {
+        _log('[alarm] band arm threw: $e');
+      }
     }
+
+    if (!bandOk) {
+      _log('[alarm] band not armed (connected=$isConnected); phone=$phoneOk');
+      // Persist the intent so the band gets armed on the next connection
+      // rather than the request being silently dropped.
+      _heldAlarmIntent = PendingAlarm(epoch: epoch);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('alarm_epoch', epoch);
+      _savedAlarm = epoch;
+      notifyListeners();
+      if (!phoneOk) {
+        throw Exception(
+            'Alarm not set - the strap is not connected and the phone alarm '
+            'was refused. Allow alarms for Whoop in Settings.');
+      }
+      // Phone alarm IS set; the band will follow on reconnect.
+      return;
+    }
+
     _savedAlarm = epoch;
     device.alarmEpoch = epoch; // optimistic display
     _alarm.set(epoch, DateTime.now().millisecondsSinceEpoch); // await event 56
@@ -2518,9 +2789,25 @@ class AppState extends ChangeNotifier {
     await engine.buzzPattern(pattern);
   }
 
+  /// Cancel the alarm on BOTH sides.
+  ///
+  /// The phone side is cancelled UNCONDITIONALLY and first. This used to open
+  /// with `if (!isConnected) throw`, which meant that with the strap out of
+  /// range you could not turn off the phone alarm at all — an alarm that
+  /// cannot be cancelled is a worse bug than one that fails to arm, because it
+  /// will definitely go off.
+  ///
+  /// A queued-but-unarmed request is dropped too, or it would re-arm the alarm
+  /// the moment the band reconnected.
   Future<void> disableAlarm() async {
-    if (!isConnected) throw Exception('Connect to your strap first');
-    await engine.disableAlarm();
+    // 1. Phone — always, no preconditions.
+    await AlarmIntents.cancelBackup();
+
+    // 2. Drop any pending ARM request, so it cannot resurrect the alarm.
+    _heldAlarmIntent = null;
+
+    // 3. Local state, cleared whether or not the band can be reached — the
+    //    user's intent is "no alarm", and the UI must reflect that.
     _savedAlarm = null;
     device.alarmEpoch = null;
     _alarm.disable();
@@ -2528,6 +2815,23 @@ class AppState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('alarm_epoch');
     notifyListeners();
+
+    // 4. Band, best-effort. It only holds one alarm and the next arm replaces
+    //    it, so failing here cannot strand a second alarm.
+    if (isConnected) {
+      try {
+        await engine.disableAlarm();
+      } catch (e) {
+        _log('[alarm] band disable failed (phone alarm IS cancelled): $e');
+      }
+    } else {
+      // The strap runs its alarm off its OWN RTC, so clearing local state does
+      // not stop it — it will still buzz at the armed time. Queue the disable
+      // so it is applied the moment the band is reachable again.
+      _heldAlarmIntent = const PendingAlarm(clear: true);
+      _log('[alarm] band not connected - phone alarm cancelled, strap disable '
+          'queued for next connect');
+    }
   }
 
   /// Retained name for the UI's "clear alarm" affordance — delegates to
@@ -2546,10 +2850,10 @@ class AppState extends ChangeNotifier {
         _alarmGraceTimer?.cancel();
         // Diagnostic: ALARM_SET (event 56) means the arm LATCHED on the band.
         // Its absence after a SET is the tell that the write never took.
-        _log('[alarm] strap CONFIRMED arm — ALARM_SET (event $id) received.');
+        _log('[alarm] strap CONFIRMED arm - ALARM_SET (event $id) received.');
         break;
       case AlarmEffect.fired:
-        _log('[alarm] strap FIRED — EXECUTED (event $id) received.');
+        _log('[alarm] strap FIRED - EXECUTED (event $id) received.');
         unawaited(_notifyAlarmFired());
         // A one-shot alarm is SPENT the moment it fires. This used to only log
         // + notify, so `alarmEpoch` kept returning the past epoch across
@@ -2658,7 +2962,7 @@ class AppState extends ChangeNotifier {
         return;
       }
       _log(
-        'Resume: no BLE data for ${engine.sinceLastRx.inSeconds}s — stale link, reconnecting.',
+        'Resume: no BLE data for ${engine.sinceLastRx.inSeconds}s - stale link, reconnecting.',
       );
       await engine.disconnect();
       // fall through to the full connect → subscribe → drain path below
@@ -2675,7 +2979,7 @@ class AppState extends ChangeNotifier {
       // openSession()/syncNow() ("Sync now" dead until restart).
       final band = paired;
       if (band == null) {
-        _log('Session start aborted — band was unpaired mid-resume.');
+        _log('Session start aborted - band was unpaired mid-resume.');
         return;
       }
       // Android: start the Edge Tracking foreground service so the live connection keeps
@@ -2707,7 +3011,7 @@ class AppState extends ChangeNotifier {
       // Arm the strap's high-frequency sync window when a wake alarm is near
       // (denser flushes → fresher overnight data ahead of the alarm).
       await _refreshHighFreqWakeWindow();
-      _log('Listening — live streams on, historical burst runs concurrently.');
+      _log('Listening - live streams on, historical burst runs concurrently.');
       // Enable live streams PROMPTLY, then let the historical burst run
       // CONCURRENTLY (unawaited, single-flight via _kickSyncBurst). History and
       // live records already share the one data subscription, so there is no
@@ -2761,7 +3065,7 @@ class AppState extends ChangeNotifier {
     // commands, so the auto-reconnect loop is paused (surfaced as needsRepairGuide).
     // A manual user connect / re-pair clears the pause on the next successful bond.
     if (device.autoReconnectPaused) {
-      _log('Reconnect paused — repeated bond refusals; re-pair required.');
+      _log('Reconnect paused - repeated bond refusals; re-pair required.');
       return;
     }
     _reconnecting = true;
@@ -2835,7 +3139,7 @@ class AppState extends ChangeNotifier {
           await engine.getStrapName();
           // Alarm display comes from the locally-set/persisted value; the
           // GET_ALARM readback is parked (unconfirmed format) — see ble_engine.
-          _log('Reconnected — live on; draining backlog in background.');
+          _log('Reconnected - live on; draining backlog in background.');
           unawaited(
             _kickSyncBurst(kickFirst: false).then((report) async {
               dbCounts = await LocalDb.counts();
@@ -2921,7 +3225,7 @@ class AppState extends ChangeNotifier {
     if (isLinkStale(engine.sinceLastRx)) {
       _log(
         'Foreground catch-up: no BLE data for ${engine.sinceLastRx.inSeconds}s '
-        '— zombie link, forcing reconnect instead of a stale-link pull.',
+        '- zombie link, forcing reconnect instead of a stale-link pull.',
       );
       await engine.disconnect();
       return;
@@ -3132,9 +3436,9 @@ class AppState extends ChangeNotifier {
           : await repo!.spotCheck(frames);
       spotResult = res;
       if (res == null) {
-        spotError = 'No reading captured — keep the band snug and still.';
+        spotError = 'No reading captured - keep the band snug and still.';
       } else if (res['ok'] != true) {
-        spotError = 'Not enough clean beats — try again, sitting still.';
+        spotError = 'Not enough clean beats - try again, sitting still.';
       }
     } catch (e) {
       spotError = 'Spot check failed: ${e is RepositoryException ? e.body : e}';

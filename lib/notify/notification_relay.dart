@@ -170,7 +170,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
         },
         cancelOnError: true,
       );
-    } catch (_) {/* stream unavailable — stay inert */}
+    } catch (_) {/* stream unavailable - stay inert */}
   }
 
   // Ask the native side whether the listener is still bound; if not, force a
@@ -186,7 +186,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
         try { await _pluginChannel.invokeMethod('forceRequestRebind'); } catch (_) {}
         try { await _pluginChannel.invokeMethod('reconnectService'); } catch (_) {}
       }
-    } catch (_) {/* handler absent on this plugin build — ignore */}
+    } catch (_) {/* handler absent on this plugin build - ignore */}
   }
 
   void _onNotification(ServiceNotificationEvent e) {
