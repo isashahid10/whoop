@@ -17,19 +17,19 @@ class WidgetService {
   /// Fallback App Group id. iOS builds read the configured value from Info.plist.
   static const String fallbackAppGroupId = String.fromEnvironment(
     'APP_GROUP_IDENTIFIER',
-    defaultValue: 'group.com.example.openstrap',
+    defaultValue: 'group.com.example.whoop',
   );
   static String appGroupId = fallbackAppGroupId;
 
   /// WidgetKit "kind" (Swift) / Android provider class name.
-  static const String _iOSName = 'OpenStrapWidget';
+  static const String _iOSName = 'WhoopWidget';
 
   /// WidgetKit "kind" for the lock-screen Band Battery widget (Swift).
-  static const String _batteryIOSName = 'OpenStrapBatteryWidget';
-  static const String _androidName = 'OpenStrapWidgetProvider';
+  static const String _batteryIOSName = 'WhoopBatteryWidget';
+  static const String _androidName = 'WhoopWidgetProvider';
 
   /// Android provider class for the Band Battery widget.
-  static const String _batteryAndroidName = 'OpenStrapBatteryWidgetProvider';
+  static const String _batteryAndroidName = 'WhoopBatteryWidgetProvider';
 
   static bool _inited = false;
   static Future<void> init() async {
@@ -134,7 +134,7 @@ class WidgetService {
       await HomeWidget.updateWidget(
           iOSName: _batteryIOSName, androidName: _batteryAndroidName);
       await _syncWatch();
-    } catch (_) {/* widgets unavailable / not configured yet — ignore */}
+    } catch (_) {/* widgets unavailable / not configured yet - ignore */}
   }
 
   /// Tell the iOS widget + Live Activity which appearance the app is rendering

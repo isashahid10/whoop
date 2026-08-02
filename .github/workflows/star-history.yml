@@ -26,6 +26,9 @@ concurrency:
 
 jobs:
   refresh:
+    # Upstream-only: needs secrets a fork does not have. Without this guard
+    # it fails on every push here and shows a permanent red X on the repo.
+    if: github.repository == 'OpenStrap/edge'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

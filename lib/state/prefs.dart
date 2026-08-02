@@ -48,6 +48,8 @@ class Prefs {
   static const String shellTab = 'ui.shell_tab';
   static const String recapRange = 'ui.recap_range';
   static const String workoutsRange = 'ui.workouts_range';
+  /// Sessions feed (0) vs strength analysis (1) on the Workouts screen.
+  static const String workoutsTab = 'ui.workouts_tab';
 
   /// Per-metric range toggle on the shared MetricScreen (Today/Week/Month/3M).
   /// Keyed by the metric id so Sleep / Heart / Body each remember independently.
