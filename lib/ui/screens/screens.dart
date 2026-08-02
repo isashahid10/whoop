@@ -13,7 +13,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../compute/activity_source.dart';
 import '../../data/day_label.dart';
+import '../insights/correlation_card.dart';
 import '../../data/db.dart';
 import '../../state/app_state.dart';
 import '../activity/strain_detail_screen.dart';
@@ -166,6 +168,11 @@ class BodyScreen extends StatelessWidget {
         const SizedBox(height: Sp.x3),
         const PerformanceAssessmentCard(),
         const CycleEntryCard(),
+        const SizedBox(height: Sp.x3),
+        // What actually moves your numbers. Lives on Body because it is about
+        // your physiology responding to inputs, and because Body is already
+        // the "why am I like this" tab rather than the "what did I do" one.
+        const CorrelationCard(),
         const SectionExtras(section: 'body'),
       ],
     ),
@@ -202,6 +209,11 @@ class _ActivityDetail extends StatefulWidget {
 
 class _ActivityDetailState extends State<_ActivityDetail> {
   double? _steps;
+  /// Where the step figure came from, so the screen can label a phone count as
+  /// a real measurement rather than badging it as the band's estimate.
+  ActivitySource _stepsSource = ActivitySource.none;
+  /// The richer picture Apple Health already carries for this day.
+  Map<String, double> _extra = const {};
   List<double?> _week = const [];
   List<String> _weekLabels = const [];
   // same insightsRevision staleness fix as the other detail screens - this
@@ -240,10 +252,53 @@ class _ActivityDetailState extends State<_ActivityDetail> {
     super.dispose();
   }
 
+  /// Distance, flights, exercise minutes and energy for this day.
+  ///
+  /// One query for the lot — they all live in metric_series, and a round trip
+  /// per figure would be six for a card.
+  Future<Map<String, double>> _loadExtra() async {
+    const keys = [
+      'hk_distance_m',
+      'hk_distance_cycling_m',
+      'hk_flights',
+      'hk_exercise_min',
+      'hk_active_kcal',
+      'hk_stand_hours',
+    ];
+    try {
+      final db = await LocalDb.instance;
+      final rows = await db.query(
+        'metric_series',
+        columns: ['key', 'value'],
+        where: 'date = ? AND key IN (${List.filled(keys.length, '?').join(',')})',
+        whereArgs: [_day, ...keys],
+      );
+      return {
+        for (final r in rows)
+          if (r['key'] is String && r['value'] is num)
+            r['key'] as String: (r['value'] as num).toDouble(),
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
   Future<void> _load() async {
-    final s = await LocalDb.metricValueOn(_day, 'steps');
+    // PHONE FIRST, exactly as the Today tile does. This read the raw band key
+    // directly, so tapping a correct home-screen figure opened a screen
+    // showing the band's wrist estimate instead — two different numbers for
+    // the same day, which is worse than either alone.
+    final src = await ActivitySourceResolver.steps(
+      _day,
+      bandSteps: await LocalDb.metricValueOn(_day, 'steps'),
+    );
+    final extra = await _loadExtra();
     if (!mounted) return;
-    setState(() => _steps = s);
+    setState(() {
+      _steps = src.value;
+      _stepsSource = src.source;
+      _extra = extra;
+    });
     // Week-of-rings strip (best-effort).
     try {
       final t = await context
@@ -278,8 +333,13 @@ class _ActivityDetailState extends State<_ActivityDetail> {
 
   @override
   Widget build(BuildContext context) {
-    // Live steps from the in-flight session count toward TODAY only.
-    final live = _isToday
+    // Live steps from the in-flight session count toward TODAY only — and
+    // ONLY when the headline came from the band.
+    //
+    // The phone's Health total already includes the walk you are on; adding
+    // the band's live count on top of it counts the same steps twice, and the
+    // error grows for the whole duration of the session.
+    final live = (_isToday && _stepsSource != ActivitySource.phone)
         ? context.select<AppState, int>((a) => a.liveSteps)
         : 0;
     // Was context.watch<AppState>() — rebuilt this whole board on every one of
@@ -290,6 +350,8 @@ class _ActivityDetailState extends State<_ActivityDetail> {
     return StepsDayContent(
       steps: (_steps?.round() ?? 0) + live,
       goal: goal,
+      source: _stepsSource,
+      extra: _extra,
       weekValues: _week,
       weekLabels: _weekLabels,
       onSetGoal: () => Navigator.of(context).push(
@@ -313,6 +375,15 @@ class StepsDayContent extends StatelessWidget {
   final VoidCallback? onSetGoal;
   final VoidCallback? onCalibrate;
 
+  /// Where the headline figure came from. A phone-counted step is a real
+  /// measurement; the band's is an estimate, and the two must not be badged
+  /// alike.
+  final ActivitySource source;
+
+  /// The rest of the day's movement, from Apple Health. Absent keys simply do
+  /// not render — a row of dashes is worse than a shorter card.
+  final Map<String, double> extra;
+
   const StepsDayContent({
     super.key,
     required this.steps,
@@ -321,7 +392,28 @@ class StepsDayContent extends StatelessWidget {
     this.weekLabels = const [],
     this.onSetGoal,
     this.onCalibrate,
+    this.source = ActivitySource.none,
+    this.extra = const {},
   });
+
+  /// Metres → the unit a human wants at that magnitude.
+  static String _dist(double m) =>
+      m >= 1000 ? '${(m / 1000).toStringAsFixed(2)} km' : '${m.round()} m';
+
+  /// Average pace over the day's walking distance.
+  ///
+  /// Deliberately NOT called speed: this is total distance over total exercise
+  /// minutes, which is a day-level average, not an instantaneous rate. Only
+  /// shown when there is enough of both for the figure to mean anything.
+  static String? _pace(Map<String, double> e) {
+    final m = e['hk_distance_m'];
+    final min = e['hk_exercise_min'];
+    if (m == null || min == null || m < 500 || min < 5) return null;
+    final minPerKm = min / (m / 1000);
+    final mm = minPerKm.floor();
+    final ss = ((minPerKm - mm) * 60).round();
+    return "$mm'${ss.toString().padLeft(2, '0')}\" /km";
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -345,6 +437,24 @@ class StepsDayContent extends StatelessWidget {
     }
     final hasWeek = ringValues.whereType<double>().isNotEmpty;
 
+    // Everything Apple Health already knows about the day's movement. Built
+    // as a list so an absent figure drops out rather than rendering a dash.
+    final rows = <({String label, String value})>[
+      if (extra['hk_distance_m'] != null)
+        (label: 'Walking + running', value: _dist(extra['hk_distance_m']!)),
+      if (extra['hk_distance_cycling_m'] != null)
+        (label: 'Cycling', value: _dist(extra['hk_distance_cycling_m']!)),
+      if (_pace(extra) != null)
+        (label: 'Average pace', value: _pace(extra)!),
+      if (extra['hk_exercise_min'] != null)
+        (label: 'Exercise', value: '${extra['hk_exercise_min']!.round()} min'),
+      if (extra['hk_flights'] != null)
+        (label: 'Flights climbed', value: '${extra['hk_flights']!.round()}'),
+      if (extra['hk_active_kcal'] != null)
+        (label: 'Active energy',
+            value: '${extra['hk_active_kcal']!.round()} kcal'),
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -360,11 +470,21 @@ class StepsDayContent extends StatelessWidget {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Tag('est', color: accent),
+                    // Only the band's figure is an estimate.
+                    if (source != ActivitySource.phone)
+                      Tag('est', color: accent),
                     InfoDot(
                       title: 'How steps are counted',
-                      body:
-                          'While the band streams live (a workout or with the '
+                      body: source == ActivitySource.phone
+                          ? 'This is your iPhone\'s own count, from Apple '
+                              'Health. The phone counts steps in hardware '
+                              'whenever it is on you, and HealthKit merges '
+                              'every contributing device - so it is a real '
+                              'count, not an estimate.\n\n'
+                              'The band is used only when Health has nothing '
+                              'for the day; its figure is a wrist-motion '
+                              'estimate and is badged as one.'
+                          : 'While the band streams live (a workout or with the '
                           'app open) we count REAL steps from its 100 Hz motion '
                           'sensor. The rest of the day the sensor samples too '
                           'slowly to count each step, so those hours are '
@@ -402,6 +522,35 @@ class StepsDayContent extends StatelessWidget {
             ],
           ),
         ).dsEnter(),
+
+        // ── the rest of the day's movement ──────────────────────────────────
+        if (rows.isNotEmpty) ...[
+          const SizedBox(height: Sp.x3),
+          SurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TileHeader('Movement', icon: OsIcon.distance),
+                const SizedBox(height: Sp.x3),
+                for (var i = 0; i < rows.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                            child: Text(rows[i].label, style: AppText.body)),
+                        Text(rows[i].value,
+                            style: AppText.body
+                                .copyWith(fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: Sp.x2),
+                Text('From Apple Health.', style: AppText.captionMuted),
+              ],
+            ),
+          ).dsEnter(index: 1),
+        ],
 
         // ── the week of rings ────────────────────────────────────────────────
         if (hasWeek) ...[

@@ -58,7 +58,7 @@ class _StepCalibrationScreenState extends State<StepCalibrationScreen> {
       // re-arms a fresh walk which is the right recovery either way.
       setState(() {
         _saving = false;
-        _error = "That walk wasn't steady enough to learn from — try again "
+        _error = "That walk wasn't steady enough to learn from - try again "
             'on flatter, less crowded ground.';
       });
       return;

@@ -23,7 +23,7 @@ class CoachScreen extends StatelessWidget {
           title: 'How this plan is made',
           body:
               'Simple, deterministic rules over your own recovery, sleep and '
-              'load — no AI, no server. Every suggestion shows the exact '
+              'load - no AI, no server. Every suggestion shows the exact '
               'numbers that fired it.',
           methodNote: 'Rule-based · on-device · updates with each sync',
         ),
@@ -104,7 +104,7 @@ class CoachPlanContent extends StatelessWidget {
                 const SizedBox(width: Sp.x3),
                 Expanded(
                   child: Text(
-                    'Nothing flagged — carry on with your day.',
+                    'Nothing flagged - carry on with your day.',
                     style: AppText.bodySoft,
                   ),
                 ),
@@ -145,7 +145,7 @@ class _StrainTargetTile extends StatelessWidget {
               title: 'Strain target',
               body:
                   'How hard to go today, on the 0–21 strain scale, given your '
-                  'recovery and recent load. The band is the aim zone — the '
+                  'recovery and recent load. The band is the aim zone - the '
                   'number is its centre.',
               methodNote: t.rationale.isEmpty ? null : t.rationale,
             ),

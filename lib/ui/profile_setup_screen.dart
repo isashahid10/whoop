@@ -187,10 +187,10 @@ class _ProfileSetupFormState extends State<ProfileSetupForm> {
               title: 'Why we ask',
               body:
                   'Everything is computed on your phone. These numbers tune the '
-                  'published formulas we use — HRmax (Tanaka), calories (Keytel) '
+                  'published formulas we use - HRmax (Tanaka), calories (Keytel) '
                   'and training load (Banister).',
               bullets: [
-                'Leave a field blank and only that metric stays unknown — '
+                'Leave a field blank and only that metric stays unknown - '
                     'never guessed.',
                 'Change any of these later in Profile.',
               ],
@@ -216,7 +216,7 @@ class _ProfileSetupFormState extends State<ProfileSetupForm> {
         const SizedBox(height: Sp.x7),
 
         // ── Privacy / consent (pre-enabled here; user can switch off) ────
-        _label('Help improve OpenStrap'),
+        _label('Help improve Whoop'),
         const SizedBox(height: Sp.x3),
         ConsentTile(
           title: 'Send anonymous diagnostics',

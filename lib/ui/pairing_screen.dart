@@ -180,7 +180,7 @@ String humanizePairError(Object e) {
   if (msg.contains('permission') ||
       msg.contains('denied') ||
       msg.contains('unauthorized')) {
-    return "OpenStrap needs Bluetooth permission to find your strap. Check "
+    return "Whoop needs Bluetooth permission to find your strap. Check "
         "your phone's settings and try again.";
   }
   if (msg.contains('timeout') || msg.contains('timed out')) {
@@ -376,7 +376,7 @@ class PairingStateView extends StatelessWidget {
                     PairPhase.pairing => 'Pairing with your strap…',
                     PairPhase.askReady =>
                       'Tap Pair, then choose your WHOOP in the system sheet. '
-                          'This lets OpenStrap reconnect in the background.',
+                          'This lets Whoop reconnect in the background.',
                     PairPhase.bluetoothOff =>
                       'Turn on Bluetooth in Settings or Control Center, then '
                           'try again.',

@@ -82,7 +82,7 @@ class _MetricScreenState extends State<MetricScreen> {
           physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
           ),
-          padding: const EdgeInsets.fromLTRB(Sp.screen, Sp.x3, Sp.screen, 120),
+          padding: const EdgeInsets.fromLTRB(Sp.screen, Sp.x3, Sp.screen, Sp.x6),
           children: [
             if (_tab == 0)
               KeyedSubtree(
@@ -417,13 +417,13 @@ class TrendBoard extends StatelessWidget {
                       'Your $label, averaged across the last $_period. Tap a '
                           'bar to drill into a finer period.',
                   methodNote: metric == 'spo2'
-                      ? 'This series is the IMPORTED vendor oxygen index — a '
+                      ? 'This series is the IMPORTED vendor oxygen index - a '
                             'relative saturation number, not a dip rate and '
                             'not an absolute SpO₂. On-device decoding writes '
                             'nothing here. Bars show each period’s value; '
                             'periods with no measurement stay empty.'
                       : 'Bars show each period’s value; periods with no '
-                            'measurement stay empty — a gap is a gap, never '
+                            'measurement stay empty - a gap is a gap, never '
                             'a zero.',
                 ),
               ],

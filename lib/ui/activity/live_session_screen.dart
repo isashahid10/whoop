@@ -86,15 +86,15 @@ const _zonePct = [0.0, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]; // lower bound of z0..z5 t
 
 // Playful + a little funny lines, by zone bucket.
 const Map<int, List<String>> _lines = {
-  0: ["Heart's still sipping coffee.", "Easing in — no sprinting cold.", "Loosening the engine…"],
+  0: ["Heart's still sipping coffee.", "Easing in - no sprinting cold.", "Loosening the engine…"],
   1: ["Warm-up mode. We build to it.", "Blood's moving. Good start.", "Gentle. The fun comes later."],
-  2: ["Cruising — the fat-burn sweet spot.", "Your mitochondria say thanks.", "Zone 2: the long-game zone."],
+  2: ["Cruising - the fat-burn sweet spot.", "Your mitochondria say thanks.", "Zone 2: the long-game zone."],
   3: ["Engine's humming. Hold this.", "Aerobic and honest. Keep rolling.", "This is the work. Stay here."],
-  4: ["Threshold — this is where fitness is built.", "Breathe and hold. You've got this.", "The good kind of uncomfortable."],
-  5: ["MAX. Brief and brutal — respect.", "Full send. Your heart filed a complaint.", "Don't quit. You're almost through it."],
+  4: ["Threshold - this is where fitness is built.", "Breathe and hold. You've got this.", "The good kind of uncomfortable."],
+  5: ["MAX. Brief and brutal - respect.", "Full send. Your heart filed a complaint.", "Don't quit. You're almost through it."],
 };
 const List<String> _droppingLines = [
-  "HR's easing down — recover, or pick it back up?",
+  "HR's easing down - recover, or pick it back up?",
   "Catching your breath. Smart.",
   "Coasting. Ready when you are.",
 ];
@@ -413,7 +413,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                         redStreak: _redStreak,
                         line: _line,
                         almostText: almost
-                            ? '$gapBpm bpm to ${_zones[zone + 1].label} — push'
+                            ? '$gapBpm bpm to ${_zones[zone + 1].label} - push'
                             : null,
                         almostColor:
                             zone < 5 ? _zones[zone + 1].color : z.color,
@@ -1629,11 +1629,11 @@ class _GpsLiveMapViewState extends State<GpsLiveMapView> {
   /// or miss, never worked" — a stall with no error just sat on "Waiting for
   /// GPS…" forever with zero explanation).
   String _statusText(bool empty, bool stalled, String? err) {
-    if (err != null) return 'GPS signal lost — check that location is on';
+    if (err != null) return 'GPS signal lost - check that location is on';
     if (stalled) {
       return empty
-          ? 'Still waiting for a GPS fix — move to open sky if indoors'
-          : 'GPS signal weak — your route may show a gap here';
+          ? 'Still waiting for a GPS fix - move to open sky if indoors'
+          : 'GPS signal weak - your route may show a gap here';
     }
     return 'Waiting for GPS…';
   }
@@ -2298,8 +2298,8 @@ class _SessionStateChip extends StatelessWidget {
         icon: const Icon(Icons.location_off_outlined,
             size: 15, color: Colors.white60),
         text: locationIssue == GpsPermissionStatus.serviceOff
-            ? 'Location off — turn it on'
-            : 'Location off — allow it',
+            ? 'Location off - turn it on'
+            : 'Location off - allow it',
         tint: AppColors.warn,
       ),
     );

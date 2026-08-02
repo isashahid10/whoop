@@ -74,7 +74,7 @@ class _StepGoalScreenState extends State<StepGoalScreen> {
           title: 'Step goal',
           body:
               'Steps are estimated on-device from your band\'s motion. The goal '
-              'is just a target — change it any time.',
+              'is just a target - change it any time.',
         ),
       ],
       children: [

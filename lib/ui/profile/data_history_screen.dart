@@ -70,7 +70,7 @@ class _DataHistoryScreenState extends State<DataHistoryScreen> {
     try {
       final path = await LocalDb.exportCopy();
       if (!mounted) return;
-      await Share.shareXFiles([XFile(path)], text: 'OpenStrap data export');
+      await Share.shareXFiles([XFile(path)], text: 'Whoop data export');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -86,7 +86,7 @@ class _DataHistoryScreenState extends State<DataHistoryScreen> {
       await Share.shareXFiles(
         [XFile(path)],
         text:
-            'OpenStrap selected day export (${_selected.length} day${_selected.length == 1 ? '' : 's'})',
+            'Whoop selected day export (${_selected.length} day${_selected.length == 1 ? '' : 's'})',
       );
     } catch (e) {
       if (!mounted) return;

@@ -163,7 +163,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           if (!_running && (u.notes?.isNotEmpty ?? false))
             Text(u.notes!, style: AppText.bodySoft)
           else if (!_running)
-            Text("Download and install the latest OpenStrap.", style: AppText.bodySoft),
+            Text("Download and install the latest Whoop.", style: AppText.bodySoft),
           if (_running) ...[
             const SizedBox(height: Sp.x2),
             Text(
@@ -187,7 +187,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               ),
             if (_error != null) ...[
               const SizedBox(height: Sp.x2),
-              Text('Tip: allow "install unknown apps" for OpenStrap, or download in your browser.',
+              Text('Tip: allow "install unknown apps" for Whoop, or download in your browser.',
                   style: AppText.captionMuted),
             ],
           ],

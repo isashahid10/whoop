@@ -109,7 +109,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
                   _toggle(
                     title: 'Evening recap',
                     subtitle:
-                        'How the day landed — strain, movement and stress, in a '
+                        'How the day landed - strain, movement and stress, in a '
                         'few glanceable lines.',
                     value: _p.eveningEnabled,
                     onChanged: (v) =>
@@ -131,7 +131,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
                   _toggle(
                     title: 'Bedtime journal prompt',
                     subtitle:
-                        'A nudge near your bedtime to log the day — by hand or '
+                        'A nudge near your bedtime to log the day - by hand or '
                         'by chatting with your AI. Fires once a night.',
                     value: _p.journalEnabled,
                     onChanged: (v) =>
@@ -179,7 +179,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             child: Text(
               'Briefings are written from your own on-device data by your '
               'own AI provider, using your own key. The only network call '
-              'is to that provider — nothing goes to an OpenStrap server.',
+              'is to that provider - nothing goes to an Whoop server.',
               style: AppText.captionMuted,
             ),
           ),

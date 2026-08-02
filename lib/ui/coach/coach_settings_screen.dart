@@ -75,7 +75,7 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
       final ids = await CoachEngine.fetchModels(_base.text, _key.text);
       setState(() {
         _models = ids;
-        _msg = ids.isEmpty ? 'Provider returned no models — type one manually.' : '${ids.length} models found. Search and tap to pick.';
+        _msg = ids.isEmpty ? 'Provider returned no models - type one manually.' : '${ids.length} models found. Search and tap to pick.';
       });
     } catch (e) {
       setState(() => _msg = e is CoachException ? e.message : 'Could not list models: $e');
@@ -135,7 +135,7 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
         ),
       if (rows.isEmpty)
         Text(_models.isEmpty
-            ? 'Tap Fetch to load your provider’s models — or just type a model id above and it’ll be used as-is.'
+            ? 'Tap Fetch to load your provider’s models - or just type a model id above and it’ll be used as-is.'
             : 'No match. Type a full model id to use it as a custom model.',
             style: AppText.captionMuted)
       else
@@ -188,7 +188,7 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
               AppIcon(OsIcon.shield, size: 18, color: AppColors.good),
               const SizedBox(width: Sp.x3),
               Expanded(child: Text('Your key is stored only on this device and is sent '
-                  'directly to your provider — never to OpenStrap.', style: AppText.captionMuted)),
+                  'directly to your provider - never to Whoop.', style: AppText.captionMuted)),
             ])),
             const SizedBox(height: Sp.x5),
 
@@ -247,7 +247,7 @@ class _CoachSettingsScreenState extends State<CoachSettingsScreen> {
             const SizedBox(height: Sp.x3),
             Text('Works with Gemini, OpenAI, Anthropic, OpenRouter, Groq, Together, '
                 'local Ollama / LM Studio, and anything OpenAI-compatible.\n\n'
-                'Gemini has a free tier with no card required — get a key at '
+                'Gemini has a free tier with no card required - get a key at '
                 'aistudio.google.com/apikey.', style: AppText.captionMuted),
 
             const SizedBox(height: Sp.x5),

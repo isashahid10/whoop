@@ -54,10 +54,21 @@ class ThemeController extends ChangeNotifier {
     return c;
   }
 
+  /// Default DARK rather than `system`.
+  ///
+  /// This is a wearable-data app whose entire visual language — rings on a near
+  /// black field, saturated accents carrying the meaning — is designed against
+  /// a dark ground; the same screens in light mode wash the accents out and
+  /// lose the hierarchy. Light mode remains fully supported and one tap away in
+  /// Profile, it is just no longer what an unconfigured install lands on.
+  ///
+  /// Only an ABSENT preference falls back. A stored 'system' is a deliberate
+  /// choice and is honoured.
   static AppThemeChoice _parse(String? s) => switch (s) {
         'light' => AppThemeChoice.light,
         'dark' => AppThemeChoice.dark,
-        _ => AppThemeChoice.system,
+        'system' => AppThemeChoice.system,
+        _ => AppThemeChoice.dark,
       };
 
   AppThemeChoice get choice => _choice;

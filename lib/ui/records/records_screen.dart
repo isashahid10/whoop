@@ -246,9 +246,9 @@ class RecordsContent extends StatelessWidget {
     final rec = r.record(key)!;
     final (value, unit) = _fmt(key, rec.value);
     final title = switch (key) {
-      'top_workout' => 'Top workout strain — $value',
-      'top_strain' => 'Biggest day strain — $value',
-      _ => 'Lowest resting HR — $value ${unit ?? ''}'.trim(),
+      'top_workout' => 'Top workout strain - $value',
+      'top_strain' => 'Biggest day strain - $value',
+      _ => 'Lowest resting HR - $value ${unit ?? ''}'.trim(),
     };
     final type = rec.type;
     final subtitle = (type != null && type.isNotEmpty)
@@ -367,7 +367,7 @@ class RecordsContent extends StatelessWidget {
                   : flat
                       ? 'Your resting heart rate has been stable.'
                       : 'A rising resting heart rate can mean fatigue, stress '
-                          'or illness — worth keeping an eye on.',
+                          'or illness - worth keeping an eye on.',
               methodNote:
                   'Mean of the newest 7 nightly RHR values vs ~30 days back '
                   '(${d.days} days of history).',

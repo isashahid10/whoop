@@ -1,0 +1,10 @@
+# Render-only tests (test/ui_render_test.dart) write PNGs of the screens so the
+# design can be looked at. They use matchesGoldenFile, which asserts — so they
+# are excluded from the default run and would otherwise fail the suite on every
+# intentional design change.
+#
+# To regenerate the images:
+#   fvm flutter test test/ui_render_test.dart --update-goldens --run-skipped
+tags:
+  render:
+    skip: "render-only; run explicitly with --tags render"

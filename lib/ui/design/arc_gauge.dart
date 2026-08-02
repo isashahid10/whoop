@@ -212,18 +212,19 @@ class ArcGaugePainter extends CustomPainter {
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, stroke * 0.85);
         canvas.drawArc(rect, _start, sweep, false, glowPaint);
       }
+      // SOLID, not a sweep gradient.
+      //
+      // The old 0.85→1.0 alpha sweep made the start of every arc read as a
+      // different, duller colour than its end — on a ring whose whole job is
+      // "this value is THIS colour", a hue that shifts along its own length
+      // undermines the encoding, and side by side it made two rings of the
+      // same colour look like two different ones. Confidence still fades the
+      // arc via `alpha`; it just fades the WHOLE arc evenly.
       final arc = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = stroke
         ..strokeCap = StrokeCap.round
-        ..shader = SweepGradient(
-          endAngle: math.pi * 2,
-          colors: [
-            color.withValues(alpha: 0.85 * alpha),
-            color.withValues(alpha: alpha),
-          ],
-          transform: GradientRotation(_start),
-        ).createShader(rect);
+        ..color = color.withValues(alpha: alpha);
       if (confidence < 0.4) {
         // Uncertain → dashed arc.
         const dash = 0.16, gap = 0.12;

@@ -262,7 +262,7 @@ class BentoTile extends StatelessWidget {
             fgFaint: AppColors.onNightSoft.withValues(alpha: 0.55),
             accent: Color.lerp(a, Colors.white, dark ? 0.15 : 0.25)!,
           ),
-          dark ? Border.all(color: const Color(0xFF3D362C)) : null,
+          dark ? Border.all(color: AppColors.divider) : null,
           Elevation.shadows(1, dark: dark),
         );
       case BentoTone.accent:
@@ -274,25 +274,35 @@ class BentoTile extends StatelessWidget {
         // recipe as BentoTone.soft/Tag/DeltaChip — white text still pops
         // cleanly against it, same as it did against the old solid fill.
         return (
-          AppColors.tonalFill(a),
+          // Neutral on dark, for the same reason BentoTone.soft is: the tint
+          // was decoration, and a grid of differently-tinted cards reads as
+          // five unrelated colours rather than one board.
+          dark ? AppColors.surfaceAlt : AppColors.tonalFill(a),
           ToneColors(
             fg: Colors.white,
             fgMuted: Colors.white.withValues(alpha: 0.78),
             fgFaint: Colors.white.withValues(alpha: 0.55),
-            accent: Colors.white,
+            // The accent survives on the ICON and the number, which is where
+            // it is saturated enough to actually carry meaning.
+            accent: dark ? a : Colors.white,
           ),
-          null,
+          dark ? Border.all(color: AppColors.divider) : null,
           dark ? const [] : Elevation.shadows(1, dark: false),
         );
       case BentoTone.soft:
-        // Quiet tint of the domain colour; ink stays the normal mode ink.
-        // Fill comes from the shared AppColors.tonalFill recipe (kept low in
-        // dark mode) so a same-hue accent/BigStat sitting on this tile never
-        // reads as two saturated colours fighting each other — one formula,
-        // reused by every colour-on-a-tint surface in the app (see
-        // AppColors.tonalFill's doc).
+        // ON DARK THE FILL IS NEUTRAL — no domain tint at all.
+        //
+        // The tint blended the domain hue into the card, which made the
+        // calories card olive and the heart card brown, and left a grid of
+        // cards in five different muddy colours. None of that tint carried
+        // information: the same domain colour is already on the tile's icon
+        // and its number, where it is saturated enough to actually read. On a
+        // near-black ground a 9% wash is not a signal, it is a stain.
+        //
+        // Light mode keeps the tint: on white a soft wash is legible as a
+        // grouping cue, which is what it was designed for.
         return (
-          AppColors.tonalFill(a),
+          dark ? AppColors.surface : AppColors.tonalFill(a),
           ToneColors(
             fg: AppColors.ink,
             fgMuted: AppColors.inkSoft,

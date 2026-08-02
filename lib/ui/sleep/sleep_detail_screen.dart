@@ -10,6 +10,9 @@
 // Deep is a LOW-CONFIDENCE HR-depth overlay — when Deep is genuinely absent
 // the row says so in words instead of leaving an invisible gap.
 
+import 'nap_history_screen.dart';
+import 'naps_card.dart';
+import '../../compute/nap_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -20,7 +23,6 @@ import '../design/design.dart';
 import '../insights/coach_cards.dart';
 import '../screens/metric_row.dart';
 import '../screens/trend_screen.dart';
-import 'sleep_periods_screen.dart';
 
 class SleepDetailScreen extends StatefulWidget {
   final String date; // 'YYYY-MM-DD'
@@ -78,6 +80,7 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
     };
     _app!.insightsRevision.addListener(_insightsListener!);
     _load();
+    _loadNaps();
   }
 
   @override
@@ -215,6 +218,37 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
 
   // ── build ──────────────────────────────────────────────────────────────────
 
+  /// Naps for this day. Empty is the normal case and renders nothing.
+  List<Nap> _naps = const [];
+
+  /// 0 = night, 1 = nap. Only reachable when a nap exists.
+  int _tab = 0;
+
+  /// Nocturnal TST for this day, used only to give the nap a sense of scale.
+  /// Read, never written back into the night's own totals.
+  double? get _nightMinutes {
+    final v = _data['tst_min'] ?? _data['asleep_min'];
+    return v is num ? v.toDouble() : null;
+  }
+
+  /// The nap tab's label carries its duration, so the toggle itself answers
+  /// "did I nap, and for how long" without needing to be tapped.
+  String get _napTabLabel {
+    final total = _naps.fold<int>(0, (a, n) => a + n.minutes);
+    if (total <= 0) return 'Nap';
+    final label = total < 60
+        ? '${total}m'
+        : total % 60 == 0
+            ? '${total ~/ 60}h'
+            : '${total ~/ 60}h ${total % 60}m';
+    return _naps.length > 1 ? 'Naps $label' : 'Nap $label';
+  }
+
+  Future<void> _loadNaps() async {
+    final n = await NapService.forDay(widget.date);
+    if (mounted) setState(() => _naps = n);
+  }
+
   List<Widget> _sections() {
     if (_phase == _Phase.loading) return [_loading()];
     if (_phase == _Phase.empty) {
@@ -222,7 +256,7 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
         StateCard(
           icon: OsIcon.sleep,
           title: 'No sleep recorded for this night',
-          message: 'Wear your strap overnight and sync — your breakdown '
+          message: 'Wear your strap overnight and sync - your breakdown '
               'appears once a night has been recorded.',
           actionLabel: 'Add sleep times',
           onAction: _editSleepTimes,
@@ -241,14 +275,33 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
       ];
     }
     return [
-      SleepNightContent(
-        data: _data,
-        date: widget.date,
-        onEditTimes: _editSleepTimes,
-        onConfirmFallback: _confirmFallback,
-        onClearOverride: _clearOverride,
-        showSleepCoach: widget.showSleepCoach,
-      ),
+      // A nap is a PEER of the night, not a footnote to it — so it gets a tab
+      // at the top rather than a card below the entire nightly breakdown.
+      //
+      // The toggle only exists on days with a nap. Most days have none, and a
+      // permanent second tab leading to an empty state would add chrome to
+      // every day to serve a few. When it is absent the screen is byte-for-byte
+      // what it was before.
+      if (_naps.isNotEmpty) ...[
+        SegmentedControl(
+          options: ['Night', _napTabLabel],
+          index: _tab,
+          onChanged: (i) => setState(() => _tab = i),
+          expanded: true,
+        ),
+        const SizedBox(height: Sp.x4),
+      ],
+      if (_tab == 1 && _naps.isNotEmpty)
+        NapContent(naps: _naps, nightMinutes: _nightMinutes)
+      else
+        SleepNightContent(
+          data: _data,
+          date: widget.date,
+          onEditTimes: _editSleepTimes,
+          onConfirmFallback: _confirmFallback,
+          onClearOverride: _clearOverride,
+          showSleepCoach: widget.showSleepCoach,
+        ),
     ];
   }
 
@@ -265,12 +318,13 @@ class _SleepDetailScreenState extends State<SleepDetailScreen> {
       title: 'Sleep',
       subtitle: _prettyDate(),
       actions: [
-        // All sleeps of the day (naps included) — the multi-period view.
+        // Nap history. This used to open SleepPeriodsScreen, which fetches
+        // from upstream's CLOUD api (`getDaySleepV2`) — a backend this fork
+        // does not use, so it could only ever fail with "Not signed in".
         RoundIconButton(
           OsIcon.bedtime,
           onTap: () => Navigator.of(context).push(
-            themedRoute((_) => SleepPeriodsScreen(date: widget.date),
-                name: 'SleepPeriodsScreen'),
+            themedRoute((_) => const NapHistoryScreen(), name: 'NapHistory'),
           ),
         ),
       ],
@@ -356,6 +410,25 @@ class SleepNightContent extends StatelessWidget {
   // overlay; the stage block is badged as an estimate.
   num? get _lightMin => _num(data['light_min']);
   num? get _deepMin => _num(data['deep_min']);
+
+  /// Cardiopulmonary coupling ratio (HFC / LFC) for the night.
+  ///
+  /// Above 1 means high-frequency coupling dominated, which Thomas 2005 calls
+  /// STABLE NREM. Below 1 means the night was mostly unstable NREM.
+  num? get _cpcRatio => _num(data['cpc_ratio']);
+
+  /// True when the coupling signal contradicts the Deep figure.
+  ///
+  /// Deep is derived from cardiac depth (low, steady heart rate). Stability is
+  /// derived from respiratory coupling. They are independent, so a night that
+  /// reports meaningful Deep while its coupling says the sleep was never
+  /// stable is a night where the two disagree - and that is worth saying out
+  /// loud rather than resolving silently in favour of whichever is prettier.
+  bool get _deepContradicted {
+    final r = _cpcRatio;
+    final d = _deepMin;
+    return r != null && d != null && r < 1.0 && d > 0;
+  }
   num? get _remMin => _num(data['rem_min']);
 
   // Sleep cycles (ultradian NREM↔REM, fractal-cycle method on HRV). Beta.
@@ -448,6 +521,8 @@ class SleepNightContent extends StatelessWidget {
         //    efficiency bento — straight from the van Hees window (not the
         //    stage model). ──
         _hero(context),
+        const SizedBox(height: Sp.x4),
+        _scoreCard(context),
         const SizedBox(height: Sp.x4),
         _summaryBento(context),
         // ── ESTIMATED STAGE BLOCK (below the trustworthy numbers) ──
@@ -601,7 +676,7 @@ class SleepNightContent extends StatelessWidget {
                     InfoDot(
                       title: 'Time asleep',
                       body:
-                          'Actual sleep inside your night window — awake time '
+                          'Actual sleep inside your night window - awake time '
                           'is excluded. The ring shows it against your need.',
                       methodNote:
                           'van Hees z-angle sleep window · asleep/awake accounting',
@@ -641,6 +716,149 @@ class SleepNightContent extends StatelessWidget {
     );
   }
 
+  // ── composite sleep score ──────────────────────────────────────────────────
+  //
+  // The number is deliberately never shown alone. Directly under it sits the
+  // basis line ("4 of 5 components measured — no deep + rem") and the full
+  // breakdown INCLUDING the parts that abstained, each with the reason it could
+  // not be measured. A composite that hides what went into it is how you get a
+  // number nobody can argue with and nobody should trust.
+
+  num? get _sleepScore => _num(data['sleep_score']);
+  num? get _scoreCoverage => _num(data['sleep_score_coverage']);
+  String? get _scoreBasis => data['sleep_score_basis'] as String?;
+
+  List<Map<String, dynamic>> get _scoreComponents {
+    final raw = data['sleep_score_components'];
+    if (raw is! List) return const [];
+    return [for (final e in raw) if (e is Map) e.cast<String, dynamic>()];
+  }
+
+  Widget _scoreCard(BuildContext context) {
+    final comps = _scoreComponents;
+    if (comps.isEmpty) return const SizedBox.shrink();
+
+    final score = _sleepScore;
+    final coverage = _scoreCoverage?.toDouble() ?? 0;
+    // Below ~70% of the intended weight the number is a partial read, and the
+    // card says so rather than presenting it like a full night's assessment.
+    final partial = score != null && coverage < 0.7;
+
+    return BentoTile(
+      tone: BentoTone.ink,
+      accent: DomainAccent.sleep,
+      onLongPress: () => showInfoSheet(
+        context,
+        title: 'Sleep score',
+        body: 'A 0-100 composite over five parts of the night: how long you '
+            'slept against your need, efficiency, continuity, timing '
+            'regularity, and the deep + REM share.\n\n'
+            'Deep + REM carries the SMALLEST weight on purpose - it rests on '
+            'the staging a wrist can least reliably do. A part that could not '
+            'be measured is dropped and the rest reweighted, never scored '
+            'zero.\n\n'
+            'This is not a validated clinical instrument. No wrist-derived '
+            'sleep score is.',
+        methodNote: _scoreBasis,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const TileHeader('Sleep score'),
+          const SizedBox(height: Sp.x2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: BigStat(
+                  value: score == null ? null : '${score.round()}',
+                  caption: partial ? 'partial read' : null,
+                  captionAccent: partial,
+                ),
+              ),
+              if (score != null)
+                ArcGauge(
+                  value: (score / 100).clamp(0.0, 1.0).toDouble(),
+                  color: DomainAccent.sleep,
+                  size: 72,
+                  stroke: 8,
+                  sweepFraction: 0.75,
+                  endDot: true,
+                  // Coverage drives the gauge's confidence rendering, so a
+                  // score built on half the night LOOKS less certain.
+                  confidence: coverage,
+                ),
+            ],
+          ),
+          if (_scoreBasis != null) ...[
+            const SizedBox(height: Sp.x2),
+            Text(_scoreBasis!, style: AppText.captionMuted),
+          ],
+          const SizedBox(height: Sp.x3),
+          for (final c in comps) _scoreComponentRow(c),
+        ],
+      ),
+    );
+  }
+
+  Widget _scoreComponentRow(Map<String, dynamic> c) {
+    final label = (c['label'] as String?) ?? '';
+    final s = _num(c['score']);
+    final weight = _num(c['weight'])?.toDouble() ?? 0;
+    final detail = (c['detail'] as String?) ?? '';
+    final reason = c['absent_reason'] as String?;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Sp.x2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 84,
+            child: Text(label, style: AppText.captionMuted),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (s != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: (s / 100).clamp(0.0, 1.0).toDouble(),
+                      minHeight: 6,
+                      backgroundColor:
+                          DomainAccent.sleep.withValues(alpha: 0.15),
+                      valueColor:
+                          AlwaysStoppedAnimation(DomainAccent.sleep),
+                    ),
+                  ),
+                const SizedBox(height: 2),
+                Text(
+                  // An abstained part reports WHY, not a dash — "needs several
+                  // nights of timing history" is information; "—" is not.
+                  s == null ? (reason ?? 'not measured') : detail,
+                  style: AppText.captionMuted,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: Sp.x2),
+          SizedBox(
+            width: 52,
+            child: Text(
+              s == null ? '—' : '${s.round()}  ${(weight * 100).round()}%',
+              textAlign: TextAlign.right,
+              style: AppText.captionMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── timing / efficiency / debt / consistency bento (BigStat tiles) ─────────
 
   Widget _summaryBento(BuildContext context) {
@@ -661,7 +879,7 @@ class SleepNightContent extends StatelessWidget {
         BentoTile(
           accent: DomainAccent.sleep,
           onLongPress: () => info('To bed',
-              'When you fell asleep — the start of the detected window.'),
+              'When you fell asleep - the start of the detected window.'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -723,7 +941,7 @@ class SleepNightContent extends StatelessWidget {
       right: [
         BentoTile(
           onLongPress: () => info(
-              'Woke', 'When you woke for the day — the end of the window.'),
+              'Woke', 'When you woke for the day - the end of the window.'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -773,13 +991,28 @@ class SleepNightContent extends StatelessWidget {
         InfoDot(
           title: 'Estimated stages',
           body:
-              'Stages are inferred from heart rate and motion at the wrist — '
-              'no EEG. Trust the duration and efficiency above first.',
+              'Stages are inferred from heart rate and motion at the wrist - '
+              'no EEG. Trust the duration and efficiency above first.\n\n'
+              'DEEP IS THE LEAST RELIABLE FIGURE HERE and can be wrong in '
+              'either direction. It was measured against a night with Apple '
+              'Watch staging as a reference: the classifier itself flags a '
+              'normal-looking share of the night as deep, but a rule requiring '
+              '3 unbroken minutes before a bout counts then removes most of '
+              'it, and how much it removes depends on how cleanly your heart '
+              'rate separated that night. On the reference night the result '
+              'came out ~50% HIGH; on other nights it comes out several times '
+              'too LOW.\n\n'
+              'Relaxing that rule was tested and rejected: it made the low '
+              'nights look right while pushing the reference night to nearly '
+              '3x its true value, which is fitting the constant to one night '
+              'rather than measuring anything.\n\n'
+              'So read Light and Deep TOGETHER as non-REM. That total is '
+              'sound; the split between them is not.',
           bullets: const [
             'REM can read high on wrist data',
-            'Deep is an experimental low-confidence overlay',
+            'Deep on its own is not trustworthy - use Light + Deep',
           ],
-          methodNote: 'Wrist actigraphy + HR staging · low confidence',
+          methodNote: 'Wrist actigraphy + HR staging · deep = low confidence',
         ),
         const Spacer(),
       ],
@@ -948,7 +1181,7 @@ class SleepNightContent extends StatelessWidget {
                 title: 'Advanced stages',
                 body:
                     'A second, independent 4-class estimate (Cole–Kripke + '
-                    'HR variability). Wrist autonomic — not PSG. Use it as a '
+                    'HR variability). Wrist autonomic - not PSG. Use it as a '
                     'sanity check on the stages above.',
               ),
               const Spacer(),
@@ -1039,7 +1272,7 @@ class SleepNightContent extends StatelessWidget {
                   _nStat(
                     'O2 DIPS',
                     odiPerHour?.toStringAsFixed(1) ?? '—',
-                    '/h overnight — tap for trend',
+                    '/h overnight - tap for trend',
                     // Tappable into its own trend (same generic bars every
                     // other metric uses) — restores the drill-down the old
                     // Heart-tab/Today-tile versions had, without a second
@@ -1067,7 +1300,7 @@ class SleepNightContent extends StatelessWidget {
                 InfoDot(
                   title: 'Elevated overnight HR',
                   body:
-                      'Overnight heart rate ran above your baseline — often an '
+                      'Overnight heart rate ran above your baseline - often an '
                       'early cue of fighting something off or under-recovery. '
                       'A signal, not a diagnosis.',
                 ),
@@ -1147,7 +1380,7 @@ class SleepNightContent extends StatelessWidget {
             InfoDot(
               title: 'Wrist orientation',
               body:
-                  'Wrist tilt from the band\'s motion sensor — a position '
+                  'Wrist tilt from the band\'s motion sensor - a position '
                   'PROXY, not your body position. Your arm moves independently '
                   'of your torso, so this can\'t tell back from side sleeping.',
             ),
@@ -1213,6 +1446,18 @@ class SleepNightContent extends StatelessWidget {
             value: _hm(_deepMin),
             metric: 'deep',
             trendTitle: 'Deep sleep'),
+      // Only shown when the two independent signals actually disagree. A
+      // permanent disclaimer under Deep would be ignored within a week.
+      if (_deepContradicted)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Sp.x2, 0, Sp.x2, Sp.x3),
+          child: Text(
+            'Your breathing and heart rhythm never settled into the stable '
+            'pattern that usually accompanies deep sleep, so tonight\'s deep '
+            'figure is less reliable than usual. Read Light and Deep together.',
+            style: AppText.captionMuted.copyWith(fontSize: 11),
+          ),
+        ),
       if (_remMin != null)
         TrendMetricRow(
             icon: OsIcon.heartRate,

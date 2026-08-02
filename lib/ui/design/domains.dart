@@ -24,47 +24,67 @@ class DomainAccent {
   /// Recovery / readiness — confident green.
   static Color get recovery => AppColors.good;
 
-  /// Sleep — calm indigo (never cold blue; sits well on paper and char).
+  /// Sleep — a PALE blue, deliberately distinct from strain's saturated blue.
+  ///
+  /// Sleep and strain sit side by side in the headline trio, so they cannot
+  /// share a hue at the same saturation: at ring size the eye reads two
+  /// identical blues as one repeated metric. Pale-vs-saturated separates them
+  /// without introducing a fourth hue into a palette that is meant to stay
+  /// small. (Was indigo #9D8CFF, which belonged to the old warm palette.)
   static Color get sleep => AppColors.isDark
-      ? const Color(0xFF9D8CFF)
-      : const Color(0xFF6C5CE7);
+      ? const Color(0xFF7BA1BB)
+      : const Color(0xFF4A7391);
 
-  /// Strain / training load — warm amber.
+  /// Strain / training load — saturated blue. Exertion, not alarm; the amber
+  /// this replaced read as a warning next to the red/yellow status colours.
   static Color get strain =>
-      AppColors.isDark ? const Color(0xFFF7B53A) : const Color(0xFFE8930C);
+      AppColors.isDark ? const Color(0xFF0093E7) : const Color(0xFF0077BC);
 
-  /// Movement / steps — restrained teal.
-  static Color get steps =>
-      AppColors.isDark ? const Color(0xFF3ECFC0) : const Color(0xFF0E9E92);
+  /// Movement / steps — the same blue as strain.
+  ///
+  /// Steps ARE exertion, so they share exertion's colour rather than owning a
+  /// teal of their own. Every hue that exists has to mean something; a
+  /// separate colour for steps only added one more thing to decode.
+  static Color get steps => strain;
 
-  /// Energy / calories — a confident chartreuse-gold, deliberately NOT
-  /// orange: calories is a routine daily-glance number, not an alert, and the
-  /// old orange card sat in the same "something needs attention" family as
-  /// the brand accent, the AI card and the strain domain all at once.
-  static Color get calories =>
-      AppColors.isDark ? const Color(0xFFB4D94A) : const Color(0xFF7A9D1E);
+  /// Energy / calories — exertion blue, not a colour of its own.
+  ///
+  /// The chartreuse this replaced was decorative: burning calories is not an
+  /// evaluative state, so it has no business owning a hue in a palette where
+  /// green means recovered and red means don't.
+  static Color get calories => strain;
 
-  /// Respiration / oxygen — soft slate blue.
+  /// Respiration / oxygen — pale blue, same family as sleep.
   static Color get oxygen => AppColors.loadDetraining;
 
-  /// Stress / arousal — kept on warn amber-rose.
+  /// Stress / arousal — YELLOW, the middle-band colour.
+  ///
+  /// Was a rose-pink, which sat close enough to the red "don't" colour to be
+  /// misread as one at small sizes while meaning something entirely different.
+  /// Stress is a middling state, so it takes the middling colour.
   static Color get stress =>
-      AppColors.isDark ? const Color(0xFFF07A8A) : const Color(0xFFD9526B);
+      AppColors.isDark ? const Color(0xFFFFDE00) : const Color(0xFFB58900);
 
-  /// Menstrual cycle — rose-plum (distinct from stress rose and heart coral;
-  /// calm on paper, lifted on char).
+  /// Menstrual cycle — the one domain that keeps a hue of its own, because it
+  /// is genuinely orthogonal to the recovered/exerted/alarmed axis the rest of
+  /// the palette encodes and would be unreadable folded into it.
   static Color get cycle =>
       AppColors.isDark ? const Color(0xFFE08BC0) : const Color(0xFFB2467F);
 
-  /// Deeper plum companion for the cycle domain (ovulation/luteal marks).
+  /// Deeper companion for the cycle domain (ovulation/luteal marks).
   static Color get cyclePlum =>
       AppColors.isDark ? const Color(0xFFB48BE0) : const Color(0xFF7C4A9E);
 
-  /// Sleep-stage palette (Awake / REM / Light / Deep) — one source for every
-  /// hypnogram + stage bar. Light keeps the warm tone the app already ships.
-  static Color get stageAwake => AppColors.warn;
-  static Color get stageRem => sleep;
-  static Color get stageLight => kLightStageColor;
+  /// Sleep-stage palette (Awake / REM / Light / Deep).
+  ///
+  /// One ramp, not four unrelated hues: the stages are ordered by depth, so
+  /// they read as a sequence from pale (awake) to saturated (deep) rather than
+  /// as four separate categories that have to be looked up in a legend.
+  static Color get stageAwake => AppColors.inkMuted;
+  static Color get stageRem =>
+      AppColors.isDark ? const Color(0xFF9EC5DC) : const Color(0xFF6A93B0);
+  static Color get stageLight =>
+      AppColors.isDark ? const Color(0xFF4E7FA3) : const Color(0xFF3D6B8C);
   static Color get stageDeep =>
-      AppColors.isDark ? const Color(0xFF7B6CD9) : const Color(0xFF4A3EB8);
+      AppColors.isDark ? const Color(0xFF1E4E70) : const Color(0xFF1B3E59);
 }
