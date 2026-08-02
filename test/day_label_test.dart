@@ -1,6 +1,6 @@
 // Today-label consistency: the UI detail cards, the repository's today
 // fallback, the coach prompt, and LocalDb's day filing must all agree on ONE
-// local-calendar "today" — even when the LOCAL date differs from the UTC date
+// local-calendar "today" - even when the LOCAL date differs from the UTC date
 // (for a UTC+5:30 user that's every day until ~05:30). The old code computed
 // "today" via DateTime.now().toUtc()...substring(0, 10) in the UI/repo/coach
 // while the day model keyed days by the LOCAL label, so detail cards looked up
@@ -32,7 +32,7 @@ void main() {
     final offset = DateTime(2026, 7, 3).timeZoneOffset;
 
     // Pick a boundary instant for THIS machine's zone so local date != UTC date
-    // (skip the divergence assertion on a UTC machine — no mismatch exists).
+    // (skip the divergence assertion on a UTC machine - no mismatch exists).
     DateTime? boundary;
     if (offset > const Duration(minutes: 30)) {
       boundary = DateTime(2026, 7, 3, 0, 15); // east of UTC: UTC is yesterday

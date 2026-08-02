@@ -1,7 +1,7 @@
 // Pure-logic tests for the rewritten BLE transport's deterministic seams
 // (ble_state.dart). These cover exactly the parts that USED to race in the old
-// engine — the backoff schedule, the seq allocator, the drain stop conditions,
-// and the phase→legacy-string projection — none of which need a real band.
+// engine - the backoff schedule, the seq allocator, the drain stop conditions,
+// and the phase→legacy-string projection - none of which need a real band.
 
 import 'dart:math';
 
@@ -106,7 +106,7 @@ void main() {
       expect(connStringFor(BleConnState.subscribing), 'connecting');
       expect(connStringFor(BleConnState.settingUp), 'connecting');
       expect(connStringFor(BleConnState.reconnecting), 'connecting');
-      // The collapsed single mode — history + live both stream under 'connected'.
+      // The collapsed single mode - history + live both stream under 'connected'.
       expect(connStringFor(BleConnState.listening), 'connected');
     });
 
@@ -246,7 +246,7 @@ void main() {
       d.feed(5000);
       expect(d.feed(3), isTrue);
       expect(d.regressions, 1);
-      // Keeps counting further regressions (not one-shot — every reboot matters).
+      // Keeps counting further regressions (not one-shot - every reboot matters).
       d.feed(10);
       expect(d.feed(4), isTrue);
       expect(d.regressions, 2);
@@ -458,10 +458,10 @@ void main() {
 
     test(
         'foreground mode fires MUCH sooner than fresh mode at the exact same '
-        '(short) staleness — the case that used to hit the slowest tier right '
+        '(short) staleness - the case that used to hit the slowest tier right '
         'when the user is watching', () {
       // dataStaleness has just dropped below staleThreshold (a catch-up sync
-      // reaching "now") — without isForeground this would be fresh mode
+      // reaching "now") - without isForeground this would be fresh mode
       // (1min quiet / 5min floor). With isForeground it must NOT wait that
       // long: the foreground tier (5s quiet / 15s floor) takes priority.
       expect(
@@ -513,7 +513,7 @@ void main() {
     test('foreground mode overrides stale mode too (still just the fastest '
         'reasonable tier, not slower)', () {
       // Even in stale mode's territory (dataStaleness >= 30min), foreground
-      // is at least as fast — same fixture, both should fire promptly.
+      // is at least as fast - same fixture, both should fire promptly.
       expect(
         d.shouldDerive(
           hasPending: true,
@@ -527,7 +527,7 @@ void main() {
     });
 
     test('isForeground defaults to false (existing callers unaffected)', () {
-      // No isForeground arg at all — must behave exactly like before.
+      // No isForeground arg at all - must behave exactly like before.
       expect(
         d.shouldDerive(
           hasPending: true,

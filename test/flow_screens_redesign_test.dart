@@ -4,7 +4,7 @@
 //   • pairing (instruction content + every PairPhase of PairingStateView)
 //   • profile setup (ProfileSetupForm: fields, sex chips, consents, submit)
 //   • profile (DeviceTile ink card incl. Sync-now action)
-// Explicit pump durations (never blind pumpAndSettle — several widgets repeat).
+// Explicit pump durations (never blind pumpAndSettle - several widgets repeat).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -115,7 +115,7 @@ void main() {
           palette: palette,
           scroll: false,
         ));
-        // Rings repeat — explicit pumps only.
+        // Rings repeat - explicit pumps only.
         await t.pump();
         await t.pump(const Duration(milliseconds: 600));
 
@@ -194,7 +194,7 @@ void main() {
       expect(submitted!['sex'], 'f');
       expect(telemetry, isTrue);
       // Health-data contribution must ALWAYS start unchecked on a fresh
-      // enrollment, regardless of kHealthDataContributionEnabled — that flag
+      // enrollment, regardless of kHealthDataContributionEnabled - that flag
       // only gates whether the toggle is offered at all (see the ConsentTile
       // count assertion above), never its default value. This is an opt-in
       // feature; a user must actively flip it.

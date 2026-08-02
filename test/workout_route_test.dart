@@ -1,5 +1,5 @@
 // workout_route persistence, run against the REAL LocalDb over sqflite_ffi:
-//   • fresh schema (v22) passes schemaHealth() — workout_route present.
+//   • fresh schema (v22) passes schemaHealth() - workout_route present.
 //   • appendRoutePoints → routePoints round-trip, ordered by seq.
 //   • hrSamplesInRange returns only worn (hr > 0) seconds in the window.
 //   • deleteSession cascades to the route rows.

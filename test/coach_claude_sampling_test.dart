@@ -1,4 +1,4 @@
-// claudeRejectsSampling — which model ids get their OpenAI sampling params
+// claudeRejectsSampling - which model ids get their OpenAI sampling params
 // (temperature/top_p/top_k) stripped before the chat-completions POST.
 //
 // Recent Claude versions reject those params with a 400 (Opus >= 4.7,
@@ -12,7 +12,7 @@ import 'package:test/test.dart';
 import 'package:openstrap_edge/coach/coach_engine.dart';
 
 void main() {
-  group('claudeRejectsSampling — models that reject sampling params', () {
+  group('claudeRejectsSampling - models that reject sampling params', () {
     const rejecting = [
       'claude-opus-4-7',
       'claude-opus-4-8',
@@ -33,11 +33,11 @@ void main() {
     }
   });
 
-  group('claudeRejectsSampling — models that keep sampling params', () {
+  group('claudeRejectsSampling - models that keep sampling params', () {
     const accepting = [
       'claude-opus-4-6',
       'claude-opus-4-5',
-      'claude-opus-4-20250514', // Opus 4.0 — date suffix is not a minor version
+      'claude-opus-4-20250514', // Opus 4.0 - date suffix is not a minor version
       'claude-sonnet-4-6',
       'claude-sonnet-4-5-20250929',
       'claude-haiku-4-5',

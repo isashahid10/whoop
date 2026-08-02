@@ -1,4 +1,4 @@
-// CoachEngine.postChat — the ONE provider call every LLM feature in the app
+// CoachEngine.postChat - the ONE provider call every LLM feature in the app
 // goes through (coach tool loop, briefings, journal chat).
 //
 //  • Every failure must surface as the documented CoachException. Reaching for

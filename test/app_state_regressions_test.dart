@@ -17,7 +17,7 @@ import 'package:openstrap_edge/notify/notification_event.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/paired_device.dart';
 
-/// A BleEngine whose live-stream arming always fails — the "link dropped
+/// A BleEngine whose live-stream arming always fails - the "link dropped
 /// mid-write" case that used to latch _stepCalActive true forever.
 class _ThrowingEngine extends BleEngine {
   _ThrowingEngine()
@@ -87,7 +87,7 @@ void main() {
       expect(healedPairing(PairedDevice('r-1', '4C2248092'), '   '), isNull);
     });
 
-    test('the remoteId is never invented — it always comes from the pairing',
+    test('the remoteId is never invented - it always comes from the pairing',
         () {
       // Even with a clean serial, an empty remoteId means there is nothing
       // legitimate to write back.
@@ -108,7 +108,7 @@ void main() {
           app.startStepCalibration(), throwsA(isA<StateError>()));
       // Pre-fix this stayed true for the rest of the process, pinning
       // _hasLiveConsumer and permanently disabling
-      // _maybeDowngradeLiveForBackground — the 100 Hz raw flood then kept
+      // _maybeDowngradeLiveForBackground - the 100 Hz raw flood then kept
       // streaming while backgrounded and starved the R24 offload.
       expect(app.debugHasLiveConsumer, isFalse);
     });
@@ -127,7 +127,7 @@ void main() {
       app.addListener(() => app.paired = null);
 
       // Pre-fix this THREW (`paired!` sat outside the try) and left busy true,
-      // so every later openSession()/syncNow() no-opped — "Sync now" was dead
+      // so every later openSession()/syncNow() no-opped - "Sync now" was dead
       // until the process restarted.
       await app.openSession();
 
@@ -158,7 +158,7 @@ void main() {
       addTearDown(app.dispose);
 
       // Kicked unawaited from _init(), one line before `initialized = true`
-      // makes the shell interactive — so the user can start a workout inside
+      // makes the shell interactive - so the user can start a workout inside
       // the round-trip.
       final reconcile = app.debugReconcileOrphanedLiveWorkout();
       app.activeWorkout = LiveWorkoutState(
@@ -298,7 +298,7 @@ void main() {
       addTo(app.insightsRevision.addListener);
       addTo(app.gestureSettings.addListener);
       // NotificationRelay holds a WidgetsBindingObserver, a 120 s
-      // Timer.periodic and a StreamSubscription — its observer accumulated on
+      // Timer.periodic and a StreamSubscription - its observer accumulated on
       // the binding across every hot restart.
       addTo(app.notificationRelay.addListener);
     });

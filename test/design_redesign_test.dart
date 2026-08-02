@@ -1,9 +1,9 @@
 // Widget tests for the redesign's new design-system components (OrbitScore,
 // BentoTile tones/ToneScope, BentoColumns, BigStat, Hypnogram/StageBars,
 // RadialHeatmap, RingWeek, StateChips, RecapCard, MedalCard,
-// AiHero) plus the rebuilt Today bento — rendered in BOTH palettes at phone
+// AiHero) plus the rebuilt Today bento - rendered in BOTH palettes at phone
 // width, asserting no overflow. Explicit pump durations (never blind
-// pumpAndSettle — some widgets animate on a loop).
+// pumpAndSettle - some widgets animate on a loop).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -171,7 +171,7 @@ void main() {
         _phone(t);
         await t.pumpWidget(
           _host(
-            // A deliberately tiny box for a long figure — the FittedBox must
+            // A deliberately tiny box for a long figure - the FittedBox must
             // shrink it, never clip it to "12 3…".
             Center(
               child: SizedBox(
@@ -188,7 +188,7 @@ void main() {
           ),
         );
         await t.pump(const Duration(milliseconds: 300));
-        // The full string is present and rendered exactly once — untrimmed.
+        // The full string is present and rendered exactly once - untrimmed.
         final numFinder = find.text('12 345');
         expect(numFinder, findsOneWidget);
         final txt = t.widget<Text>(numFinder);
@@ -328,7 +328,7 @@ void main() {
             MedalCard(
               medal: '5K',
               overline: 'Personal record',
-              title: 'Fastest 5k — 24:31',
+              title: 'Fastest 5k - 24:31',
               subtitle: 'Tuesday morning run',
               onTap: () => taps++,
             ),
@@ -336,9 +336,9 @@ void main() {
           ),
         );
         await t.pump(const Duration(milliseconds: 500));
-        expect(find.text('Fastest 5k — 24:31'), findsOneWidget);
+        expect(find.text('Fastest 5k - 24:31'), findsOneWidget);
         expect(t.takeException(), isNull);
-        await t.tap(find.text('Fastest 5k — 24:31'));
+        await t.tap(find.text('Fastest 5k - 24:31'));
         await t.pump(const Duration(milliseconds: 250));
         expect(taps, 1);
       }
@@ -353,7 +353,7 @@ void main() {
             children: [
               AiHero(
                 overline: 'Good morning',
-                line: 'Solid recovery — push today.',
+                line: 'Solid recovery - push today.',
                 hint: 'Ask about your day…',
                 cta: 'Tap for the breakdown',
                 onTap: () {},
@@ -366,7 +366,7 @@ void main() {
         ),
       );
       await t.pump(const Duration(milliseconds: 400));
-      expect(find.text('Solid recovery — push today.'), findsOneWidget);
+      expect(find.text('Solid recovery - push today.'), findsOneWidget);
       expect(
         find.text('Your morning briefing will appear here.'),
         findsOneWidget,
@@ -414,16 +414,19 @@ void main() {
           // row underneath it.
           expect(find.text('READINESS'), findsOneWidget);
           expect(find.text('Push'), findsOneWidget);
-          expect(find.text('Sleep'), findsOneWidget); // quick-stats row route
+          // Sleep now headlines the score trio; the strip carries the raw
+          // duration under a distinct label so nothing renders twice.
+          expect(find.text('SLEEP'), findsOneWidget); // trio ring label
+          expect(find.text('In bed'), findsOneWidget); // strip
           // Bento numbers. RHR also appears in the quick-stats row (Heart),
           // so it matches >1; HRV is bento-only (shown as an AI-briefing
           // fallback here since hasAiBriefing defaults false). Strain/Sleep
-          // have no bento tile — each shows exactly once, in the quick-stats
+          // have no bento tile - each shows exactly once, in the quick-stats
           // row.
-          expect(find.text('48'), findsOneWidget); // HRV — bento only
-          expect(find.text('52'), findsWidgets); // RHR — tile + quick-stats row
-          expect(find.text('12.4'), findsOneWidget); // strain — quick-stats row only
-          expect(find.text('7h 42m'), findsOneWidget); // sleep — quick-stats row only
+          expect(find.text('48'), findsOneWidget); // HRV - bento only
+          expect(find.text('52'), findsWidgets); // RHR - tile + quick-stats row
+          expect(find.text('12.4'), findsOneWidget); // strain - quick-stats row only
+          expect(find.text('7h 42m'), findsOneWidget); // sleep - quick-stats row only
           expect(find.text('8412'), findsOneWidget);
           expect(find.text('640'), findsOneWidget);
           // Week rings card present (steps spark provided).
@@ -433,8 +436,9 @@ void main() {
           expect(find.textContaining('stored to'), findsNothing);
           expect(t.takeException(), isNull, reason: 'palette $p');
 
-          // Quick-stats row routes.
-          await t.tap(find.text('Heart'));
+          // Quick-stats row routes. Labelled "Resting HR" now, not "Heart":
+          // the strip states the actual measure rather than the tab name.
+          await t.tap(find.text('Resting HR'));
           await t.pump(const Duration(milliseconds: 250));
           expect(opened, contains('heart'));
         }

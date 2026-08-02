@@ -1,7 +1,7 @@
 // Render tests for the interactive/AI/logging screens migrated onto the design
 // language: Coach (plan + chat bubbles), Journal (day tiles, insights, compose
 // bubbles + proposal), Cycle, and Spot-check. Each renders in BOTH palettes
-// with sample data; explicit pump durations (never blind pumpAndSettle — some
+// with sample data; explicit pump durations (never blind pumpAndSettle - some
 // kit widgets repeat).
 
 import 'package:flutter/material.dart';
@@ -41,7 +41,7 @@ void main() {
 
   group('CoachPlanContent', () {
     CoachData coach() => CoachData({
-      'summary': 'Recovered well — lean into training today.',
+      'summary': 'Recovered well - lean into training today.',
       'strain_target': {
         'value': 12.5,
         'low': 11.0,
@@ -73,7 +73,7 @@ void main() {
         await t.pumpWidget(_host(CoachPlanContent(coach: coach()), palette: p));
         await t.pump(const Duration(milliseconds: 900));
         expect(
-          find.text('Recovered well — lean into training today.'),
+          find.text('Recovered well - lean into training today.'),
           findsOneWidget,
         );
         expect(find.text("TODAY'S STRAIN TARGET"), findsOneWidget);
@@ -93,7 +93,7 @@ void main() {
       );
       await t.pump(const Duration(milliseconds: 600));
       expect(
-        find.text('Nothing flagged — carry on with your day.'),
+        find.text('Nothing flagged - carry on with your day.'),
         findsOneWidget,
       );
       expect(t.takeException(), isNull);
@@ -215,7 +215,7 @@ void main() {
                 ),
                 const JournalChatBubble(
                   user: false,
-                  text: 'Got it — logging caffeine and workout.',
+                  text: 'Got it - logging caffeine and workout.',
                 ),
                 JournalProposalCard(
                   tags: const ['caffeine', 'workout'],

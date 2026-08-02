@@ -58,13 +58,20 @@ List<AiReminderSlot> aiReminderPlan(
       minute: m % 60,
     ));
   }
-  if (aiConfigured && prefs.eveningEnabled) {
+  if (prefs.eveningEnabled) {
     final m = prefs.eveningMin % 1440;
+    // The evening recap is no longer gated on a configured coach. Without a
+    // key there is still a full day of measured numbers to summarise, and the
+    // deterministic day view says all of it — withholding the prompt only
+    // meant the day quietly ended with nothing. With a key it deep-links to
+    // the written briefing instead.
     out.add(AiReminderSlot(
       id: NotificationService.idEveningBrief,
-      title: 'Your evening recap is ready',
-      body: 'Tap for today\'s strain, movement and how the day landed.',
-      route: kRouteAiEvening,
+      title: 'Your day is ready',
+      body: aiConfigured
+          ? 'Tap for today\'s strain, movement and how the day landed.'
+          : 'Tap for today\'s strain, steps, sleep and training.',
+      route: aiConfigured ? kRouteAiEvening : '/recap',
       hour: m ~/ 60,
       minute: m % 60,
     ));
@@ -73,8 +80,8 @@ List<AiReminderSlot> aiReminderPlan(
     final m = prefs.resolvedJournalMin(bedtimeMinOfDay: bedtimeMinOfDay);
     out.add(AiReminderSlot(
       id: NotificationService.idJournalLog,
-      title: 'About your bedtime — log your day',
-      body: 'A minute of notes tonight teaches OpenStrap what actually moves '
+      title: 'About your bedtime - log your day',
+      body: 'A minute of notes tonight teaches Whoop what actually moves '
           'your recovery.',
       route: kRouteJournalCompose,
       hour: m ~/ 60,

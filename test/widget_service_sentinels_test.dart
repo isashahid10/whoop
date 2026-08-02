@@ -1,7 +1,7 @@
 // The home-widget / watch snapshot is a WRITE-ONLY surface: whatever Dart puts
 // in the App Group is what the user sees on their lock screen, with no chance
 // to notice it was invented. Every int key uses -1 for "no data" and the native
-// readers gate on it — so a nullable metric must never be written as a plausible
+// readers gate on it - so a nullable metric must never be written as a plausible
 // default instead.
 
 import 'package:flutter/services.dart';

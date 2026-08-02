@@ -9,7 +9,7 @@
 // the fallthrough fired the pending caption with no user tap.
 //
 // The fix routes the caption purely through the session-scoped machine's
-// confirmed/pending/unconfirmed flags — never the persisted epoch — so an
+// confirmed/pending/unconfirmed flags - never the persisted epoch - so an
 // all-false state (fresh launch, no tap) yields no caption. These tests pin the
 // mapping, driven by the real [AlarmConfirmation] transitions.
 

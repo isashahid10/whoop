@@ -55,7 +55,7 @@ DrainController _drainWith(CommitSyncBatchSink onCommit, {List<String>? logs}) =
     );
 
 void main() {
-  group('P0 — a durable commit that fails must not let the caller ACK', () {
+  group('P0 - a durable commit that fails must not let the caller ACK', () {
     test('commit() REPORTS failure instead of swallowing the exception', () async {
       final d = _drainWith(
         (raws, samples, token, {archives}) async =>
@@ -65,7 +65,7 @@ void main() {
 
       final durable = await d.commit(_tokenA);
 
-      // OLD BEHAVIOUR: commit() was Future<void> — it logged 'offload commit
+      // OLD BEHAVIOUR: commit() was Future<void> - it logged 'offload commit
       // error' and returned normally, and the caller unconditionally built and
       // wrote buildHistoryResultOk(), so the band trimmed a chunk that had
       // rolled back. There was no success signal to check at all.
@@ -85,7 +85,7 @@ void main() {
 
       expect(durable, isFalse);
       // OLD BEHAVIOUR: the buffer was snapshotted and CLEARED before the
-      // commit, and the exception was swallowed — so with the transaction
+      // commit, and the exception was swallowed - so with the transaction
       // rolled back and the cursor unadvanced, those rows existed nowhere.
       expect(d.bufferedRecords, 2);
 
@@ -180,7 +180,7 @@ void main() {
     });
   });
 
-  group('P0 — TrimAckPolicy gates the one irreversible act', () {
+  group('P0 - TrimAckPolicy gates the one irreversible act', () {
     test('a commit that did not become durable blocks the ACK', () {
       expect(
         TrimAckPolicy.evaluate(
@@ -214,7 +214,7 @@ void main() {
       );
     });
 
-    test('a stale session outranks every other reason — nothing may touch the '
+    test('a stale session outranks every other reason - nothing may touch the '
         'new link', () {
       expect(
         TrimAckPolicy.evaluate(
@@ -249,7 +249,7 @@ void main() {
     });
   });
 
-  group('P0 — a discarded burst poisons its HISTORY_END token', () {
+  group('P0 - a discarded burst poisons its HISTORY_END token', () {
     test('discardOpenChunk marks the open burst un-ACKable', () async {
       final d = _drainWith((raws, samples, token, {archives}) async {});
       d.onHistoricalRecord(_raw(1), _sample(1));
@@ -259,7 +259,7 @@ void main() {
 
       // OLD BEHAVIOUR: the records were dropped and NOTHING recorded it, so
       // the straggler HISTORY_END (already in flight when the idle watchdog
-      // fired) committed an empty buffer and echoed the token verbatim — the
+      // fired) committed an empty buffer and echoed the token verbatim - the
       // band then trimmed exactly the records that had just been thrown away.
       expect(d.burstDiscarded, isTrue);
       expect(d.bufferedRecords, 0);
@@ -323,7 +323,7 @@ void main() {
     });
   });
 
-  group('P2 — a corrupt far-future RTC read is not a clock correlation', () {
+  group('P2 - a corrupt far-future RTC read is not a clock correlation', () {
     const wallNow = 1780000000;
 
     test('a read implausibly far in the future is refused', () {
@@ -337,7 +337,7 @@ void main() {
       expect(ClockPolicy.acceptsClockRead(wallNow - 12, wallNow), isTrue);
     });
 
-    test('an unset/behind RTC is still accepted — this gate is future-only', () {
+    test('an unset/behind RTC is still accepted - this gate is future-only', () {
       // Those go to ClockPolicy.shouldSetClock, which corrects them; refusing
       // them here would break the ordinary drift-correction path.
       expect(ClockPolicy.acceptsClockRead(1600000000, wallNow), isTrue);
@@ -348,7 +348,7 @@ void main() {
     });
 
     test(
-      'trusting a corrupt read would arm the wake alarm years out — the exact '
+      'trusting a corrupt read would arm the wake alarm years out - the exact '
       'failure the gate prevents',
       () {
         final corrupt = wallNow + 20 * 365 * 86400;

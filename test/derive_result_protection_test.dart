@@ -1,5 +1,5 @@
 // Regression tests for the two ways a derivation pass could DESTROY a good
-// day_result — both of which are permanent, because `putDayResult` is
+// day_result - both of which are permanent, because `putDayResult` is
 // ConflictAlgorithm.replace on BOTH `day_result` AND `metric_series` (so every
 // scalar for the date is NULLed), raw is pruned after 3 days (so there is
 // nothing left to re-derive from), and a finalized row is never revisited.
@@ -7,9 +7,9 @@
 //  1. "Re-analyze" over a day older than raw retention. `LocalDb.dataHistoryDays`
 //     lists derived days with `raw_count == 0`; Advanced data → Select all →
 //     Re-analyze runs `runDays(force: true)` over ALL of them. Such a day
-//     prepares an EMPTY substrate, derives an all-absent bundle, and — because
+//     prepares an EMPTY substrate, derives an all-absent bundle, and - because
 //     an empty bundle's `endSec` was 0, making `endSec + 48 h < dataNowSec`
-//     unconditionally true — wrote that blank FINALIZED over the good row.
+//     unconditionally true - wrote that blank FINALIZED over the good row.
 //     Only `run()` had a pruned-raw guard, and only for user-override days.
 //
 //  2. A skip marker. One `_perDayTimeout` (90 s) overrun on a loaded phone
@@ -108,7 +108,7 @@ void main() {
     expect(before['readiness'], 74.0, reason: 'precondition');
 
     // A data edge exists (decoded rows for a MUCH later day), but the target
-    // day has no decoded rows at all — the post-retention state.
+    // day has no decoded rows at all - the post-retention state.
     final edgeSec = DateTime(2026, 3, 20, 9, 0).millisecondsSinceEpoch ~/ 1000;
     await LocalDb.insertRecord(
       RawRecord(
@@ -138,7 +138,7 @@ void main() {
 
     final after = await readScalars(oldDay);
     expect(after, equals(before),
-        reason: 'an empty derive must never REPLACE the persisted scalars — '
+        reason: 'an empty derive must never REPLACE the persisted scalars - '
             'putDayResult nulls every metric_series row for the date');
     final row = await LocalDb.dayResult(oldDay);
     expect(row, isNotNull);
@@ -152,7 +152,7 @@ void main() {
 
   test('an empty result for a day with NO prior result is written unfinalized',
       () async {
-    // Nothing to protect here, so the row IS written — but it must stay
+    // Nothing to protect here, so the row IS written - but it must stay
     // recomputable. Locking an all-absent row is what made the damage permanent.
     const freshDay = '2026-01-06';
     expect(await LocalDb.dayResult(freshDay), isNull, reason: 'precondition');
@@ -162,7 +162,7 @@ void main() {
     final row = await LocalDb.dayResult(freshDay);
     if (row != null) {
       expect(row['finalized'], 0,
-          reason: 'a result with nothing in it must never lock — a later pass '
+          reason: 'a result with nothing in it must never lock - a later pass '
               '(or restored substrate) has to be able to fill the day in');
     }
   });
@@ -210,7 +210,7 @@ void main() {
     await seedGoodDay(day, finalized: false);
     final before = await readScalars(day);
 
-    // The day sits far behind the data edge — the exact condition under which
+    // The day sits far behind the data edge - the exact condition under which
     // the old code wrote the marker FINALIZED.
     final dayEndSec = DateTime(2026, 2, 11).millisecondsSinceEpoch ~/ 1000;
     final dataNowSec = dayEndSec + 10 * 86400;
@@ -225,7 +225,7 @@ void main() {
     expect(row!['skipped'], 0, reason: 'the good row is untouched');
     expect((row['readiness'] as num?)?.toDouble(), 74.0);
     expect(await readScalars(day), equals(before),
-        reason: 'metric_series survives — putDayResult would have nulled it');
+        reason: 'metric_series survives - putDayResult would have nulled it');
   });
 
   test('a good TODAY is not blanked by one transient failure', () async {
@@ -276,7 +276,7 @@ void main() {
     expect(row!['skipped'], 1);
     expect(row['finalized'], 0,
         reason: 'finalizing a 90 s timeout locks the day out of every future '
-            'pass at this algo version — permanently blank');
+            'pass at this algo version - permanently blank');
     expect(
       (await LocalDb.finalizedDayIds(kAlgoVersion)).contains(day),
       isFalse,
@@ -284,7 +284,7 @@ void main() {
   });
 
   test('a skip marker does not overwrite an existing skip marker\'s reason '
-      'with a worse one — but is allowed to replace it', () async {
+      'with a worse one - but is allowed to replace it', () async {
     const day = '2026-02-14';
     final dayEndSec = DateTime(2026, 2, 15).millisecondsSinceEpoch ~/ 1000;
     await DerivationEngine()
@@ -299,6 +299,6 @@ void main() {
     final payload = jsonDecode(row!['payload_json'] as String) as Map;
     expect(payload['reason'], 'day_prepare_budget_exceeded',
         reason: 'a skip marker carries no user data, so replacing one with '
-            'another is fine — only REAL results are protected');
+            'another is fine - only REAL results are protected');
   });
 }

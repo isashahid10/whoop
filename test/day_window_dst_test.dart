@@ -133,7 +133,7 @@ void main() {
       // With the 23 h day, start + 86400 lands one hour INTO 2026-03-09.
       expect(springStart + 86400, nextStart + 3600);
 
-      // A record 30 min into 2026-03-09 — inside the buggy window, outside the
+      // A record 30 min into 2026-03-09 - inside the buggy window, outside the
       // real one.
       final victimTs = nextStart + 1800;
       await LocalDb.insertRecord(_raw(victimTs, 5001), _sample(victimTs, 5001));

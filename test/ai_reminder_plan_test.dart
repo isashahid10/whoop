@@ -22,7 +22,7 @@ void main() {
       expect(ids, contains(NotificationService.idJournalLog));
     });
 
-    test('briefing slots suppressed without a key; journal still scheduled', () {
+    test('the MORNING briefing needs a key; the evening recap does NOT', () {
       final plan = aiReminderPlan(
         const AiPrefs(),
         remindersEnabled: true,
@@ -30,9 +30,29 @@ void main() {
         journalDoneToday: false,
       );
       final ids = plan.map((s) => s.id).toSet();
+      // The morning slot exists to deliver WRITTEN analysis, so without a key
+      // it has nothing to deliver and stays away.
       expect(ids, isNot(contains(NotificationService.idMorningBrief)));
-      expect(ids, isNot(contains(NotificationService.idEveningBrief)));
+      // The evening slot summarises a day of MEASURED numbers, which exist
+      // with or without a coach - suppressing it only meant the day ended
+      // silently for anyone who never configured one.
+      expect(ids, contains(NotificationService.idEveningBrief));
       expect(ids, contains(NotificationService.idJournalLog));
+    });
+
+    test('the evening recap deep-links to the coach only when there IS one',
+        () {
+      AiReminderSlot evening(bool configured) => aiReminderPlan(
+            const AiPrefs(),
+            remindersEnabled: true,
+            aiConfigured: configured,
+            journalDoneToday: false,
+          ).firstWhere((s) => s.id == NotificationService.idEveningBrief);
+
+      // Routing to the AI breakdown with no key would open a screen that can
+      // only apologise.
+      expect(evening(false).route, '/recap');
+      expect(evening(true).route, isNot('/recap'));
     });
 
     test('nothing scheduled when reminders are off entirely', () {

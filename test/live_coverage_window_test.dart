@@ -1,20 +1,20 @@
-// live_coverage — regression coverage for the ZERO-WIDTH window bug.
+// live_coverage - regression coverage for the ZERO-WIDTH window bug.
 //
 // `live_coverage` rows record the period the live 100 Hz pedometer actually
 // counted, so the derivation pass can exclude those minutes from the 1 Hz
 // estimate (real count wins, nothing counted twice). The old writer took BOTH
 // ends of that window from the band record timestamp carried on live frames —
-// a value that does not advance during a live session — so real databases are
+// a value that does not advance during a live session - so real databases are
 // full of rows claiming hundreds of steps over ZERO seconds. A zero-width
 // window excludes ~one minute instead of the streamed period (so the rest gets
 // double counted) and destroys the only alignment between real 100 Hz counts
 // and 1 Hz minutes.
 //
 // Three layers are covered:
-//   1. deriveLiveCoverageWindow — the pure policy that decides the window.
-//   2. AppState — a full session whose recTs never advances must still persist
+//   1. deriveLiveCoverageWindow - the pure policy that decides the window.
+//   2. AppState - a full session whose recTs never advances must still persist
 //      a window spanning the streamed period (this is the bug, end to end).
-//   3. LocalDb.addLiveCoverage — the persistence guard, so an upstream
+//   3. LocalDb.addLiveCoverage - the persistence guard, so an upstream
 //      regression cannot silently write a degenerate row again.
 
 import 'dart:math' as math;
@@ -112,7 +112,7 @@ void main() {
 
     test('a near-continuous stream claims the full wall hull (small dropouts '
         'stay inside the counted period)', () {
-      // 570 s sampled inside a 600 s hull — 95 % duty.
+      // 570 s sampled inside a 600 s hull - 95 % duty.
       final w = deriveLiveCoverageWindow(
         steps: 700,
         samples100Hz: 100 * 570,
@@ -235,7 +235,7 @@ void main() {
       expect(rows, hasLength(1));
       final start = (rows.first['start_ts'] as num).toInt();
       final end = (rows.first['end_ts'] as num).toInt();
-      // Pre-fix this was start == end == recTs — a 0 s window.
+      // Pre-fix this was start == end == recTs - a 0 s window.
       expect(end - start, greaterThan(0));
       // The streamed period was ~240 s (the last frame's ingest is 100 ms shy).
       expect(end - start, closeTo(240, 2));
@@ -259,7 +259,7 @@ void main() {
 
   // ── 3. the persistence guard ───────────────────────────────────────────────
   group('LocalDb.addLiveCoverage', () {
-    test('a zero-duration window that claims steps is never persisted as-is — '
+    test('a zero-duration window that claims steps is never persisted as-is - '
         'and its steps are not lost', () async {
       const start = 1786000000;
       await LocalDb.addLiveCoverage(start, start, 1657, '2026-08-06');

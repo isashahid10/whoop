@@ -14,7 +14,7 @@ void main() {
     expect(route.points.length, greaterThan(50));
     expect(route.hr.length, route.points.length);
 
-    // ~3.2 km loop — generous bounds, just guarding against a degenerate
+    // ~3.2 km loop - generous bounds, just guarding against a degenerate
     // (near-zero) or absurd (thousands of km) generator regression.
     expect(route.distanceMeters, greaterThan(2000));
     expect(route.distanceMeters, lessThan(5000));

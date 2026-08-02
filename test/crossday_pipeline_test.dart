@@ -19,12 +19,12 @@ List<Map<String, dynamic>> _synthDays(
   bool withSleep = true,
 }) {
   final days = <Map<String, dynamic>>[];
-  // 2024-01-01 was a Monday — gives a clean run of weekdays + weekends.
+  // 2024-01-01 was a Monday - gives a clean run of weekdays + weekends.
   var dt = DateTime(2024, 1, 1);
   for (var i = 0; i < n; i++) {
     final date =
         '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-    // Gentle deterministic variation (no Random — keeps the test reproducible).
+    // Gentle deterministic variation (no Random - keeps the test reproducible).
     final wobble = (i % 5) - 2; // -2..2
     var rhr = 55.0 + wobble; // bpm
     final rmssd = 45.0 + wobble * 1.5; // ms
@@ -111,7 +111,7 @@ void main() {
 
     test('illness/anomaly keys exist (envelopes, not thrown)', () {
       final out = buildCrossDayBundle(_synthDays(30), const {});
-      // With a calm series these may be null/green — the point is no throw and
+      // With a calm series these may be null/green - the point is no throw and
       // the keys are addressable.
       expect(out.containsKey('illness'), isTrue);
       expect(out.containsKey('anomaly'), isTrue);
@@ -135,7 +135,7 @@ void main() {
     });
 
     test('absent inputs degrade to honest absent envelopes, no throw', () {
-      // All-null physiological fields, no trimp, no sleep — every family should
+      // All-null physiological fields, no trimp, no sleep - every family should
       // return its absent envelope (value "—") or null, never a fabrication.
       final blank = <Map<String, dynamic>>[
         for (var i = 0; i < 5; i++)
@@ -169,7 +169,7 @@ void main() {
     });
 
     test('survives a short series with partial sleep coverage', () {
-      // 3 days, no sleep fields at all — chronotype/jetlag/SRI absent, no throw.
+      // 3 days, no sleep fields at all - chronotype/jetlag/SRI absent, no throw.
       final out = buildCrossDayBundle(
         _synthDays(3, withSleep: false),
         const {},
@@ -183,7 +183,7 @@ void main() {
     //
     // Segment bounds are mapped to clock-minute-of-day in [0,1440). A segment
     // crossing local midnight therefore reads start > end (e.g. 1430 → 20), and
-    // the old `for (m = startMin; m < endMin; m++)` never executed — silently
+    // the old `for (m = startMin; m < endMin; m++)` never executed - silently
     // dropping it, despite a comment claiming it "clamps into grid". EVERY
     // night has exactly one such segment, so sleep-regularity was always
     // computed with a hole right at the boundary.
@@ -210,7 +210,7 @@ void main() {
               },
           ];
 
-      // A midnight-crossing segment must produce REAL coverage — under the old
+      // A midnight-crossing segment must produce REAL coverage - under the old
       // clamp the grid stayed entirely uncovered and SRI came back absent.
       final crossing = buildCrossDayBundle(
         nights(crossMidnight: true),

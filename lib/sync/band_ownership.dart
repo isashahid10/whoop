@@ -25,7 +25,7 @@ class BandOwnership {
   static BandOwnerKind? get owner => _owner;
   static bool get foregroundIntent => _foregroundIntent;
   static String get debugState =>
-      'owner=${_owner?.name ?? "none"} token=${_token ?? "-"} '
+      'owner=${_owner?.name ?? "none"} token=${_token ?? "—"} '
       'foregroundIntent=$_foregroundIntent';
 
   static void markForegroundIntent(bool active) {

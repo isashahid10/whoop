@@ -3,7 +3,7 @@
 // AppState's "your recovery is ready" (_kLastRecoveryNotifDay) and "step goal
 // reached" (_kLastStepGoalDay) used to write their persisted day-guard BEFORE
 // calling NotificationCenter.emit. emit DROPS the event outright when
-// NotificationPrefs.shouldFireOs says no — and the DEFAULT quiet window is
+// NotificationPrefs.shouldFireOs says no - and the DEFAULT quiet window is
 // 22:00–07:00, which a band syncing at 06:40 (the heavy finalize that computes
 // the new day's recovery) sits squarely inside. So the guard was burned on a
 // notification that never reached the user, and it then blocked every retry for
@@ -12,7 +12,7 @@
 // NotificationCenter.emitOncePerDay is the fixed sequencing (claim the guard
 // only on a real present) and emit now REPORTS whether it presented.
 //
-// NOTE — no sqlite factory is registered here, so FiredKeyStore runs in its
+// NOTE - no sqlite factory is registered here, so FiredKeyStore runs in its
 // degraded shared_preferences mode. That's fine: this suite is about the DAY
 // guard, not the cross-isolate claim (see notification_claim_atomic_test.dart).
 
@@ -127,7 +127,7 @@ void main() {
           reason: 'the guard must not be consumed by an event that never '
               'reached the user');
 
-      // Quiet hours over — the next derive pass must still be able to fire.
+      // Quiet hours over - the next derive pass must still be able to fire.
       await prefs.setBool('notif_quiet_enabled', false);
       final retry = await NotificationCenter.instance.emitOncePerDay(
         prefsKey: kGuardKey,

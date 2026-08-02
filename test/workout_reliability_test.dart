@@ -19,7 +19,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// Wait until [condition] holds, or give up after [timeout].
 ///
 /// Returns as soon as the condition is met, so the generous timeout costs
-/// nothing on a fast machine — it only buys headroom on a loaded CI runner.
+/// nothing on a fast machine - it only buys headroom on a loaded CI runner.
 /// Deliberately does NOT assert; the caller asserts afterwards so the failure
 /// message names the real expectation rather than "timed out".
 Future<void> _until(
@@ -36,7 +36,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // Releasing the gate re-arms the scheduler, which reads the durable
-  // compute_jobs queue — so this needs a real (in-memory-ish) DB.
+  // compute_jobs queue - so this needs a real (in-memory-ish) DB.
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
@@ -45,7 +45,7 @@ void main() {
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
   });
 
-  group('DeriveScheduler — live-workout gate', () {
+  group('DeriveScheduler - live-workout gate', () {
     late List<String> logs;
     late int runs;
     late DeriveScheduler s;
@@ -64,7 +64,7 @@ void main() {
 
     tearDown(() => s.dispose());
 
-    test('holding is idempotent — repeated starts log once', () {
+    test('holding is idempotent - repeated starts log once', () {
       s.setWorkoutActive(true);
       s.setWorkoutActive(true);
       expect(
@@ -112,7 +112,7 @@ void main() {
         s.setWorkoutActive(false);
         // But the positive direction MUST poll. The drain does several DB
         // round-trips, and a fixed 120 ms sleep here passed locally and failed
-        // on a slower CI runner — a flake I introduced in the previous commit.
+        // on a slower CI runner - a flake I introduced in the previous commit.
         await _until(() => runs == 1);
         expect(runs, 1,
             reason: 'and it must drain once the session ends, not be dropped');
@@ -123,12 +123,12 @@ void main() {
   group('requeueComputeJob (the post-claim gate race)', () {
     // `_drain()` clears the gate, then awaits takeNextComputeJob(). A workout
     // starting inside that window leaves a job already marked `running` that
-    // must be handed back rather than run — otherwise it sits claimed until
+    // must be handed back rather than run - otherwise it sits claimed until
     // the next recoverComputeJobs().
     //
     // Deliberately tests the PRIMITIVE rather than simulating the interleaving.
     // Hitting that window means racing a real DB round-trip, which is a coin
-    // flip dressed up as a test — the kind that passes locally and fails on a
+    // flip dressed up as a test - the kind that passes locally and fails on a
     // loaded runner (this file already had one of those). What is worth
     // pinning is the guarantee the drain path depends on: a claimed job comes
     // back claimable, and being deferred does not burn an attempt.
@@ -169,7 +169,7 @@ void main() {
         (again['attempts'] as num).toInt(),
         attemptsAtFirstClaim,
         reason: 'the requeue undid the increment, so the second claim starts '
-            'from the same count as the first — a deferral is not a retry',
+            'from the same count as the first - a deferral is not a retry',
       );
 
       await LocalDb.completeComputeJob(id);
@@ -189,7 +189,7 @@ void main() {
       calls.clear();
       ScreenWake.resetForTest();
       // Platform.isAndroid/isIOS are BOTH false on the host VM, so without this
-      // the dispatch short-circuits and these mocks are never reached — the
+      // the dispatch short-circuits and these mocks are never reached - the
       // call-count and failure assertions below asserted nothing at all.
       ScreenWake.platformOverride = 'android';
       for (final ch in const [
@@ -257,7 +257,7 @@ void main() {
     test('a release fired while an enable is in flight still wins', () async {
       // `_on` only updates AFTER the platform await, so a release arriving
       // mid-enable used to read the stale `false`, decide it had nothing to do,
-      // and return — then the in-flight enable latched true and the display
+      // and return - then the in-flight enable latched true and the display
       // stayed held for the rest of the app's life. Both call sites in
       // AppState are fire-and-forget, so starting a workout and immediately
       // stopping it was enough to hit this.
@@ -276,7 +276,7 @@ void main() {
       await Future.wait([ScreenWake.enable(), ScreenWake.release()]);
 
       expect(ScreenWake.isHeld, isFalse,
-          reason: 'the release must win — the screen cannot stay held');
+          reason: 'the release must win - the screen cannot stay held');
       expect(
         [for (final c in calls) (c.arguments as Map)['on']],
         [true, false],
@@ -298,7 +298,7 @@ void main() {
             .setMockMethodCallHandler(
                 ch, (c) async => throw PlatformException(code: 'boom'));
       }
-      // Losing the wake flag degrades to "the screen sleeps" — it must never
+      // Losing the wake flag degrades to "the screen sleeps" - it must never
       // propagate and interrupt a session.
       await expectLater(ScreenWake.enable(), completes);
       expect(ScreenWake.isHeld, isFalse,
@@ -312,7 +312,7 @@ void main() {
       () {
         // The live screen is disposed and rebuilt every time the athlete
         // navigates away and back. The dedup set therefore lives on the
-        // workout, not the screen — a screen-local set re-fired "5 MINUTES"
+        // workout, not the screen - a screen-local set re-fired "5 MINUTES"
         // (banner + haptic + confetti) on every single return.
         final w = LiveWorkoutState(
           startTime: DateTime.now().subtract(const Duration(minutes: 6)),
@@ -339,7 +339,7 @@ void main() {
         // Averaging over ELAPSED time produced "40:32 /km" for someone who had
         // barely moved. Over MOVING time it is a real walking pace.
         const meters = 250.0;
-        const movingSec = 200; // ~3.6 km/h — a slow walk
+        const movingSec = 200; // ~3.6 km/h - a slow walk
         const elapsedSec = 608; // most of it spent standing
 
         expect(

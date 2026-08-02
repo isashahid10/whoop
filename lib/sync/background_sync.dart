@@ -46,7 +46,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
   final ownedLease = lease ?? BandOwnership.tryAcquireHeadless();
   if (ownedLease == null) {
     debugPrint(
-      '[bgsync] skipped — foreground or another headless session owns the band '
+      '[bgsync] skipped - foreground or another headless session owns the band '
       '(${BandOwnership.debugState}).',
     );
     return true;
@@ -58,7 +58,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
   try {
     final paired = await PairedDevice.load();
     if (paired == null) {
-      debugPrint('[bgsync] not paired — nothing to do.');
+      debugPrint('[bgsync] not paired - nothing to do.');
       return true;
     }
 
@@ -88,7 +88,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     final connected = await engine.connectToRemoteId(paired.remoteId);
     if (!connected) {
       debugPrint(
-        '[bgsync] strap not reachable this cycle — will catch up next time.',
+        '[bgsync] strap not reachable this cycle - will catch up next time.',
       );
       await checkSyncStaleness();
       return true;
@@ -183,8 +183,8 @@ Future<void> checkSyncStaleness({bool allowPermissionPrompt = false}) async {
         category: NotifCategory.device,
         priority: NotifPriority.normal, // respects quiet hours — not urgent
         title: "Your band hasn't synced in a while",
-        body: 'No new data for about $hoursStale hours. Open OpenStrap to '
-            'reconnect — background sync may have stalled.',
+        body: 'No new data for about $hoursStale hours. Open Whoop to '
+            'reconnect - background sync may have stalled.',
         date: now.toIso8601String().substring(0, 10),
         route: '/today',
       ),

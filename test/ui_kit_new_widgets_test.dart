@@ -1,5 +1,5 @@
 // Widget tests for the UI-upgrade foundation: Skeleton, StateCard, Gauge /
-// RingStat, and BaselineProgress. These pump (never pumpAndSettle — the shimmer
+// RingStat, and BaselineProgress. These pump (never pumpAndSettle - the shimmer
 // and breathe controllers repeat forever) and assert structure + behaviour.
 
 import 'package:flutter/material.dart';

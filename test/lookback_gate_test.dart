@@ -49,7 +49,7 @@ void main() {
 
     test('crosses purely by elapsed wall-clock time (same anchor, later now)',
         () {
-      // A fixed earliest record — 18h01m before the later `now`, but only 17h59m
+      // A fixed earliest record - 18h01m before the later `now`, but only 17h59m
       // before the earlier one. No new data; the gate flips solely on the clock.
       final earliest =
           DateTime(2026, 7, 24, 0, 0, 0).millisecondsSinceEpoch ~/ 1000;

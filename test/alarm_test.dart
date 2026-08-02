@@ -2,7 +2,7 @@
 //   - the exact SET_ALARM_TIME byte layouts (rich 20-byte firing form + short
 //     7-byte time-only form) and the RUN/DISABLE bodies (AlarmPayloads), and
 //   - the strap-event confirmation state machine (AlarmConfirmation).
-// No BLE / DB — everything here is deterministic.
+// No BLE / DB - everything here is deterministic.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_state.dart';

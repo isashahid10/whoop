@@ -1,7 +1,7 @@
-// BootSplash — the cold-start splash overlay (lib/ui/splash/boot_splash.dart).
+// BootSplash - the cold-start splash overlay (lib/ui/splash/boot_splash.dart).
 //
 // In widget tests the video_player platform channel isn't available, so the
-// real asset controller can never come up — which is exactly the static-
+// real asset controller can never come up - which is exactly the static-
 // fallback path. The behavioral contract under test is the gate logic itself:
 // visible while loading, cross-fades out the moment ready flips, safety cap,
 // injected-failure fallback, and no-splash-when-already-ready.

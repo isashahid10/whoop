@@ -37,7 +37,7 @@ void main() {
       final completionOrder = <int>[];
       await runWithConcurrency<int>(items, 1, (item) async {
         // Even with an artificial delay, concurrency=1 means strict
-        // one-at-a-time — completion order must match input order exactly.
+        // one-at-a-time - completion order must match input order exactly.
         await Future<void>.delayed(Duration.zero);
         completionOrder.add(item);
       });
@@ -56,8 +56,8 @@ void main() {
 
     test(
         'the first `concurrency` items start WITHOUT waiting for earlier ones '
-        'to finish — real parallelism, not fixed lock-step batches', () async {
-      // 3 items, concurrency=3, each holds until released — if they were
+        'to finish - real parallelism, not fixed lock-step batches', () async {
+      // 3 items, concurrency=3, each holds until released - if they were
       // sequential, item 1 would never even start until item 0's gate opens.
       // With true concurrency, all 3 start immediately.
       final gates = List.generate(3, (_) => Completer<void>());
@@ -103,7 +103,7 @@ void main() {
     });
 
     test('a free lane immediately picks up the next queued item', () async {
-      // concurrency=1 over 3 items where each takes a beat — the single lane
+      // concurrency=1 over 3 items where each takes a beat - the single lane
       // must move on to the next item as soon as the current one resolves,
       // without any gap requiring external re-triggering.
       final order = <int>[];

@@ -89,7 +89,7 @@ void main() {
       trimToken: 'aabbccddeeff0022',
       archives: [archive],
     );
-    // Still one archived row — the re-delivery did not duplicate it.
+    // Still one archived row - the re-delivery did not duplicate it.
     final stats = await LocalDb.rawArchiveStats();
     expect(stats['count'], 1);
     // …but the trim cursor still advanced (this chunk was ACK-safe).

@@ -119,7 +119,7 @@ void main() {
         isTrue,
       );
       // FOREGROUND catch-up pull (app reopened on a healthy link): allowed
-      // after the floor, refused inside it — rapid app switching can't hammer
+      // after the floor, refused inside it - rapid app switching can't hammer
       // the strap.
       expect(
         BackfillPolicy.shouldRun(BackfillTrigger.foreground, 89, 0, 0),
@@ -294,7 +294,7 @@ void main() {
         rateThreshold: 0.2,
         minSamples: 20,
       );
-      // 20 valid frames — enough samples, 0% corrupt, must not trip.
+      // 20 valid frames - enough samples, 0% corrupt, must not trip.
       for (var i = 0; i < 20; i++) {
         expect(d.feed(true), isFalse);
       }
@@ -308,7 +308,7 @@ void main() {
       expect(d.tripped, isTrue);
     });
 
-    test('one-shot — does not re-report after tripping', () {
+    test('one-shot - does not re-report after tripping', () {
       final d = FrameCorruptionDetector(
         windowSize: 10,
         rateThreshold: 0.2,
@@ -332,7 +332,7 @@ void main() {
         rateThreshold: 0.2,
         minSamples: 20,
       );
-      // 100 frames, ~5% corrupt — well under the 20% threshold.
+      // 100 frames, ~5% corrupt - well under the 20% threshold.
       for (var i = 0; i < 100; i++) {
         final valid = i % 20 != 0; // 1 in 20 invalid = 5%
         expect(d.feed(valid), isFalse);
@@ -469,7 +469,7 @@ void main() {
       expect(snapToGrid(1234567), (1234567 ~/ 300) * 300);
     });
 
-    test('sub-day drift is left alone (returns null — trust embedded time)', () {
+    test('sub-day drift is left alone (returns null - trust embedded time)', () {
       // offset = clockWall - deviceClock = 3600 (1h) ≤ 1 day → no correction.
       expect(
         ClockPolicy.correctRecordTs(

@@ -78,7 +78,7 @@ class IosBgTask {
           // flutter_blue_plus for the peripheral) — but still use this OS-granted
           // budget to pull the flash backlog over the app's own live connection.
           debugPrint(
-              '[ios-bgtask] foreground owns the band — catch-up over live link');
+              '[ios-bgtask] foreground owns the band - catch-up over live link');
           try {
             await foregroundPull?.call();
           } catch (e) {

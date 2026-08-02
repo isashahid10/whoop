@@ -1,8 +1,8 @@
 // Wiring tests for the OsIcon glyph set (lib/ui/kit/os_icons.dart): the nav
-// pill renders the custom tab icons (every tab full opacity/size — never
+// pill renders the custom tab icons (every tab full opacity/size - never
 // dimmed or shrunk; selection is the lozenge + label), and a domain content
 // widget (Steps) shows its OsIcon in the tile header. Explicit pump
-// durations — kit widgets animate/repeat, never blind pumpAndSettle.
+// durations - kit widgets animate/repeat, never blind pumpAndSettle.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,14 +53,14 @@ void main() {
       }
     });
 
-    testWidgets('every tab is full-strength — inactive never dimmed or shrunk',
+    testWidgets('every tab is full-strength - inactive never dimmed or shrunk',
         (t) async {
       await t.pumpWidget(_host(
         FloatingNavPill(items: _navItems, index: 2, onSelect: (_) {}),
       ));
       await t.pump(const Duration(milliseconds: 600));
       expect(find.byType(OsAppIcon), findsNWidgets(_navItems.length));
-      // Selection is carried by the lozenge background + label only — the
+      // Selection is carried by the lozenge background + label only - the
       // pill wraps no icon in AnimatedOpacity/AnimatedScale.
       for (final item in _navItems) {
         final icon = find.byWidgetPredicate(
@@ -77,7 +77,7 @@ void main() {
           reason: 'tab ${item.label} must never be shrunk',
         );
       }
-      // No center action in the default pill — the nav is just the tabs.
+      // No center action in the default pill - the nav is just the tabs.
       expect(
         find.byWidgetPredicate((w) => w is OsAppIcon && w.icon == OsIcon.add),
         findsNothing,
@@ -121,7 +121,7 @@ void main() {
         ),
       ));
       await t.pump(const Duration(milliseconds: 1200));
-      // Stress has no bento tile anymore — only the orbit satellite renders it.
+      // Stress has no bento tile anymore - only the orbit satellite renders it.
       expect(
         find.byWidgetPredicate(
           (w) => w is OsAppIcon && w.icon == OsIcon.stress,

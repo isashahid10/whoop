@@ -2,14 +2,14 @@
 //
 // Root cause: every BLE drain kicks a light derive pass over TODAY, and the
 // persisted rolling-baseline artifact was rebuilt from an in-memory list that
-// `_BaselineHistoryCache.appendScalars` only ever APPENDS to — with no day
+// `_BaselineHistoryCache.appendScalars` only ever APPENDS to - with no day
 // identity. Re-deriving the same day stacked duplicate copies of today's value
 // into the 28-day window. Once enough slots held the same value the readiness
 // composite's robust z-score (median + MAD) hit MAD=0 and `robustZ` returned
 // null for every input, so the composite went ABSENT and the ring rendered a
 // blank "—" (while the cached AI briefing still showed the earlier score).
 //
-// The fix rebuilds the persisted artifact from `metric_series` — keyed
+// The fix rebuilds the persisted artifact from `metric_series` - keyed
 // `(date, key)` with REPLACE, so it is structurally one value per day and can
 // never carry duplicate-day pollution. `LocalDb.trailingSeriesValues` reads the
 // correct TRAILING window (the old `metricSeries(limit:)` returned the OLDEST n,
@@ -102,7 +102,7 @@ void main() {
     final window = await LocalDb.trailingSeriesValues('readiness', 28);
     expect(window.length, 28, reason: 'still 28 days, not 28+15');
     expect(window.where((v) => v == 88.0).length, 1,
-        reason: 'the re-derived day appears exactly once — no pollution');
+        reason: 'the re-derived day appears exactly once - no pollution');
     // A clean window keeps MAD alive, so readiness computes.
     expect(ana.robustZ(72, window), isNotNull,
         reason: 'de-duplicated baseline → readiness ring shows a number');
@@ -123,7 +123,7 @@ void main() {
     expect(trailing.last, 70.0);
 
     // The pre-fix path (`metricSeries(limit:)` = `date ASC LIMIT n`) returned the
-    // OLDEST 28 instead — days 1..28 → 41..68. Pin the contrast so the trailing
+    // OLDEST 28 instead - days 1..28 → 41..68. Pin the contrast so the trailing
     // semantics can't silently regress back to leading.
     final leading = await LocalDb.metricSeries('readiness', limit: 28);
     final leadingVals = [for (final r in leading) (r['value'] as num).toDouble()];
@@ -144,7 +144,7 @@ void main() {
       await seedDay('2026-07-${i.toString().padLeft(2, '0')}', 60.0 + i,
           finalized: true);
     }
-    // Persist a VALID but polluted artifact — exactly what an affected install
+    // Persist a VALID but polluted artifact - exactly what an affected install
     // carries on disk: 20 identical readiness values (MAD would be 0).
     await LocalDb.putBaseline(
       'rolling_artifact',
@@ -165,7 +165,7 @@ void main() {
     expect(window.length, 28,
         reason: 'from the 28-day store, not the 20-slot polluted artifact');
     expect(window.toSet().length, greaterThan(1),
-        reason: "distinct real days — not the artifact's one repeated value");
+        reason: "distinct real days - not the artifact's one repeated value");
     expect(ana.robustZ(72, window), isNotNull,
         reason: 'clean baseline → readiness computes on the FIRST derive, '
             'with no refresh required to self-heal');
@@ -175,8 +175,8 @@ void main() {
   //
   // The load path above was fixed, but the SWEEP re-introduced the same
   // pollution one level up: `run()`/`rescanRecent()` loaded the snapshot ONCE
-  // — already containing the persisted values of the up-to-21 days it was
-  // about to re-derive — and then appended each finished day's scalars back
+  // - already containing the persisted values of the up-to-21 days it was
+  // about to re-derive - and then appended each finished day's scalars back
   // into that shared snapshot, evicting a real old day to stay at 28. Days
   // 2..N of the sweep therefore read a window holding duplicate copies of the
   // recent days, in DESCENDING date order (the sweep runs newest-first), and
@@ -191,7 +191,7 @@ void main() {
     }
   }
 
-  test('a sweep never mutates the frozen snapshot — every day gets the same '
+  test('a sweep never mutates the frozen snapshot - every day gets the same '
       'window a fresh load would give', () async {
     await seedSweepDays('09', 28);
     // run()/rescanRecent dispatch NEWEST-FIRST over the recent window.
@@ -202,13 +202,13 @@ void main() {
     final first = await debugSweepBaselineWindows('readiness', orderedDays);
     final second = await debugSweepBaselineWindows('readiness', orderedDays);
     expect(first, equals(second),
-        reason: 'the sweep snapshot is immutable — deriving days cannot change '
+        reason: 'the sweep snapshot is immutable - deriving days cannot change '
             'what a later day in the same sweep reads');
 
     for (var i = 0; i < orderedDays.length; i++) {
       final window = first[i];
       expect(window.toSet().length, window.length,
-          reason: '${orderedDays[i]}: no value may appear twice — the old '
+          reason: '${orderedDays[i]}: no value may appear twice - the old '
               'append path stacked each finished day back in');
       final sorted = [...window]..sort();
       expect(window, equals(sorted),
@@ -231,11 +231,11 @@ void main() {
     final own = (await debugSweepBaselineWindows('readiness', [today])).single;
     expect(own, isNot(contains(ownValue)),
         reason: "z-scoring a day against a baseline containing itself pulls "
-            'the baseline toward the value under test — the exact '
+            'the baseline toward the value under test - the exact '
             'self-inclusion analytics v38 fixed one layer down');
     expect(own.length, 27, reason: 'strictly the 27 prior days');
     expect(own.every((v) => v < ownValue), isTrue,
-        reason: 'strictly EARLIER days — a backfill sweep must not leak later '
+        reason: 'strictly EARLIER days - a backfill sweep must not leak later '
             "days into an older day's baseline (that would also make the "
             'result depend on sweep order)');
   });

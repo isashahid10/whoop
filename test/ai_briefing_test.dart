@@ -1,6 +1,6 @@
 // Tests for the AI briefing engine: input collection from a fake repository,
 // pure prompt building + response parsing, and the day+period cache round-trip.
-// The LLM is mocked (BriefingComplete injected) — no network.
+// The LLM is mocked (BriefingComplete injected) - no network.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -147,7 +147,7 @@ void main() {
     });
 
     test(
-        'readinessBand cuts at 40/66 — MUST match the Today ring\'s own '
+        'readinessBand cuts at 40/66 - MUST match the Today ring\'s own '
         'word-thresholds (score>=66 Push, >=40 Focus, else Recover) or '
         'the briefing and the ring can disagree again', () {
       // Just below/at each ring boundary.
@@ -175,7 +175,7 @@ void main() {
       expect(r.breakdownMd, contains('Good strain'));
     });
 
-    test('a single-line reply leaves the breakdown empty (no echo — #107)', () {
+    test('a single-line reply leaves the breakdown empty (no echo - #107)', () {
       // A model that ignores the format and returns one line must NOT have that
       // line copied back as a lone bullet, or the UI renders it twice.
       final r = parseBriefingResponse('User Safety: safe');
@@ -189,7 +189,7 @@ void main() {
       final repo = _FakeRepo(today: _sampleToday());
       var seenSystem = '';
       final engine = BriefingEngine(
-        config: CoachConfig(), // unconfigured — the mocked completer bypasses it
+        config: CoachConfig(), // unconfigured - the mocked completer bypasses it
         repo: repo,
         complete: ({required system, required user}) async {
           seenSystem = system;

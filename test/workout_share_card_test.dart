@@ -1,8 +1,8 @@
 // The share card is defined as much by what it LEAVES OUT as by what it shows.
 //
-// Sharing used to rasterise the whole finish card — header, route thumbnail,
+// Sharing used to rasterise the whole finish card - header, route thumbnail,
 // strain gauge, peak/avg/kcal/steps, time-in-zones, the HR-recovery curve and
-// any PR badges — into one tall PNG. These tests pin the composition that
+// any PR badges - into one tall PNG. These tests pin the composition that
 // replaced it: map-led, one headline figure, three supporting stats, and none
 // of the dashboard furniture that doesn't survive a feed thumbnail.
 
@@ -55,7 +55,7 @@ Widget _host(Widget child) => MultiProvider(
 /// Drop map-tile fetch errors, keep everything else.
 ///
 /// flutter_test's HTTP mock answers 400 for every request, so each tile throws
-/// through the image-resource service — and flutter_test fails a test on ANY
+/// through the image-resource service - and flutter_test fails a test on ANY
 /// unhandled exception, so a card that renders perfectly still goes red.
 ///
 /// Filtered rather than drained, so RenderFlex overflow still fails these
@@ -161,7 +161,7 @@ void main() {
       await t.pump(const Duration(milliseconds: 400));
 
       expect(find.byType(RouteMapView), findsNothing);
-      // Same layout, different backdrop — not a second design.
+      // Same layout, different backdrop - not a second design.
       expect(find.text('48:10'), findsOneWidget);
       expect(find.text('STRAIN'), findsOneWidget);
       expect(find.text('AVG BPM'), findsOneWidget);
@@ -189,7 +189,7 @@ void main() {
     });
   });
 
-  group('buildWorkoutShareData — one composition, two entry points', () {
+  group('buildWorkoutShareData - one composition, two entry points', () {
     final units = UnitsController.seed(UnitSystem.metric);
     final route = fakeRunRoute();
     final when = DateTime(2026, 7, 27, 8, 14);
@@ -219,7 +219,7 @@ void main() {
       expect(fromDetail.vertices.length, fromFinish.vertices.length);
     });
 
-    test('a route leads with DISTANCE — the map is what the image shows', () {
+    test('a route leads with DISTANCE - the map is what the image shows', () {
       final d = build(r: route);
       expect(d.hasRoute, isTrue);
       expect(d.heroUnit, 'km');

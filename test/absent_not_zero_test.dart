@@ -1,5 +1,5 @@
 // The honesty contract, under test: an ABSENT measurement renders as "—" /
-// nothing / an explicit gap — NEVER as 0, and never as a placeholder that
+// nothing / an explicit gap - NEVER as 0, and never as a placeholder that
 // reads as measured.
 //
 // Every test here fails against the pre-fix behaviour. The repository already
@@ -92,7 +92,7 @@ Map<String, dynamic> _wearDay({
     'last_on': 1752380000,
     'hourly': hourly ?? const <double>[],
   };
-  // Keys are OMITTED (not set to null) when absent — exactly how a bundle with
+  // Keys are OMITTED (not set to null) when absent - exactly how a bundle with
   // no engine wear block reaches the UI.
   if (worn != null) m['worn_min'] = worn;
   if (cov != null) m['coverage_pct'] = cov;
@@ -360,7 +360,7 @@ void main() {
       expect(find.text('Not worn on this day'), findsNothing);
       expect(find.text('Wear time wasn’t recorded'), findsOneWidget);
 
-      // A MEASURED zero still says so — the two claims stay distinguishable.
+      // A MEASURED zero still says so - the two claims stay distinguishable.
       await t.pumpWidget(_host(
         WearDayContent(data: const {'worn_min': 0}, date: _today()),
       ));
@@ -393,7 +393,7 @@ void main() {
         'rendering nothing', (t) async {
       _phone(t, height: 2400);
       await t.pumpWidget(_host(WearDayContent(
-        data: _wearDay(segments: const []), // hourly: [] — the real payload
+        data: _wearDay(segments: const []), // hourly: [] - the real payload
         date: _today(),
       )));
       await t.pump(const Duration(milliseconds: 900));
@@ -435,7 +435,7 @@ void main() {
   });
 
   // ── week-strip gaps ───────────────────────────────────────────────────────
-  // This used to go through RecapCard (now deleted — it had no call site
+  // This used to go through RecapCard (now deleted - it had no call site
   // outside the gallery). The invariant it guarded is MiniBars' own: a null
   // day holds its slot instead of sliding the rest of the week left.
   group('MiniBars week strip', () {
@@ -447,7 +447,7 @@ void main() {
       )));
       await t.pump(const Duration(milliseconds: 700));
       final bars = t.widget<MiniBars>(find.byType(MiniBars));
-      expect(bars.values.length, 7); // was 6 — Thu–Sun slid onto Wed–Sat
+      expect(bars.values.length, 7); // was 6 - Thu–Sun slid onto Wed–Sat
       expect(bars.values[2], isNull);
       expect(t.takeException(), isNull);
     });

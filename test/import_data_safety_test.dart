@@ -3,7 +3,7 @@
 //  • WHOOP CSV must NEVER overwrite a day the device derived from real 1 Hz
 //    (putDayResult is INSERT-OR-REPLACE on day_result AND metric_series, and
 //    the importer used to pass finalized:true, which additionally locked the
-//    day out of DerivationEngine forever — months of band data, gone, from a
+//    day out of DerivationEngine forever - months of band data, gone, from a
 //    button reachable in onboarding AND in Profile).
 //  • Energy is converted from the COLUMN'S declared unit, never guessed from
 //    the value's magnitude (a real 4,500 kcal ultra day was being rewritten as
@@ -119,7 +119,7 @@ void main() {
           jsonDecode((await _row(otherDay))!['payload_json'] as String) as Map;
       expect(payload['source'], 'whoop_export');
       expect(await _metric(otherDay, 'rhr'), 60.0);
-      // No raw for this date, so nothing could ever re-derive it — finalizing
+      // No raw for this date, so nothing could ever re-derive it - finalizing
       // is correct here.
       expect(((await _row(otherDay))!['finalized'] as num).toInt(), 1);
     });

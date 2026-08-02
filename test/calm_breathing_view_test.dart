@@ -1,4 +1,4 @@
-// CalmBreathingView — the guided-breathing screen's pure presentation layer.
+// CalmBreathingView - the guided-breathing screen's pure presentation layer.
 // Regression coverage for replacing the old Random()-fabricated "coherence
 // score" with real data: before a real result exists, the screen must show
 // an honest "Calibrating…" state, never a placeholder number.

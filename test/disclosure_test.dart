@@ -1,4 +1,4 @@
-// Widget tests for Disclosure (lib/ui/design/disclosure.dart) — the
+// Widget tests for Disclosure (lib/ui/design/disclosure.dart) - the
 // progressive-disclosure primitive reused this session for LF/HF, SD1/SD2,
 // the ring-adjacent AI insight, and (this test's reason for existing) the
 // Sleep Coach card's collapsible "need + ring" summary.
@@ -48,7 +48,7 @@ void main() {
       'summaryWidget overrides the plain-text summary (Sleep Coach\'s '
       'need+ring collapsed state) while still carrying summary as its a11y '
       'label', (t) async {
-    // Semantics finders need an active handle — off by default in tests.
+    // Semantics finders need an active handle - off by default in tests.
     final handle = t.ensureSemantics();
     await t.pumpWidget(_host(Disclosure(
       summary: 'Tonight you need 9h 5m · 100% of need',

@@ -2,7 +2,7 @@
 // goal-relative fills aligned Monday→Sunday with today's index + live
 // fold-in and honest nulls for missing/future days.
 // (The Body week-load wheel this file used to also cover was removed along
-// with its screen usage — the wheel duplicated the strain figure already
+// with its screen usage - the wheel duplicated the strain figure already
 // shown once in the strain detail hero.)
 
 import 'package:flutter/material.dart';

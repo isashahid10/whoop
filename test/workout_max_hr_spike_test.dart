@@ -3,10 +3,10 @@
 // the 1 Hz samples, so a single 1–2 s PPG motion spike defined the session max.
 //
 // These tests pin the fix at two levels:
-//   • the shared smoother (compute/hr_max.dart) — a 1–2 s spike is excluded, a
+//   • the shared smoother (compute/hr_max.dart) - a 1–2 s spike is excluded, a
 //     genuine sustained peak is preserved, and the streaming (live) accumulator
 //     agrees with the batch recompute;
-//   • the repo seam over the REAL LocalDb (sqflite_ffi) — getWorkout AND
+//   • the repo seam over the REAL LocalDb (sqflite_ffi) - getWorkout AND
 //     getWorkouts both report the smoothed peak, never the raw spike, so the
 //     detail screen and the workout list agree.
 
@@ -58,7 +58,7 @@ void main() {
   // ── The shared smoother: pure, no DB ─────────────────────────────────────
   group('smoothedMaxHr', () {
     test('excludes a 1–2 s transient spike (issue #127)', () {
-      // 40 s at 143 with a lone 2 s jump to 200 — the reported failure shape.
+      // 40 s at 143 with a lone 2 s jump to 200 - the reported failure shape.
       final hr = [
         for (var i = 0; i < 40; i++) (i == 20 || i == 21) ? 200 : 143,
       ];
@@ -71,7 +71,7 @@ void main() {
     });
 
     test('preserves a genuine sustained peak above the baseline', () {
-      // Baseline 140 with a real 15 s plateau at 158 — a brief peak that a
+      // Baseline 140 with a real 15 s plateau at 158 - a brief peak that a
       // minute-mean would flatten, so it must NOT be suppressed.
       final hr = [
         for (var i = 0; i < 60; i++) (i >= 20 && i < 35) ? 158 : 140,
@@ -110,7 +110,7 @@ void main() {
   // ── The min counterpart: symmetric spike suppression ─────────────────────
   group('smoothedMinHr', () {
     test('excludes a 1–2 s low dropout', () {
-      // 40 s at 138 with a lone 2 s dip to 45 — the low-side of issue #127.
+      // 40 s at 138 with a lone 2 s dip to 45 - the low-side of issue #127.
       final hr = [
         for (var i = 0; i < 40; i++) (i == 20 || i == 21) ? 45 : 138,
       ];
@@ -118,7 +118,7 @@ void main() {
     });
 
     test('preserves a genuine sustained low below the baseline', () {
-      // Baseline 150 with a real 15 s trough at 132 — a brief genuine low that
+      // Baseline 150 with a real 15 s trough at 132 - a brief genuine low that
       // must NOT be smoothed away.
       final hr = [
         for (var i = 0; i < 60; i++) (i >= 20 && i < 35) ? 132 : 150,

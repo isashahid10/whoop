@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/coach/coach_db.dart';
 
 void main() {
-  group('CoachDb.guardAndPrepare — allow-list', () {
+  group('CoachDb.guardAndPrepare - allow-list', () {
     test('accepts a plain SELECT over an allowed view + auto-LIMITs', () {
       final out = CoachDb.guardAndPrepare(
           "SELECT date, value FROM v_metric WHERE key='rhr'");
@@ -48,7 +48,7 @@ void main() {
     });
   });
 
-  group('CoachDb.guardAndPrepare — escape attempts', () {
+  group('CoachDb.guardAndPrepare - escape attempts', () {
     final attempts = <String, String>{
       // ── THE verified exploit: comma cross-join reaching raw GPS. ──
       'comma cross-join to workout_route (raw GPS)':
@@ -126,7 +126,7 @@ void main() {
 
   group('CoachDb reserved-name net', () {
     // These five were verified present in the live schema and absent from the
-    // old deny-list — the allow-list closes them regardless, but they are
+    // old deny-list - the allow-list closes them regardless, but they are
     // named here so a rename shows up as a test failure rather than silence.
     for (final t in const [
       'workout_route',

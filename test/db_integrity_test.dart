@@ -1,16 +1,16 @@
 // DB integrity regressions, run against the REAL LocalDb over sqflite_ffi:
 //
-//  1. decoded_rr ORPHAN GUARD — a post-reboot rec_ts collision (two counters,
+//  1. decoded_rr ORPHAN GUARD - a post-reboot rec_ts collision (two counters,
 //     one second) must not strand the evicted counter's RR beats under a
 //     counter with no decoded_onehz row (the counter-joined prune can never
 //     select those → permanent leak, and the loser's extra beat indexes would
 //     survive the winner's UNIQUE(rr_ts_ms, beat_index) REPLACE).
-//  2. prune ORPHAN SWEEP — pre-existing orphans (written by pre-guard builds)
+//  2. prune ORPHAN SWEEP - pre-existing orphans (written by pre-guard builds)
 //     are cleaned by pruneRawBeforeRecTs once their window is pruned.
-//  3. importFromDbFile FINALIZED protection — a foreign export never overwrites
+//  3. importFromDbFile FINALIZED protection - a foreign export never overwrites
 //     a locally-finalized (day_id, algo_version) day_result row; non-finalized
 //     rows keep the merge-REPLACE behavior.
-//  4. schema smoke — a fresh onCreate database passes schemaHealth(). (A true
+//  4. schema smoke - a fresh onCreate database passes schemaHealth(). (A true
 //     old-version fixture upgrade is too brittle to hand-build here; the
 //     fresh-create + health assertion is the sanctioned fallback.)
 
@@ -303,7 +303,7 @@ void main() {
       expect(messages[2], startsWith('cursor_advanced'));
       expect(messages[2], contains('trim=true'));
 
-      // The commit itself actually happened — checkpoints are observability,
+      // The commit itself actually happened - checkpoints are observability,
       // not a gate.
       final db = await LocalDb.instance;
       final rows =

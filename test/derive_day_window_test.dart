@@ -2,7 +2,7 @@
 //
 //  * the deliberate widening of the nocturnal search window was a NO-OP,
 //    because the coordinator only ever LOADED substrate back to the previous
-//    18:00 while the day model searches from the previous NOON — so
+//    18:00 while the day model searches from the previous NOON - so
 //    `searchStart = max(dataStart, …)` clipped it straight back and any sleep
 //    onset before 18:00 was truncated to the slice start;
 //  * the habitual-midsleep prior converted HISTORICAL sleep blocks using the
@@ -11,7 +11,7 @@
 //    candidate sleep was selected;
 //  * `_buildWakeDayFeatures` substituted age 30 / 70 kg / sex 'm' / RHR 60 for
 //    a user who never entered a profile and then PERSISTED strain / calories /
-//    calories_total as real scalars — fabricated numbers wearing real numbers'
+//    calories_total as real scalars - fabricated numbers wearing real numbers'
 //    clothes, against the never-impute contract the rest of the layer keeps.
 
 import 'package:flutter_test/flutter_test.dart';
@@ -91,7 +91,7 @@ void main() {
 
     test('the constant the loader uses is the one the day model searches with',
         () {
-      // Two call sites, one constant — they cannot drift apart again.
+      // Two call sites, one constant - they cannot drift apart again.
       const dayId = '2026-10-25'; // a European DST-transition date
       final dayStart = DateTime(2026, 10, 25).millisecondsSinceEpoch ~/ 1000;
       final (from, _) = DerivationEngine().debugTargetDayWindow(dayId);
@@ -126,7 +126,7 @@ void main() {
 
     test('calendarDays resolves the offset AT the day being segmented', () {
       // Zone-independent: inject the resolver and inspect what it was asked
-      // for. The old code never asked at all — it read
+      // for. The old code never asked at all - it read
       // `DateTime.now().timeZoneOffset`, a constant applied to every
       // historical day regardless of the offset actually in effect then.
       final dayStart = DateTime(2020, 1, 15).millisecondsSinceEpoch ~/ 1000;
@@ -167,7 +167,7 @@ void main() {
   // ── never impute a profile ────────────────────────────────────────────────
 
   group('absent profile abstains instead of imputing', () {
-    // 2 h of daytime 1 Hz data on one calendar day — no sleep, so every minute
+    // 2 h of daytime 1 Hz data on one calendar day - no sleep, so every minute
     // is wake and the wake-day feature block runs in full.
     final dayStart = DateTime(2026, 4, 10).millisecondsSinceEpoch ~/ 1000;
 
@@ -195,7 +195,7 @@ void main() {
     test('no profile → no strain, no calories, no TDEE', () async {
       final got = await deriveWith(const Profile(), '2026-04-10', dayStart);
       expect(got['strain'], isNull,
-          reason: 'Banister TRIMP needs a real resting HR, HRmax and sex — '
+          reason: 'Banister TRIMP needs a real resting HR, HRmax and sex - '
               'age 30 / RHR 60 / sex m were fabricated');
       expect(got['calories'], isNull,
           reason: 'Keytel needs real age, weight and sex');
@@ -206,7 +206,7 @@ void main() {
     test('steps still compute without a profile (data-derived, not imputed)',
         () async {
       // `dailyStepEstimate` falls back to the day's own 10th-percentile HR when
-      // no resting HR is known — that is derived from the data, so abstaining
+      // no resting HR is known - that is derived from the data, so abstaining
       // would be over-correction.
       final got = await deriveWith(const Profile(), '2026-04-11',
           DateTime(2026, 4, 11).millisecondsSinceEpoch ~/ 1000);

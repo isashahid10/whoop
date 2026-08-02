@@ -9,7 +9,7 @@ import 'package:openstrap_edge/ble/ble_state.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('P1 — the band claim is released when no link ever came up', () {
+  group('P1 - the band claim is released when no link ever came up', () {
     setUp(BleEngine.resetBandClaimForTest);
     tearDown(BleEngine.resetBandClaimForTest);
 
@@ -28,8 +28,8 @@ void main() {
 
       expect(connected, isFalse);
       // OLD BEHAVIOUR: _claimBand() ran BEFORE the link was up and only
-      // disconnect() ever released it — which nothing calls on a failed
-      // connect — so _bandOwner stayed pointing at an engine with no link for
+      // disconnect() ever released it - which nothing calls on a failed
+      // connect - so _bandOwner stayed pointing at an engine with no link for
       // the rest of the process lifetime.
       expect(BleEngine.bandClaimed, isFalse);
       expect(engine.holdsBandLink, isFalse);
@@ -55,7 +55,7 @@ void main() {
         await drainer.connectToRemoteId('AA:BB:CC:DD:EE:FF');
 
         // OLD BEHAVIOUR: the stale foreground claim was non-null, so every
-        // later background drain yielded — "strap not reachable this cycle",
+        // later background drain yielded - "strap not reachable this cycle",
         // forever.
         expect(
           drainerLogs.where((l) => l.contains('yielding')),
@@ -66,7 +66,7 @@ void main() {
     );
   });
 
-  group('P1 — BandClaimPolicy arbitration', () {
+  group('P1 - BandClaimPolicy arbitration', () {
     test('an unclaimed band is claimed outright', () {
       expect(
         BandClaimPolicy.decide(
@@ -124,13 +124,13 @@ void main() {
     });
   });
 
-  group('P1 — a dropped link tears its session down', () {
+  group('P1 - a dropped link tears its session down', () {
     test('the current session is torn down, not merely flagged', () {
       // OLD BEHAVIOUR: link-down only set connected=false and surfaced `idle`;
       // teardown happened solely on the NEXT connect()/disconnect(). When
       // BondRefusalGiveUp pauses auto-reconnect neither ever runs, so the dead
       // session's five timers kept firing and its four notification
-      // subscriptions stayed registered — one more set leaked per drop.
+      // subscriptions stayed registered - one more set leaked per drop.
       expect(
         LinkDownPolicy.evaluate(sessionIsCurrent: true),
         LinkDownAction.tearDownSession,
@@ -145,11 +145,11 @@ void main() {
     });
   });
 
-  group('P2 — metadata always takes the serialized offload queue', () {
+  group('P2 - metadata always takes the serialized offload queue', () {
     test('metadata on the events characteristic is queued, not run inline', () {
       // OLD BEHAVIOUR: only role=='data' metadata reached the queue; metadata
       // reassembled on cmd_from/events was fired unawaited on the immediate
-      // path — the ONE route that could run a HISTORY_END handler concurrently
+      // path - the ONE route that could run a HISTORY_END handler concurrently
       // with the queued drain, i.e. two handlers on the same DrainController.
       expect(
         FrameRoutePolicy.route(

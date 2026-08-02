@@ -108,11 +108,11 @@ Future<void> main() async {
   try {
     await FlutterBluePlus.setOptions(restoreState: true)
         .timeout(_kStartupInitTimeout);
-  } catch (_) {/* older plugin / unsupported platform — ignore */}
+  } catch (_) {/* older plugin / unsupported platform - ignore */}
   try {
     await FlutterBluePlus.setLogLevel(LogLevel.none, color: false)
         .timeout(_kStartupInitTimeout);
-  } catch (_) {/* older plugin / unsupported platform — ignore */}
+  } catch (_) {/* older plugin / unsupported platform - ignore */}
 
   // Optional startup services. A failure in any one of these must NEVER block the
   // first frame — they are awaited before runApp, so an unguarded throw (e.g. the
@@ -195,7 +195,7 @@ Future<void> _safeInit(String label, Future<void> Function() init) async {
     await init().timeout(_kStartupInitTimeout);
   } on TimeoutException {
     debugPrint('[main] $label init TIMED OUT after '
-        '${_kStartupInitTimeout.inSeconds}s — continuing without it');
+        '${_kStartupInitTimeout.inSeconds}s - continuing without it');
   } catch (e, st) {
     debugPrint('[main] $label init failed (continuing without it): $e\n$st');
   }

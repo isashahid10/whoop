@@ -9,7 +9,7 @@
 // scheduled reminders until a full app restart.
 //
 // Fixed two ways, both covered below:
-//   • only a GRANT is cached — a denial is re-read from the live (non-prompting)
+//   • only a GRANT is cached - a denial is re-read from the live (non-prompting)
 //     OS state on the next call;
 //   • invalidatePermissionCache() drops a cached grant too, so a REVOCATION is
 //     noticed. app.dart calls it on every foreground resume.
@@ -35,7 +35,7 @@ void main() {
     svc.debugProbePermission = null;
   });
 
-  test('a denial is NOT cached forever — enabling in OS Settings takes effect '
+  test('a denial is NOT cached forever - enabling in OS Settings takes effect '
       'without an app restart', () async {
     var osEnabled = false;
     var prompts = 0;
@@ -55,7 +55,7 @@ void main() {
         reason: 'a stale cached denial must not survive the user enabling '
             'notifications in OS Settings');
     // And we did NOT re-prompt to discover it (the OS no-ops a second request
-    // after a denial anyway — Settings is the only real path back).
+    // after a denial anyway - Settings is the only real path back).
     expect(prompts, 1);
   });
 
@@ -73,7 +73,7 @@ void main() {
     expect(prompts, 1);
   });
 
-  test('a GRANT is cached — no repeated platform round-trips', () async {
+  test('a GRANT is cached - no repeated platform round-trips', () async {
     var probes = 0, prompts = 0;
     svc.debugProbePermission = () async {
       probes++;

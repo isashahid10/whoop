@@ -7,7 +7,7 @@
 //      rescan would fire.
 //   2. The OVERWRITE path: putDayResult is INSERT OR REPLACE keyed on
 //      (day_id, algo_version), so re-deriving a FINALIZED recent day overwrites
-//      its row in place (refreshed readiness/recovery), not a duplicate — and the
+//      its row in place (refreshed readiness/recovery), not a duplicate - and the
 //      day stays finalized.
 
 import 'dart:convert';
@@ -124,7 +124,7 @@ void main() {
     expect((row['readiness'] as num).toDouble(), 70);
     expect(await LocalDb.finalizedDayIds(kAlgoVersion), contains(day));
 
-    // Re-derive (simulate a rescan recompute) — SAME (day_id, algo_version),
+    // Re-derive (simulate a rescan recompute) - SAME (day_id, algo_version),
     // refreshed baseline-dependent readiness, still finalized.
     await seedDay(day,
         finalized: true, rhr: 55, rmssd: 60, readiness: 48, resp: 14);
@@ -134,7 +134,7 @@ void main() {
     final rows = await db.query('day_result',
         where: 'day_id = ? AND algo_version = ?',
         whereArgs: [day, kAlgoVersion]);
-    expect(rows.length, 1, reason: 'INSERT OR REPLACE — overwrite, not duplicate');
+    expect(rows.length, 1, reason: 'INSERT OR REPLACE - overwrite, not duplicate');
     row = await LocalDb.dayResult(day);
     expect((row!['readiness'] as num).toDouble(), 48,
         reason: 'baseline-dependent scalar refreshed on overwrite');

@@ -1,7 +1,7 @@
 // Widget tests for the revamped CORE screens' pure content (Today / Workouts /
 // Sleep) on the design system, plus the AiSummaryCard slot. Each renders in
 // BOTH palettes with sample data; explicit pump durations (never blind
-// pumpAndSettle — some kit widgets repeat).
+// pumpAndSettle - some kit widgets repeat).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -76,7 +76,7 @@ void main() {
           Column(
             children: [
               AiSummaryCard(
-                summary: 'Solid recovery — a good day to push.',
+                summary: 'Solid recovery - a good day to push.',
                 onTap: () {},
               ),
               const AiSummaryCard(summary: null, busy: true),
@@ -86,7 +86,7 @@ void main() {
         ),
       );
       await t.pump(const Duration(milliseconds: 500));
-      expect(find.text('Solid recovery — a good day to push.'), findsOneWidget);
+      expect(find.text('Solid recovery - a good day to push.'), findsOneWidget);
       expect(find.text('Tap for the breakdown'), findsOneWidget);
       expect(find.text('Writing your briefing…'), findsOneWidget);
       expect(t.takeException(), isNull);
@@ -115,8 +115,10 @@ void main() {
       expect(find.text('Push'), findsOneWidget); // 82 → good band → 'Push' chip
       expect(find.text('48'), findsWidgets); // HRV value
       expect(find.text('52'), findsWidgets); // RHR value
-      expect(find.text('12.4'), findsOneWidget); // strain — quick-stats row
-      expect(find.text('7h 42m'), findsOneWidget); // sleep — quick-stats row
+      // Strain moved into the score trio; the quick-stats row deliberately
+      // no longer repeats it (two renderings of one figure on one screen).
+      expect(find.text('12.4'), findsOneWidget); // strain - trio ring
+      expect(find.text('7h 42m'), findsOneWidget); // time in bed - strip
       expect(find.text('8412'), findsOneWidget); // steps
       expect(find.text('Records & streaks'), findsOneWidget);
       expect(t.takeException(), isNull);
@@ -143,7 +145,7 @@ void main() {
       await t.pump(const Duration(milliseconds: 1200));
       expect(find.text('HRV'), findsNothing);
       expect(find.text('RESTING HR'), findsNothing);
-      // RHR still shows exactly once — in the demoted quick-stats row.
+      // RHR still shows exactly once - in the demoted quick-stats row.
       expect(find.text('52'), findsOneWidget);
       // The other tiles (Calories/Steps/O2) are unaffected.
       expect(find.text('CALORIES'), findsOneWidget);
@@ -175,13 +177,13 @@ void main() {
       );
       await t.pump(const Duration(milliseconds: 1200));
       // The ring itself renders regardless (READINESS/score are the first
-      // substantive content) — the AI insight never gates it.
+      // substantive content) - the AI insight never gates it.
       expect(find.text('READINESS'), findsOneWidget);
-      // Collapsed: the one-liner shows, the bullets do not — this is what
+      // Collapsed: the one-liner shows, the bullets do not - this is what
       // "collapsed by default" means, not an always-expanded leading card.
       expect(find.text('You recovered well overnight.'), findsOneWidget);
       expect(find.text('HRV up 6ms'), findsNothing);
-      // Tap to expand — same Disclosure pattern as LF/HF, SD1/SD2, pNN.
+      // Tap to expand - same Disclosure pattern as LF/HF, SD1/SD2, pNN.
       await t.tap(find.text('You recovered well overnight.'));
       await t.pump(const Duration(milliseconds: 400));
       expect(find.text('HRV up 6ms'), findsOneWidget);
@@ -242,10 +244,10 @@ void main() {
       );
       await t.pump(const Duration(milliseconds: 1200));
       // Stress + Sleep live only in the quiet quick-stats row below the ring
-      // (the ring itself no longer carries floating satellites — see the
+      // (the ring itself no longer carries floating satellites - see the
       // Today redesign) and have no bento tile of their own.
-      expect(find.text('34'), findsOneWidget); // stress — quick-stats row
-      expect(find.text('7h 42m'), findsOneWidget); // sleep — quick-stats row
+      expect(find.text('34'), findsOneWidget); // stress - quick-stats row
+      expect(find.text('7h 42m'), findsOneWidget); // sleep - quick-stats row
       expect(t.takeException(), isNull);
     });
 
@@ -264,9 +266,13 @@ void main() {
         ),
       );
       await t.pump(const Duration(milliseconds: 1200));
-      expect(find.text('Learning you'), findsOneWidget);
-      expect(find.text('3'), findsOneWidget); // 5 − 2 nights remaining
-      expect(find.text('NIGHTS'), findsOneWidget);
+      // Calibrating: name the nights remaining rather than showing a word
+      // (Push/Focus/Recover) the data cannot yet support.
+      expect(find.textContaining('Learning you'), findsOneWidget);
+      expect(find.textContaining('3 nights to go'), findsOneWidget);
+      // And no fake verdict while it learns.
+      expect(find.text('Push'), findsNothing);
+      expect(find.text('Recover'), findsNothing);
       expect(find.text('—'), findsWidgets); // absent metrics stay honest
       expect(t.takeException(), isNull);
     });
@@ -442,7 +448,7 @@ void main() {
 
   group('SleepNightContent', () {
     Map<String, dynamic> night() {
-      // Onset last night 23:10 local, wake 06:42 — recent → hypnogram shows.
+      // Onset last night 23:10 local, wake 06:42 - recent → hypnogram shows.
       final now = DateTime.now();
       final wake = DateTime(now.year, now.month, now.day, 6, 42);
       final onset = wake.subtract(const Duration(hours: 7, minutes: 32));
@@ -552,9 +558,9 @@ void main() {
       expect(find.text('1.2'), findsOneWidget);
       expect(find.text('BREATH'), findsOneWidget);
       expect(t.takeException(), isNull);
-      // The number shows exactly ONCE here — drill-down is a tap on this
+      // The number shows exactly ONCE here - drill-down is a tap on this
       // same stat (wired to openTrend, same pattern every TrendMetricRow in
-      // this screen uses — not covered by a widget test elsewhere in this
+      // this screen uses - not covered by a widget test elsewhere in this
       // codebase either, since it needs a full ThemeController+AppState
       // provider stack to actually push), not a second "Trends" row
       // restating the value.
@@ -571,7 +577,7 @@ void main() {
       addTearDown(t.view.reset);
       final data = night()
         ..['nocturnal'] = {'sleeping_hr_avg': 47}
-        // Present map, but neither the modern nor legacy value key — this is
+        // Present map, but neither the modern nor legacy value key - this is
         // exactly the shape that used to render the literal string "null".
         ..['spo2'] = {'confidence': 0.5};
       await t.pumpWidget(

@@ -4,7 +4,7 @@
 //
 // Why this file exists: `onUpgrade` runs inside ONE exclusive transaction, so a
 // single throwing step rolls the whole ladder back and `openDatabase` rethrows.
-// The app then has NO recoverable state — it is stuck on the loading screen on
+// The app then has NO recoverable state - it is stuck on the loading screen on
 // every launch, permanently. Two steps used a bare `ALTER TABLE … ADD COLUMN`
 // against a table that a LATER-numbered `_create*` helper had already created
 // with the CURRENT (column-bearing) DDL:
@@ -125,7 +125,7 @@ void main() {
   });
 
   test(
-    'upgrade from v2 completes — step 3 recreates raw_records WITH rec_ts, '
+    'upgrade from v2 completes - step 3 recreates raw_records WITH rec_ts, '
     'so step 6 must not re-add it (duplicate column bricked every launch)',
     () async {
       const name = 'migrate_from_v2_test.db';
@@ -140,7 +140,7 @@ void main() {
 
       // Before the guard this threw
       // DatabaseException(duplicate column name: rec_ts) out of openDatabase,
-      // rolling the whole ladder back — forever, on every launch.
+      // rolling the whole ladder back - forever, on every launch.
       final version = await _openThroughLocalDb(name);
       expect(version, LocalDb.schemaVersion);
 
@@ -150,7 +150,7 @@ void main() {
   );
 
   test(
-    'upgrade from v6 completes — step 7 creates sessions WITH steps, '
+    'upgrade from v6 completes - step 7 creates sessions WITH steps, '
     'so step 11 must not re-add it',
     () async {
       const name = 'migrate_from_v6_test.db';
@@ -206,7 +206,7 @@ void main() {
   );
 
   test(
-    'an orphaned sync_cursor_legacy is RESUMED, not abandoned — a crash '
+    'an orphaned sync_cursor_legacy is RESUMED, not abandoned - a crash '
     'mid-copy must not silently lose the resumable-sync cursor',
     () async {
       const name = 'migrate_legacy_resume_test.db';

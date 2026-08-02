@@ -1,4 +1,4 @@
-// tap_router.dart — pure route resolution. Regression coverage for the new
+// tap_router.dart - pure route resolution. Regression coverage for the new
 // kRouteBreathing entry (Siri/Shortcuts "start breathing" App Intent).
 
 import 'package:flutter_test/flutter_test.dart';

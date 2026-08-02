@@ -52,7 +52,7 @@ class HeadlessSyncGate {
       _consecutiveSkipsByOwner[owner] = n;
       _totalSkips++;
       debugPrint(
-        '[headless-gate] busy (held by "$_runningOwner") — "$owner" skipped '
+        '[headless-gate] busy (held by "$_runningOwner") - "$owner" skipped '
         'this cycle (consecutive_skips=$n, total_skips=$_totalSkips)',
       );
       return null;

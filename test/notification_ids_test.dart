@@ -3,7 +3,7 @@
 // Ids used to be DERIVED as `categoryBase + dedupeKey.hashCode.abs() % 100000`.
 // That is a hash modulo: two distinct dedupeKeys in the same category whose
 // hashes agree mod 100000 produced the SAME id, and `FlutterLocalNotifications
-// .show` REPLACES a post with the same id rather than stacking beside it — so
+// .show` REPLACES a post with the same id rather than stacking beside it - so
 // one of the two notifications vanished with no trace. (The "partitioned so a
 // health alert can never overwrite a reminder" comment only ever covered
 // CROSS-category collisions.)
@@ -68,7 +68,7 @@ void main() {
     final idA = await ids.idFor(_ev(a));
     final idB = await ids.idFor(_ev(b));
     expect(idA, isNot(equals(idB)),
-        reason: 'colliding keys must not share an OS id — one would '
+        reason: 'colliding keys must not share an OS id - one would '
             'silently REPLACE the other in the shade');
     // Both still inside the reminders band.
     expect(idA ~/ NotificationIds.bandSize, equals(4));
@@ -84,7 +84,7 @@ void main() {
     expect(out.length, 500);
   });
 
-  test('the same dedupeKey keeps its id — a re-post replaces in place',
+  test('the same dedupeKey keeps its id - a re-post replaces in place',
       () async {
     final ids = NotificationIds.instance;
     final first = await ids.idFor(_ev('$kToday:recovery_ready'));

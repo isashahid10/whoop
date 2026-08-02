@@ -2,7 +2,7 @@
 //
 // The text-level guard (coach_sql_guard_adversarial_test.dart) is a parser, and
 // a parser is a model of SQL rather than SQL itself. This gate doesn't parse at
-// all — it asks SQLite which btrees a statement would actually open (EXPLAIN's
+// all - it asks SQLite which btrees a statement would actually open (EXPLAIN's
 // OpenRead/ReopenIdx root pages) and refuses anything outside the base tables
 // the coach's own views are built from. These tests drive it DIRECTLY, past the
 // parser, so a future parser regression can never be the only thing standing
@@ -70,7 +70,7 @@ void main() {
   });
 
   for (final sql in const <String>[
-    // THE exploit — comma cross-join onto on-device GPS coordinates.
+    // THE exploit - comma cross-join onto on-device GPS coordinates.
     'SELECT r.lat, r.lng, r.ts_ms FROM v_sessions s, workout_route r LIMIT 50',
     'SELECT * FROM workout_route LIMIT 50',
     'SELECT * FROM raw_archive LIMIT 50',

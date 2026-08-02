@@ -1,4 +1,4 @@
-// The 1 Hz activity estimator's PERSONAL floor — the edge half of the fix for
+// The 1 Hz activity estimator's PERSONAL floor - the edge half of the fix for
 // the "39,384 steps" bug.
 //
 // The analytics package decides activity from a calibration-invariant dynamic
@@ -16,7 +16,7 @@
 //      error, so a quiet day's sedentary minutes cleared it for hours.
 //
 //   2. A SINGLE ANOMALOUS DAY CANNOT MOVE THE FLOOR. That is why the anchor is
-//      a median across days rather than a same-day quantile — a same-day floor
+//      a median across days rather than a same-day quantile - a same-day floor
 //      collapses on a quiet day and passes everything, the mirror image of the
 //      absolute-constant failure.
 import 'package:flutter_test/flutter_test.dart';
@@ -32,7 +32,7 @@ List<ana.MotionMinute> rows(List<double> dyn) => [
     ];
 
 void main() {
-  group('personal ambulatory floor — cold start', () {
+  group('personal ambulatory floor - cold start', () {
     test('no trailing history → no floor → the estimator ABSTAINS', () {
       // Exactly what a fresh install has on day one.
       final floor = ana.personalDynFloorFromDailySummaries(const []);
@@ -67,11 +67,11 @@ void main() {
     });
   });
 
-  group('personal ambulatory floor — stability', () {
+  group('personal ambulatory floor - stability', () {
     test('a sedentary day produces no active minutes against a real floor', () {
       // The 39,384 shape: a full day of sitting still. Every minute carries an
       // ENMO above the OLD absolute floor, so this is the exact input that used
-      // to inflate — it must now yield nothing.
+      // to inflate - it must now yield nothing.
       final floor =
           ana.personalDynFloorFromDailySummaries(List<double>.filled(7, 0.44))!;
       final est = ana.dailyStepEstimate(
