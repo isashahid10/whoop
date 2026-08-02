@@ -62,7 +62,7 @@ and read on while it goes. Once installed, open it once and accept the licence p
 ## Step 2 — Get the code
 
 ```bash
-git clone https://github.com/isashahid10/edge.git whoop
+git clone https://github.com/isashahid10/whoop.git whoop
 cd whoop
 fvm install
 fvm flutter pub get
@@ -241,7 +241,7 @@ outright, check the API key is from a project with no billing enabled.
 ## Getting help
 
 This is a personal project with no support promises, but
-[open an issue](https://github.com/isashahid10/edge/issues) and include what you tried,
+[open an issue](https://github.com/isashahid10/whoop/issues) and include what you tried,
 what happened, and what you expected.
 
 For anything about the band protocol or the core analytics, upstream

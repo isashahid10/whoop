@@ -9,7 +9,7 @@ anything else: an iPhone build signed with a free Apple account stops working af
 ## Just install it
 
 1. Download the latest `.apk` from
-   [**Releases**](https://github.com/isashahid10/edge/releases)
+   [**Releases**](https://github.com/isashahid10/whoop/releases)
 2. Open it on your phone. Android asks permission to install from this source — allow it
 3. Open the app and pair your band
 
@@ -77,7 +77,7 @@ Only worth doing if you want to change something. Otherwise use the release APK.
 ### Build
 
 ```bash
-git clone https://github.com/isashahid10/edge.git whoop
+git clone https://github.com/isashahid10/whoop.git whoop
 cd whoop
 git checkout isa/customisations
 
@@ -169,7 +169,7 @@ Android battery optimisation. Settings → Apps → Whoop → Battery → **Unre
 
 ## Reporting problems
 
-[Open an issue](https://github.com/isashahid10/edge/issues) and say which Android version
+[Open an issue](https://github.com/isashahid10/whoop/issues) and say which Android version
 and phone. For anything about the band protocol itself, upstream
 [OpenStrap/edge](https://github.com/OpenStrap/edge) is the better place — that is where
 that work lives.

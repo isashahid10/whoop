@@ -110,7 +110,7 @@ working.
 
 | You want | Do this |
 |---|---|
-| **Android, no setup** | [**Download the APK**](https://github.com/isashahid10/edge/releases) and open it. That is the whole process. |
+| **Android, no setup** | [**Download the APK**](https://github.com/isashahid10/whoop/releases) and open it. That is the whole process. |
 | **Let Claude do it** | [**docs/SETUP_WITH_CLAUDE.md**](docs/SETUP_WITH_CLAUDE.md) — copy one block of text, answer the questions |
 | **Android, from source** | [**docs/ANDROID.md**](docs/ANDROID.md) |
 | **iPhone** | [**docs/SETUP.md**](docs/SETUP.md) — no terminal knowledge assumed |

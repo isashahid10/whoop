@@ -41,7 +41,7 @@ jobs:
       - name: Check out analytics
         uses: actions/checkout@v4
         with:
-          repository: isashahid10/analytics
+          repository: isashahid10/whoop-analytics
           path: analytics
           # Absent on forks without access; the step below skips cleanly then.
           token: ${{ secrets.SIBLING_REPO_TOKEN || github.token }}

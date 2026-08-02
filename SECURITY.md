@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > **Report privately, never in a public issue.** For this fork use
-> [GitHub security advisories](https://github.com/isashahid10/edge/security/advisories/new).
+> [GitHub security advisories](https://github.com/isashahid10/whoop/security/advisories/new).
 > For anything in the shared codebase, upstream
 > [OpenStrap/edge](https://github.com/OpenStrap/edge/security/advisories/new)
 > is the right place, since a fix there protects every user.

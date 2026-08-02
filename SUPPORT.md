@@ -28,7 +28,7 @@ in the methodology doc. Please read that section before filing.
 
 | Topic | Repository |
 |---|---|
-| This fork: Hevy, nutrition, calendar, prayer times, the UI | [here](https://github.com/isashahid10/edge/issues) |
+| This fork: Hevy, nutrition, calendar, prayer times, the UI | [here](https://github.com/isashahid10/whoop/issues) |
 | Band protocol, opcodes, record decoding | [OpenStrap/protocol](https://github.com/OpenStrap/protocol/issues) |
 | Core metrics: HRV, sleep staging, strain | [OpenStrap/analytics](https://github.com/OpenStrap/analytics/issues) |
 | Anything about the app upstream already shipped | [OpenStrap/edge](https://github.com/OpenStrap/edge/issues) |
