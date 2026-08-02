@@ -207,7 +207,7 @@ dev_dependencies:
   # db_p0_fixes_test swaps PathProviderPlatform.instance for a temp-dir fake so
   # exportDaysDb can run without a platform plugin (transitive via
   # path_provider; declared directly since test/ now imports it).
-  path_provider_platform_interface: ^2.1.0
+  path_provider_platform_interface: ^2.1.3
   # Needed by test/backup_service_test.dart to fake path_provider — it has no
   # implementation in a test binding, so the backup path must be stubbed.
   plugin_platform_interface: ^2.1.8
