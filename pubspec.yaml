@@ -200,7 +200,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   test: ^1.25.8
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.4
   sqflite_common_ffi: ^2.4.0+3
   # RouteTracker's stall-watchdog tests drive virtual time (was a transitive
   # dep via flutter_test; declared directly since test/ now imports it).
