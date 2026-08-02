@@ -3,7 +3,7 @@
 Changes in this fork, on top of [OpenStrap Edge](https://github.com/OpenStrap/edge).
 Upstream's own history is in its repository.
 
-This project has no release cadence — it is a personal fork. Entries are grouped by the
+This project has no release cadence - it is a personal fork. Entries are grouped by the
 schema and algorithm versions that gate them, because those are what actually determine
 what a given build computes.
 
@@ -13,37 +13,37 @@ what a given build computes.
 
 `schemaVersion 29` · `kAlgoVersion 52`
 
-### Added — training
+### Added - training
 
 - **Hevy sync** at set level (exercise, load, reps, RPE) without a Pro subscription
 - **Strength analysis**: e1RM via Epley/Brzycki with RPE reps-in-reserve correction,
   per-lift Theil-Sen progression, weekly sets per muscle against Schoenfeld 2017 strata
-- **Overreaching detector** — performance-first, corroborated by HRV and resting HR
-- **Bulk quality** — weight trend against strength trend, abstaining when strength is unknown
+- **Overreaching detector** - performance-first, corroborated by HRV and resting HR
+- **Bulk quality** - weight trend against strength trend, abstaining when strength is unknown
 - **HR-recovery rest timer** targeting 40% of heart-rate reserve, using the user's own
   median resting HR rather than a population default
 
-### Added — context
+### Added - context
 
 - **Weather** via Open-Meteo (no API key)
-- **Calendar** via EventKit — counts and busy minutes only, never event contents
+- **Calendar** via EventKit - counts and busy minutes only, never event contents
 - **Nutrition** through an Apple Health *read* path (upstream was write-only)
 - **Caffeine logging** with a 5-hour half-life model and a last-safe-dose time
 
-### Added — sleep
+### Added - sleep
 
 - **Composite sleep score** over duration, efficiency, timing and debt
-- **Naps**, surfaced for the first time — detection existed since `kAlgoVersion 20` but
+- **Naps**, surfaced for the first time - detection existed since `kAlgoVersion 20` but
   no screen ever read it. Reported separately from the night and never summed into it.
 - **Nap staging**. `detectNaps` already ran the full cardio stager and discarded the
   hypnogram, keeping only the duration. Stages are now plumbed through, withheld below
   one hour where the stager's within-sleep references are estimated from too few epochs.
-- **`cpcWindowed()`** in analytics — Thomas (2005) cardiopulmonary coupling as a time
+- **`cpcWindowed()`** in analytics - Thomas (2005) cardiopulmonary coupling as a time
   series rather than a single whole-night figure
 - **Deep-sleep uncertainty surfaced.** Where the cardiac and respiratory paths disagree,
   the UI now says so instead of silently presenting one of them.
 
-### Added — life
+### Added - life
 
 - **Prayer times** from geolocation, with repeat reminders until marked done
 - **Ramadan mode**, with fasted days excluded from correlation pairs
@@ -51,7 +51,7 @@ what a given build computes.
 - **Google Drive backup** (opt-in, `drive.file` scope) so data survives app deletion
 - **Local snapshot backups**, WAL-aware
 
-### Added — insight
+### Added - insight
 
 - **Cross-domain correlations**: Spearman with Benjamini-Hochberg FDR control at q=0.10,
   over a deliberately small hypothesis set
@@ -69,7 +69,7 @@ what a given build computes.
 
 ### Fixed
 
-- **Coach was blind to lifting data** — `v_lifts` and `v_lift_sessions` were undocumented
+- **Coach was blind to lifting data** - `v_lifts` and `v_lift_sessions` were undocumented
   in the prompt, so the fork's core question silently could not be answered
 - **Weather and calendar had never once run.** Both syncs lived inside `healthSyncNow()`,
   behind a toggle defaulting to off. Moved to an independent 3-hourly pass.
@@ -77,7 +77,7 @@ what a given build computes.
   called it.
 - **Weather silently gave up after being granted location.** `getLastKnownPosition()`
   returns null immediately after a grant and there was no fallback to an actual fix.
-- **Steps disagreed between screens** — the detail screen read the raw band key,
+- **Steps disagreed between screens** - the detail screen read the raw band key,
   bypassing the phone-first resolver, so one day showed two different numbers
 - **Live band steps were added on top of Apple Health totals**, double-counting every
   step of a walk in progress
@@ -131,5 +131,5 @@ checkout, which is the argument for publishing early.
   pinned Flutter it generated pull requests that could not be merged and a
   stream of notification email
 - Golden render harness writing real PNGs of screens
-- `tool/deep_probe.dart` in analytics — runs the real stager over an exported night and
+- `tool/deep_probe.dart` in analytics - runs the real stager over an exported night and
   reports which condition is binding, so this investigation is one command to repeat

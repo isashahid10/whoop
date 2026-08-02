@@ -1,6 +1,6 @@
 # Methodology
 
-What each number means, what it is derived from, and — most importantly — **what it
+What each number means, what it is derived from, and - most importantly - **what it
 cannot support**.
 
 The organising principle of this project is *abstain over fabricate*. A metric that
@@ -102,9 +102,9 @@ reference (true deep = 38 min):
 
 | Minimum run | Reference night | A later night |
 |---|---|---|
-| **180 s** (shipped) | 58 min — already 53% high | 15 min (3.1%) |
+| **180 s** (shipped) | 58 min - already 53% high | 15 min (3.1%) |
 | 90 s | 94 min | 45 min |
-| 60 s | **107 min — ~3× truth** | 55 min (11.8%) |
+| 60 s | **107 min - ~3× truth** | 55 min (11.8%) |
 
 Loosening the threshold makes the under-reporting night look plausible while pushing the
 one night that can actually be checked to nearly triple its true value. **Tuning a global
@@ -114,15 +114,15 @@ constant was left alone.
 ### The cardiopulmonary coupling experiment
 
 Thomas et al. (2005) established **high-frequency coupling (0.1–0.4 Hz)** as the signal
-biomarker of *stable NREM sleep* — physiologically what "deep" is trying to name. This
+biomarker of *stable NREM sleep* - physiologically what "deep" is trying to name. This
 pipeline already computed CPC every night and never used it for staging, so it was
 tested two ways:
 
 | Mode | Reference night (truth 38 min) | A later night |
 |---|---|---|
 | off (shipped) | 58 min | 15 min |
-| **relax** — CPC allows shorter bouts | 89 min — much worse | 27 min |
-| **gate** — CPC required for deep | **53 min — best** | **0 min — collapses** |
+| **relax** - CPC allows shorter bouts | 89 min - much worse | 27 min |
+| **gate** - CPC required for deep | **53 min - best** | **0 min - collapses** |
 
 The gate moves the validated night meaningfully toward truth, then reports **zero**
 minutes of deep on a night where the cardiac classifier flags a perfectly normal ~25% of
@@ -166,7 +166,7 @@ opposite directions:
 Summing them would overstate both. They are reported alongside the night, never inside
 it.
 
-Stages are shown for naps over an hour and withheld below it — the stager derives its
+Stages are shown for naps over an hour and withheld below it - the stager derives its
 within-sleep references partly from the session itself, and a 25-minute nap estimates
 them from too few epochs for the split to mean anything.
 
@@ -180,10 +180,10 @@ has nothing for that day.
 
 The band's number is **not a step count and physically cannot be**. Its always-on stream
 is 1 Hz; human walking cadence is 1.4–2.5 Hz. By Nyquist, individual steps are
-information-theoretically unrecoverable from that data — at 2.0 Hz cadence the gait
+information-theoretically unrecoverable from that data - at 2.0 Hz cadence the gait
 signal aliases exactly to DC. No algorithm can fix this.
 
-So the band path measures what *is* resolvable at 1 Hz — **ambulatory minutes** — and
+So the band path measures what *is* resolvable at 1 Hz - **ambulatory minutes** - and
 multiplies by a published free-living cadence band (Tudor-Locke 2011, ~100–130 steps/min)
 to produce a **range**. While the app is open and streaming at ~100 Hz it counts real
 steps (AN-2554, calibrated against a ground-truth walk).
@@ -194,7 +194,7 @@ A phone-sourced count is not badged as an estimate, because it is not one.
 
 ## Strength
 
-All computed from logged sets. No wrist signal involved — load and reps are **directly
+All computed from logged sets. No wrist signal involved - load and reps are **directly
 measured**, making this some of the highest-quality data in the app.
 
 | Metric | Method | Confidence |
@@ -208,8 +208,8 @@ measured**, making this some of the highest-quality data in the app.
 count; past ~12 the estimate describes muscular endurance rather than maximal strength.
 
 **Acute:chronic tonnage is reported as description only.** The ACWR injury-risk framing
-(Gabbett 2016) has been seriously challenged on methodological grounds — mathematical
-coupling and spurious correlation (Lolli 2019; Impellizzeri 2020) — and was developed for
+(Gabbett 2016) has been seriously challenged on methodological grounds - mathematical
+coupling and spurious correlation (Lolli 2019; Impellizzeri 2020) - and was developed for
 team-sport GPS load, not barbell tonnage. The ratio is computed; no risk verdict is
 attached to it.
 
@@ -260,12 +260,12 @@ an actionable answer.
 does not, however easy it would be to add.
 
 **Lag encodes the causal story.** A predictor is tested against the *following* day's
-outcome wherever the mechanism is overnight — protein eaten today cannot be caused by
+outcome wherever the mechanism is overnight - protein eaten today cannot be caused by
 tomorrow's recovery. Same-day pairs are used only where the mechanism is simultaneous,
 and are labelled associations with no direction claimed.
 
 **Fasted days are excluded.** Ramadan shifts eating, sleep and training at once, so
-mixing those days in does not add statistical power — it adds a confounder correlated
+mixing those days in does not add statistical power - it adds a confounder correlated
 with nearly every variable simultaneously.
 
 Minimum 14 paired days. Below that, no result is reported.
@@ -274,7 +274,7 @@ Minimum 14 paired days. Below that, no result is reported.
 
 ## Caffeine
 
-Exponential decay with a **5-hour half-life** — a reasonable population midpoint;
+Exponential decay with a **5-hour half-life** - a reasonable population midpoint;
 individual variation is large and genuine (CYP1A2 genotype, oral contraceptives,
 smoking).
 

@@ -5,7 +5,7 @@
 ## How this was verified
 
 <!--
-Not "tests pass" — what did you actually check?
+Not "tests pass" - what did you actually check?
 
 For a health metric, the useful evidence is a measurement, not an assertion:
 which real night, which real session, what did the number do before and after.
@@ -36,7 +36,7 @@ Delete the sections that do not apply.
 
 - [ ] `schemaVersion` bumped, and `_open(version:)` is still bound to it
 - [ ] Migration test added or updated
-- [ ] `kAlgoVersion` bumped if a derived bundle gained fields — **without it, existing days never recompute and the new field reads as permanently absent**
+- [ ] `kAlgoVersion` bumped if a derived bundle gained fields - **without it, existing days never recompute and the new field reads as permanently absent**
 - [ ] Nothing prunes `raw_archive`
 
 ### Touching UI

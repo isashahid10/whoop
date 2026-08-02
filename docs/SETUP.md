@@ -1,6 +1,6 @@
 # Setup
 
-A guide for getting this running on your own band. No prior terminal experience assumed —
+A guide for getting this running on your own band. No prior terminal experience assumed -
 where a command is needed, it is written out in full and explained.
 
 ---
@@ -16,9 +16,9 @@ where a command is needed, it is written out in full and explained.
 
 **You do not need:**
 
-- A WHOOP subscription — the band works without one
+- A WHOOP subscription - the band works without one
 - A WHOOP account
-- An Apple Developer subscription — free provisioning is enough
+- An Apple Developer subscription - free provisioning is enough
 - Hevy Pro
 
 ---
@@ -37,7 +37,7 @@ pairing regardless.
 
 ---
 
-## Step 1 — Install the build tools
+## Step 1 - Install the build tools
 
 Open **Terminal** (press `Cmd + Space`, type "Terminal", press Enter).
 
@@ -54,12 +54,12 @@ brew tap leoafarias/fvm
 brew install fvm
 ```
 
-You also need **Xcode** from the Mac App Store. It is a large download — start it now
+You also need **Xcode** from the Mac App Store. It is a large download - start it now
 and read on while it goes. Once installed, open it once and accept the licence prompt.
 
 ---
 
-## Step 2 — Get the code
+## Step 2 - Get the code
 
 ```bash
 git clone https://github.com/isashahid10/whoop.git whoop
@@ -69,13 +69,13 @@ fvm flutter pub get
 ```
 
 > [!IMPORTANT]
-> Flutter is pinned to **3.41.6**. Do not upgrade it — the project does not compile on
+> Flutter is pinned to **3.41.6**. Do not upgrade it - the project does not compile on
 > newer versions, for a documented reason. Always type `fvm flutter`, never plain
 > `flutter`.
 
 ---
 
-## Step 3 — Configuration files
+## Step 3 - Configuration files
 
 Two files hold personal settings and are deliberately **not** in the repository, so
 nobody's keys end up on GitHub.
@@ -89,7 +89,7 @@ cp ios/Config/Signing.xcconfig.example ios/Config/Signing.xcconfig
 
 1. Open Xcode → **Settings** → **Accounts**
 2. Sign in with your Apple ID if you have not already
-3. Select your account, click **Manage Certificates** — your Team ID is the 10-character
+3. Select your account, click **Manage Certificates** - your Team ID is the 10-character
    code shown alongside your personal team
 
 Open `ios/Config/Signing.xcconfig` in any text editor and put it in:
@@ -111,7 +111,7 @@ Skip this if you do not want the coach; everything else works without it.
 
 > [!WARNING]
 > A key from a project **with** billing enabled is not on the free tier and will fail
-> with a credits error the first time it generates — while still looking fine in every
+> with a credits error the first time it generates - while still looking fine in every
 > other respect. Create the key in a project with no billing attached.
 
 Put it in `.env`:
@@ -122,7 +122,7 @@ GEMINI_API_KEY=your-key-here
 
 ---
 
-## Step 4 — Build and install
+## Step 4 - Build and install
 
 Plug your iPhone into the Mac. Unlock it and tap **Trust This Computer**.
 
@@ -146,12 +146,12 @@ The first build takes several minutes. Later builds are much faster.
 
 > [!WARNING]
 > **Never use `fvm flutter install`.** It prints "Uninstalling old version…" and wipes
-> the app's database — every synced night, every logged workout, gone. Always use
+> the app's database - every synced night, every logged workout, gone. Always use
 > `xcrun devicectl device install app`, which upgrades in place and keeps your data.
 
 ---
 
-## Step 5 — Trust the app on your phone
+## Step 5 - Trust the app on your phone
 
 Because this is a free developer account, iOS will not run the app until you approve it:
 
@@ -161,7 +161,7 @@ Now open the app.
 
 > [!NOTE]
 > **A free Apple account signs apps for 7 days.** After that the app stops opening and
-> you rebuild with the same command. Your data survives — it is the signature that
+> you rebuild with the same command. Your data survives - it is the signature that
 > expires, not the app.
 >
 > [SideStore](https://sidestore.io) can automate the re-signing, or a $99/year Apple
@@ -169,11 +169,11 @@ Now open the app.
 
 ---
 
-## Step 6 — First run
+## Step 6 - First run
 
 1. **Pair the band.** Make sure the official WHOOP app is fully closed. Put the band on
    the charger to wake it if it has been sitting dead.
-2. **Grant permissions** as prompted — Bluetooth, notifications, Health, and location if
+2. **Grant permissions** as prompted - Bluetooth, notifications, Health, and location if
    you want weather and prayer times.
 3. **Wear it overnight.** This is the part that cannot be rushed.
 
@@ -197,16 +197,16 @@ population average dressed up as your number.
 
 ## Optional integrations
 
-**Hevy** — Profile → Hevy → Sign in. Pulls every set you log. No Hevy Pro needed. Sign-in
+**Hevy** - Profile → Hevy → Sign in. Pulls every set you log. No Hevy Pro needed. Sign-in
 is periodic rather than permanent; when the session expires the app asks again.
 
-**Apple Health** — Profile → Apple Health. Reads steps, nutrition and workouts in;
+**Apple Health** - Profile → Apple Health. Reads steps, nutrition and workouts in;
 writes sleep and recovery back out.
 
-**Prayer times** — grant location and they are computed on-device from your coordinates.
+**Prayer times** - grant location and they are computed on-device from your coordinates.
 No network call, nothing sent anywhere.
 
-**Google Drive backup** — Profile → Backups. Uses a scope that can only see files this
+**Google Drive backup** - Profile → Backups. Uses a scope that can only see files this
 app created; it cannot read anything else in your Drive.
 
 ---
@@ -245,5 +245,5 @@ This is a personal project with no support promises, but
 what happened, and what you expected.
 
 For anything about the band protocol or the core analytics, upstream
-[OpenStrap/edge](https://github.com/OpenStrap/edge) is the better place to ask — that is
+[OpenStrap/edge](https://github.com/OpenStrap/edge) is the better place to ask - that is
 where that work lives.

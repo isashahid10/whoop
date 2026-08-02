@@ -28,7 +28,7 @@ New screen, table, or sync flow?   → edge
 ```
 
 A metric implemented inside `edge/lib/compute` is in the wrong place **unless it is pure
-orchestration** — loading rows, calling analytics, and handing the result to the UI.
+orchestration** - loading rows, calling analytics, and handing the result to the UI.
 `lib/compute/*_service.dart` files in this fork are deliberately thin for that reason:
 the judgement about *which* relationships are worth testing lives in edge, the
 statistics live in analytics.
@@ -76,7 +76,7 @@ what makes its results reproducible and its tests meaningful.
 ### Why `day_result` is immutable
 
 Rows are keyed `(day_id, algo_version)` and never updated in place. A better algorithm
-does not mutate history — it bumps `kAlgoVersion`, and every affected day is recomputed
+does not mutate history - it bumps `kAlgoVersion`, and every affected day is recomputed
 from the preserved raw samples.
 
 This has a practical consequence worth knowing: **adding a field to a derived bundle
@@ -86,7 +86,7 @@ bump reads as absent forever, which looks exactly like a broken feature.
 ### Why `raw_archive` is never pruned
 
 Parts of the protocol are still educated guesses. Event semantics are provisional.
-Keeping every raw record — including ones that could not be decoded at the time — means
+Keeping every raw record - including ones that could not be decoded at the time - means
 a future decoder improvement can be applied retroactively to data already collected.
 Derived tables are disposable; samples are not.
 
@@ -106,7 +106,7 @@ Derived tables are disposable; samples are not.
 | `hevy_set` | One row per logged set | Fork addition |
 | `caffeine_log` | Timestamped intake | Fork addition |
 
-SQLite runs in **WAL mode**. The main `.db` file under-reports actual size — any backup
+SQLite runs in **WAL mode**. The main `.db` file under-reports actual size - any backup
 or copy must include the `-wal` and `-shm` sidecars or it will be silently incomplete.
 
 ---
@@ -159,7 +159,7 @@ v_baseline_trust how much history each baseline actually has
 > **Adding coach data means adding a view, never widening the guard.** The guard is the
 > boundary; a view is a deliberate, reviewable hole in it.
 
-`postChat` fail-closes on request size — it refuses rather than truncating, so a runaway
+`postChat` fail-closes on request size - it refuses rather than truncating, so a runaway
 tool loop cannot ship the health database to a third party. That is the single most
 important line of defence in the app and must not be softened.
 
@@ -184,7 +184,7 @@ Things that are load-bearing and have each broken at least once:
 1. **`db.dart`'s `_open(version:)` must be bound to `schemaVersion`.** It was once
    hardcoded separately, so bumping the constant did not run `onUpgrade`.
 2. **`coach_engine` must append `tool_calls` verbatim.** Rebuilding the list drops
-   Gemini's `thought_signature` and the agentic loop dies on the *second* turn — a
+   Gemini's `thought_signature` and the agentic loop dies on the *second* turn - a
    failure a shallow test never sees.
 3. **The Apple Health importer must drop own-source points**, or it re-imports the app's
    own exports and double-counts.
@@ -200,7 +200,7 @@ Things that are load-bearing and have each broken at least once:
 
 - Anything touching stored data gets a **migration test**.
 - Anything computing a health number gets a test pinning the **method**, not merely the
-  output — including tests asserting what the code deliberately *refuses* to claim.
+  output - including tests asserting what the code deliberately *refuses* to claim.
 - Analytics is pure, so its tests are exact rather than approximate.
 - UI gets **rendered goldens**, so design is looked at rather than argued about.
 

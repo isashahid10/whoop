@@ -2,7 +2,7 @@
 #
 # Upstream's test.yml only triggers on `main`, so it never fires on this fork's
 # branches. This workflow covers them, and additionally tests the sibling
-# `analytics` package — which upstream's workflow cannot do, because in this
+# `analytics` package - which upstream's workflow cannot do, because in this
 # fork the two are developed together and a metric change lands there.
 name: ci
 

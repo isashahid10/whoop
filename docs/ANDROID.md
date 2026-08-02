@@ -10,7 +10,7 @@ anything else: an iPhone build signed with a free Apple account stops working af
 
 1. Download the latest `.apk` from
    [**Releases**](https://github.com/isashahid10/whoop/releases)
-2. Open it on your phone. Android asks permission to install from this source — allow it
+2. Open it on your phone. Android asks permission to install from this source - allow it
 3. Open the app and pair your band
 
 That is the whole process. No computer, no toolchain, no account.
@@ -69,10 +69,10 @@ Only worth doing if you want to change something. Otherwise use the release APK.
 
 ### What you need
 
-- **Java 17** — `brew install openjdk@17` on macOS, or your distribution's package
-- **Android SDK** — easiest via [Android Studio](https://developer.android.com/studio),
+- **Java 17** - `brew install openjdk@17` on macOS, or your distribution's package
+- **Android SDK** - easiest via [Android Studio](https://developer.android.com/studio),
   which installs it on first launch
-- **FVM** — `brew tap leoafarias/fvm && brew install fvm`
+- **FVM** - `brew tap leoafarias/fvm && brew install fvm`
 
 ### Build
 
@@ -94,7 +94,7 @@ fvm flutter build apk --release --dart-define-from-file=.env
 The APK lands at `build/app/outputs/flutter-apk/app-release.apk`.
 
 > [!WARNING]
-> Flutter is **pinned to 3.41.6**. On 3.44.x this project does not compile — the symptom
+> Flutter is **pinned to 3.41.6**. On 3.44.x this project does not compile - the symptom
 > is ~22 test files failing at *load* while logic tests still pass, which reads as a test
 > bug and is not. Always use `fvm flutter`, never bare `flutter`.
 
@@ -143,7 +143,7 @@ the tests, builds the APK, and attaches it to a GitHub Release with install inst
 It needs **no repository secrets**.
 
 It also forces `ENABLE_HEALTH_DATA_CONTRIBUTION=false`. Upstream's own release builds set
-that flag true — their call for their backend — but a fork must not ship a build flagged
+that flag true - their call for their backend - but a fork must not ship a build flagged
 to contribute to someone else's data collection.
 
 ---
@@ -171,5 +171,5 @@ Android battery optimisation. Settings → Apps → Whoop → Battery → **Unre
 
 [Open an issue](https://github.com/isashahid10/whoop/issues) and say which Android version
 and phone. For anything about the band protocol itself, upstream
-[OpenStrap/edge](https://github.com/OpenStrap/edge) is the better place — that is where
+[OpenStrap/edge](https://github.com/OpenStrap/edge) is the better place - that is where
 that work lives.

@@ -1,4 +1,4 @@
-# Line endings — normalise to LF in the repository, check out native.
+# Line endings - normalise to LF in the repository, check out native.
 # Without this, a Windows contributor's first commit rewrites every file.
 * text=auto eol=lf
 

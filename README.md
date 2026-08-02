@@ -4,7 +4,7 @@
 
 # Whoop
 
-**A WHOOP 4.0 band that works without the subscription — and knows what you lifted.**
+**A WHOOP 4.0 band that works without the subscription - and knows what you lifted.**
 
 A personal fork of [**OpenStrap Edge**](https://github.com/OpenStrap/edge) that adds
 resistance training, nutrition, calendar, weather and prayer times to on-device health
@@ -24,7 +24,7 @@ analytics, then lets an AI coach reason across all of it.
 ## What this is
 
 WHOOP sells a good sensor attached to a mandatory subscription. When the subscription
-lapses the hardware goes dark — you own it, and it stops working.
+lapses the hardware goes dark - you own it, and it stops working.
 
 [OpenStrap Edge](https://github.com/OpenStrap/edge) already solved the hard part: it
 talks to the band over Bluetooth, decodes the protocol, and computes sleep, recovery,
@@ -52,7 +52,7 @@ explain a bad recovery score**, and none of them are visible from the wrist.
 | Sleep, readiness and strain against *your* baselines | Every input, signed, with the z-score behind it | Daytime sleep, kept separate from the night |
 
 *Rendered by the golden harness in [`test/ui_render_test.dart`](test/ui_render_test.dart)
-— real frames from the real widgets, not mockups.*
+- real frames from the real widgets, not mockups.*
 
 ---
 
@@ -74,9 +74,9 @@ Everything below is additive. None of it exists upstream.
 
 | Feature | Source |
 |---|---|
-| **Nutrition** | Apple Health / Health Connect — protein, calories, carbs, fat, water |
+| **Nutrition** | Apple Health / Health Connect - protein, calories, carbs, fat, water |
 | **Weather** | Open-Meteo. Heat and humidity measurably move HRV |
-| **Calendar** | EventKit — counts and busy minutes only, never event contents |
+| **Calendar** | EventKit - counts and busy minutes only, never event contents |
 | **Caffeine** | Logged intake, 5-hour half-life model, "last safe coffee" time |
 
 ### Sleep
@@ -84,12 +84,12 @@ Everything below is additive. None of it exists upstream.
 - **Composite sleep score** blending duration, efficiency, timing and debt
 - **Naps** detected and reported **separately** from the night, never summed into it
 - **Cardiopulmonary coupling** (Thomas 2005) surfaced as sleep stability
-- Honest treatment of deep sleep — [see the methodology](docs/METHODOLOGY.md#deep-sleep)
+- Honest treatment of deep sleep - [see the methodology](docs/METHODOLOGY.md#deep-sleep)
 
 ### Life
 
 - **Prayer times** from geolocation, with repeat reminders until marked done
-- **Ramadan mode** — fasted days are excluded from correlations rather than silently confounding them
+- **Ramadan mode** - fasted days are excluded from correlations rather than silently confounding them
 - **Band + phone alarms** firing simultaneously, surviving Do Not Disturb
 - **Google Drive backup** so the database survives deleting the app
 
@@ -104,16 +104,16 @@ database anywhere.
 
 ## Getting it running
 
-Pick the row that matches you. **Android is the easier platform** — an iPhone build
+Pick the row that matches you. **Android is the easier platform** - an iPhone build
 signed with a free Apple account expires every 7 days; an APK installs once and keeps
 working.
 
 | You want | Do this |
 |---|---|
 | **Android, no setup** | [**Download the APK**](https://github.com/isashahid10/whoop/releases) and open it. That is the whole process. |
-| **Let Claude do it** | [**docs/SETUP_WITH_CLAUDE.md**](docs/SETUP_WITH_CLAUDE.md) — copy one block of text, answer the questions |
+| **Let Claude do it** | [**docs/SETUP_WITH_CLAUDE.md**](docs/SETUP_WITH_CLAUDE.md) - copy one block of text, answer the questions |
 | **Android, from source** | [**docs/ANDROID.md**](docs/ANDROID.md) |
-| **iPhone** | [**docs/SETUP.md**](docs/SETUP.md) — no terminal knowledge assumed |
+| **iPhone** | [**docs/SETUP.md**](docs/SETUP.md) - no terminal knowledge assumed |
 | **You are a developer** | Carry on below |
 
 ### Building it yourself
@@ -125,7 +125,7 @@ working.
 Or by hand:
 
 ```bash
-# Flutter is PINNED — see "Why Flutter is pinned" below.
+# Flutter is PINNED - see "Why Flutter is pinned" below.
 fvm install && fvm flutter pub get
 
 cp .env.example .env                                     # add your Gemini key
@@ -144,7 +144,7 @@ xcrun devicectl device install app --device <UDID> build/ios/iphoneos/Runner.app
 
 > [!WARNING]
 > On **iOS**, use `devicectl` and **never** `fvm flutter install`. The latter uninstalls
-> first and **wipes the database** — every synced night, every logged lift. `devicectl`
+> first and **wipes the database** - every synced night, every logged lift. `devicectl`
 > performs an upgrade install, so the container survives.
 >
 > On **Android** `flutter install` is fine; there it is a normal package upgrade.
@@ -164,7 +164,7 @@ These are load-bearing, not decoration. They are why the numbers here can be tru
 **Abstain over fabricate.** A metric with insufficient data reports absent and says what
 it is waiting for. It never substitutes a population average and presents it as yours.
 Correlations need 14 paired days, bulk quality needs 10 weigh-ins, readiness needs a
-baseline — until then they say so.
+baseline - until then they say so.
 
 **Samples are sacred.** `raw_archive` is never pruned. Every derived table is rebuildable
 by bumping `kAlgoVersion`, so a better algorithm can be applied retroactively to data
@@ -173,8 +173,8 @@ already collected.
 **Colour is data, never decoration.** Green means recovered, blue means exertion, red
 means don't. A card tint carrying no information is a card tint that got deleted.
 
-**Uncertainty is shown, not hidden.** Where two independent signals disagree — as the
-cardiac and respiratory paths do on deep sleep — the app says so rather than quietly
+**Uncertainty is shown, not hidden.** Where two independent signals disagree - as the
+cardiac and respiratory paths do on deep sleep - the app says so rather than quietly
 picking whichever answer looks better.
 
 **Every claim traces to data.** The coach abstains when the data does not support an
@@ -209,7 +209,7 @@ cd ../analytics && fvm dart test        # analytics:  476 tests
 ```
 
 Anything touching stored data gets a migration test. Anything computing a health number
-gets a test pinning the **method**, not merely the output — including tests that assert
+gets a test pinning the **method**, not merely the output - including tests that assert
 what the code deliberately refuses to claim.
 
 The UI has a golden harness that writes real PNGs, so a design can be looked at instead
@@ -226,7 +226,7 @@ fvm flutter test test/ui_render_test.dart --update-goldens --run-skipped
 `3.41.6`, via FVM, deliberately. On 3.44.x this repo **does not compile**:
 `phosphor_flutter` declares `class PhosphorIconData extends IconData`, and `IconData`
 became a `final class`. The symptom is ~22 test files failing at *load* while the logic
-tests still pass — which looks like a test bug and is not.
+tests still pass - which looks like a test bug and is not.
 
 Sibling packages are pinned to **commit SHAs, not branch refs**, for the same reason: a
 floating ref lets an upstream commit silently change the behaviour of an already
@@ -241,7 +241,7 @@ Run everything through `fvm flutter`, never bare `flutter`.
 - Health data lives **on the phone**, in local SQLite. There is no backend.
 - The AI coach is bring-your-own-key. The key sits in the platform keychain and is sent
   only to the provider you configure.
-- Calendar access reads **counts and busy minutes only** — never titles, attendees or
+- Calendar access reads **counts and busy minutes only** - never titles, attendees or
   locations.
 - Google Drive backup is opt-in, uses the non-sensitive `drive.file` scope, and can only
   see files this app itself created.
@@ -257,7 +257,7 @@ engine, protocol decode, sleep staging, HRV analysis and the entire on-device pi
 are upstream's work, MIT licensed. The protocol reverse engineering behind it represents
 an enormous amount of careful effort by people who then gave it away for free.
 
-If you find this useful, [star upstream](https://github.com/OpenStrap/edge) — that is
+If you find this useful, [star upstream](https://github.com/OpenStrap/edge) - that is
 where the hard part lives. Upstream's own README is preserved at
 [docs/README.upstream.md](docs/README.upstream.md).
 
@@ -269,6 +269,6 @@ MIT, inherited from upstream. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
 
 > [!NOTE]
 > This is a personal fork built for one person and one band. It is not a product, has no
-> roadmap and makes no support promises. Nothing here is a medical device — every number
+> roadmap and makes no support promises. Nothing here is a medical device - every number
 > is a wrist-sensor estimate, not a diagnosis. See
 > [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for what each figure can and cannot support.

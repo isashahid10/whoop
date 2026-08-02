@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# bootstrap.sh — the deterministic half of setting this project up.
+# bootstrap.sh - the deterministic half of setting this project up.
 #
 # It checks the toolchain, pins Flutter, fetches dependencies and creates the
 # config files from their examples. It deliberately does NOT build or install:
@@ -38,7 +38,7 @@ fail() { bad "$1"; PROBLEMS=$((PROBLEMS + 1)); }
 PINNED="$(sed -n 's/.*"flutter"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .fvmrc 2>/dev/null || true)"
 [[ -z "$PINNED" ]] && PINNED="3.41.6"
 
-printf '%sWhoop — setup%s\n' "$BOLD" "$RESET"
+printf '%sWhoop - setup%s\n' "$BOLD" "$RESET"
 note "Flutter is pinned to $PINNED. This is not optional; see README."
 
 # ── toolchain ───────────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ if (( PROBLEMS > 0 )); then
 fi
 
 if (( CHECK_ONLY )); then
-  printf '\n%sCheck only — nothing changed.%s\n' "$DIM" "$RESET"
+  printf '\n%sCheck only - nothing changed.%s\n' "$DIM" "$RESET"
   exit 0
 fi
 
@@ -151,7 +151,7 @@ cat <<EOF
     fvm flutter build ios --release --dart-define-from-file=.env
     xcrun devicectl device install app --device <UDID> build/ios/iphoneos/Runner.app
 
-  ${BOLD}Never use 'fvm flutter install' on iOS${RESET} — it wipes the database.
+  ${BOLD}Never use 'fvm flutter install' on iOS${RESET} - it wipes the database.
   On Android it is fine; there it is a normal package upgrade.
 
   Full guides:  docs/SETUP.md  ·  docs/ANDROID.md  ·  docs/SETUP_WITH_CLAUDE.md

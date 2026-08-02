@@ -96,7 +96,7 @@ jobs:
 
             1. Download the `.apk` below on your Android phone.
             2. Open it. Android will ask permission to install from this
-               source — allow it.
+               source - allow it.
             3. Open the app and pair your WHOOP 4.0 band.
 
             **Close the official WHOOP app first.** Bluetooth only lets one app

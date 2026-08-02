@@ -11,7 +11,7 @@ This page is written so that **copying one block of text is enough**.
 
 | You want | Go here |
 |---|---|
-| **Android, easiest possible** | [Download the APK](https://github.com/isashahid10/whoop/releases) — no setup at all. Skip this page. |
+| **Android, easiest possible** | [Download the APK](https://github.com/isashahid10/whoop/releases) - no setup at all. Skip this page. |
 | **Android, built yourself** | This page → [Android prompt](#android) |
 | **iPhone** | This page → [iPhone prompt](#iphone) |
 | **To understand each step** | [SETUP.md](SETUP.md) instead |
@@ -53,7 +53,7 @@ I want to build and install an Android app from source. I am not a developer,
 so please explain what you are doing in plain language and ask me before
 anything that needs a decision from me.
 
-The project is https://github.com/isashahid10/whoop — a personal fork of
+The project is https://github.com/isashahid10/whoop - a personal fork of
 OpenStrap Edge that makes a WHOOP 4.0 band work without a subscription.
 
 Please do all of this:
@@ -73,7 +73,7 @@ Please do all of this:
 5. Create a `.env` file from `.env.example`. Ask me whether I want the AI
    coach. If yes, walk me through getting a free Gemini API key from
    https://aistudio.google.com/apikey and make sure I create it in a project
-   with NO BILLING enabled — a key from a billing-enabled project is not on the
+   with NO BILLING enabled - a key from a billing-enabled project is not on the
    free tier and fails with a confusing credits error later.
    Also set ENABLE_HEALTH_DATA_CONTRIBUTION=false.
 
@@ -103,7 +103,7 @@ Important things to tell me at the end:
 
 ## iPhone
 
-You need a **Mac** for this. There is no way around that — Apple only allows iPhone apps
+You need a **Mac** for this. There is no way around that - Apple only allows iPhone apps
 to be built on macOS.
 
 Paste this entire block into Claude Code and press Enter.
@@ -113,7 +113,7 @@ I want to build and install an iPhone app from source. I am not a developer, so
 please explain what you are doing in plain language and ask me before anything
 that needs a decision from me.
 
-The project is https://github.com/isashahid10/whoop — a personal fork of
+The project is https://github.com/isashahid10/whoop - a personal fork of
 OpenStrap Edge that makes a WHOOP 4.0 band work without a subscription.
 
 Please do all of this:
@@ -140,7 +140,7 @@ Please do all of this:
 6. Create a `.env` file from `.env.example`. Ask me whether I want the AI
    coach. If yes, walk me through getting a free Gemini API key from
    https://aistudio.google.com/apikey and make sure I create it in a project
-   with NO BILLING enabled — a key from a billing-enabled project is not on the
+   with NO BILLING enabled - a key from a billing-enabled project is not on the
    free tier and fails with a confusing credits error later.
 
 7. Run `fvm flutter test` and confirm the tests pass before building.
@@ -153,7 +153,7 @@ Please do all of this:
    xcrun devicectl device install app --device <MY-DEVICE-ID> build/ios/iphoneos/Runner.app
 
    CRITICAL: never use `fvm flutter install`. It uninstalls the old version
-   first and wipes the app's database — every synced night and every logged
+   first and wipes the app's database - every synced night and every logged
    workout. Always use `xcrun devicectl device install app`, which upgrades in
    place and keeps the data.
 
@@ -188,7 +188,7 @@ The two that catch almost everyone:
 | Symptom | Cause |
 |---|---|
 | ~22 test files fail to *load*, others pass | Flutter got upgraded past 3.41.6 |
-| App installed fine, then crashed later | A simulator build poisoned the frameworks — `fvm flutter clean` and rebuild |
+| App installed fine, then crashed later | A simulator build poisoned the frameworks - `fvm flutter clean` and rebuild |
 
 ---
 
