@@ -429,7 +429,7 @@ class BleEngine {
     switch (decision) {
       case BandClaimDecision.yieldToOwner:
         _log(
-          'band already owned by a live foreground session — background drain '
+          'band already owned by a live foreground session - background drain '
           'yielding (avoids duplicate ACKs on the same offload).',
         );
         return false;
@@ -438,10 +438,10 @@ class BleEngine {
         try {
           await other!.disconnect().timeout(const Duration(seconds: 10));
         } on TimeoutException {
-          _log('preempted engine teardown timed out after 10s — proceeding '
+          _log('preempted engine teardown timed out after 10s - proceeding '
               'with the foreground connect anyway.');
         } catch (e) {
-          _log('preempted engine teardown failed ($e) — proceeding.');
+          _log('preempted engine teardown failed ($e) - proceeding.');
         }
         break;
       case BandClaimDecision.claim:
@@ -554,7 +554,7 @@ class BleEngine {
       _log('autoConnect arm failed: $e');
       return false;
     }
-    _log('OS autoConnect armed for $remoteId — waiting (max '
+    _log('OS autoConnect armed for $remoteId - waiting (max '
         '${wait.inMinutes} min) for the band to reappear.');
     final done = Completer<bool>();
     final sub = device.connectionState.listen((s) {
@@ -580,9 +580,9 @@ class BleEngine {
       try {
         await _locked(() => device.disconnect());
       } catch (_) {}
-      _log('OS autoConnect window ended without a link — cancelled.');
+      _log('OS autoConnect window ended without a link - cancelled.');
     } else {
-      _log('OS autoConnect completed — running the normal setup path.');
+      _log('OS autoConnect completed - running the normal setup path.');
     }
     return ok;
   }
@@ -942,7 +942,7 @@ class BleEngine {
         _session!.connected &&
         _session!.device.remoteId == device.remoteId &&
         _phase == BleConnState.listening) {
-      _log('connect: already connected to ${device.remoteId.str} — reusing.');
+      _log('connect: already connected to ${device.remoteId.str} - reusing.');
       return true;
     }
     // SINGLE-OWNER: a background drainer must not open a second drain against a
@@ -1043,7 +1043,7 @@ class BleEngine {
           // silently dropped, no INIT flood, "connected but nothing happens").
           // Log loudly and surface the re-pair diagnostic on engine state so
           // the UI can point the user at the fix instead of a dead session.
-          _log('BOND FAILED: $e — encrypted commands will be silently dropped '
+          _log('BOND FAILED: $e - encrypted commands will be silently dropped '
               'by the band. Remove the bond in system Bluetooth settings and '
               're-pair.');
           state.needsRepairGuide = true;
@@ -1055,7 +1055,7 @@ class BleEngine {
           if (_bondGiveUp.bondRefused()) {
             state.autoReconnectPaused = true;
             _log('[RECONNECT] bond-refusal give-up (${_bondGiveUp.consecutive}) '
-                '— pausing auto-reconnect; re-pair required.');
+                '- pausing auto-reconnect; re-pair required.');
           }
           onState(state);
         }
@@ -1069,7 +1069,7 @@ class BleEngine {
         // write failing, and was previously invisible (the call was swallowed).
         _log('MTU negotiated: $negotiated (requested 247).');
       } catch (e) {
-        _log('requestMtu failed: $e — MTU stays at the connection default.');
+        _log('requestMtu failed: $e - MTU stays at the connection default.');
       }
       if (Platform.isAndroid) {
         try {
@@ -1206,7 +1206,7 @@ class BleEngine {
         log: _log,
       );
       _setPhase(BleConnState.listening);
-      _log('Connected + subscribed — listening (history + live).');
+      _log('Connected + subscribed - listening (history + live).');
       _setOffloadActive(true);
       _lastBackfillAt = _wallSecs();
       await sendInit(); // triggers the historical offload flood
@@ -1225,7 +1225,7 @@ class BleEngine {
     // while its GATT notifications silently died. If no frame has arrived for
     // longer than the fuse, bounce the link so the caller's reconnect loop runs.
     if (sinceLastRx.inSeconds > kLivenessFuseSeconds) {
-      _log('No data for >${kLivenessFuseSeconds}s — bouncing the link.');
+      _log('No data for >${kLivenessFuseSeconds}s - bouncing the link.');
       unawaited(
         _teardownSession(intentional: false).then((_) {
           _setPhase(
@@ -1323,14 +1323,14 @@ class BleEngine {
     if (_session?.connected != true || d == null) return;
     if (_offloadActive && !d._complete) {
       _log(
-        '[SYNC] refresh($reason) dropped — strap is already transmitting history.',
+        '[SYNC] refresh($reason) dropped - strap is already transmitting history.',
       );
       return;
     }
     d.rearm();
     _setOffloadActive(true);
     if (refreshRange) {
-      _log('[SYNC] refresh($reason) — polling GET_DATA_RANGE before 0x16.');
+      _log('[SYNC] refresh($reason) - polling GET_DATA_RANGE before 0x16.');
       await _send(Cmd.getDataRange, const [0x00]);
       // INIT spaces commands by ~120 ms; keep the same cadence here so the band
       // has time to emit the range response before we request another drain.
@@ -1342,13 +1342,13 @@ class BleEngine {
     );
     if (wait > 0) {
       _log(
-        '[SYNC] refresh($reason) — waiting ${wait.toStringAsFixed(2)}s '
+        '[SYNC] refresh($reason) - waiting ${wait.toStringAsFixed(2)}s '
         'for the 0x16 floor.',
       );
       await Future.delayed(Duration(milliseconds: (wait * 1000).ceil()));
       if (_session?.connected != true) return;
     }
-    _log('[SYNC] refresh($reason) — sending SEND_HISTORICAL_DATA.');
+    _log('[SYNC] refresh($reason) - sending SEND_HISTORICAL_DATA.');
     await _send(Cmd.sendHistoricalData, const [0x00]);
     _lastHistoricalSendAt = _wallSecs();
   }
@@ -1381,7 +1381,7 @@ class BleEngine {
             onState(state);
             _log(
               '[RECONNECT] frame-corruption tripped '
-              '($_crcFailuresThisSession CRC failures this session) — '
+              '($_crcFailuresThisSession CRC failures this session) - '
               'standard-HR fallback enabled.',
             );
           }
@@ -1456,7 +1456,7 @@ class BleEngine {
       state.standardHrFallback = true;
       onState(state);
       _log(
-        '[RECONNECT] marginal-radio tripped — standard-HR fallback enabled.',
+        '[RECONNECT] marginal-radio tripped - standard-HR fallback enabled.',
       );
     }
     if (_postBondLoop.connectionEnded(
@@ -1466,7 +1466,7 @@ class BleEngine {
     )) {
       state.needsRepairGuide = true;
       onState(state);
-      _log('[RECONNECT] post-bond loop tripped — surfacing re-pair guide.');
+      _log('[RECONNECT] post-bond loop tripped - surfacing re-pair guide.');
     }
   }
 
@@ -1547,7 +1547,7 @@ class BleEngine {
       failures++;
       if (!ackRetryPolicy.shouldRetry(failures)) return false;
       _log('[SYNC] batch-ACK write failed (attempt $failures/'
-          '${ackRetryPolicy.maxAttempts}) — retrying.');
+          '${ackRetryPolicy.maxAttempts}) - retrying.');
       await Future.delayed(ackRetryPolicy.delayFor(failures));
       if (_sessionIsStale(session)) return false;
     }
@@ -1561,7 +1561,7 @@ class BleEngine {
     final frame = buildCommand(_seq.nextLive(), opcode, payload);
     final ok = await _write(frame);
     if (!ok) {
-      _log('WRITE FAILED for opcode 0x${opcode.toRadixString(16)} — '
+      _log('WRITE FAILED for opcode 0x${opcode.toRadixString(16)} - '
           'command not delivered.');
     }
     return ok;
@@ -1586,7 +1586,7 @@ class BleEngine {
             targetWake.millisecondsSinceEpoch;
     if (unchanged) return;
     _log(
-      '[SYNC] HighFreq enter ($reason) — interval=${intervalSeconds}s '
+      '[SYNC] HighFreq enter ($reason) - interval=${intervalSeconds}s '
       'duration=${duration.inSeconds}s until=${targetWake.toIso8601String()}',
     );
     await _write(
@@ -1814,7 +1814,7 @@ class BleEngine {
       _log(
         '[SYNC] Record counter regressed (band likely rebooted): '
         'counter=$counter, regressions_total=${_counterRegression.regressions}. '
-        'Recovery is automatic (REPLACE-by-rec_ts + orphan cascade) — this is '
+        'Recovery is automatic (REPLACE-by-rec_ts + orphan cascade) - this is '
         'observability only.',
       );
     }
@@ -1974,7 +1974,7 @@ class BleEngine {
         _corruptClockReadCount++;
         _log(
           '[SYNC] GET_CLOCK clock_epoch=$dev is implausibly far in the future '
-          '— treating as a corrupt strap RTC read; NOT correlating the strap '
+          '- treating as a corrupt strap RTC read; NOT correlating the strap '
           'clock (alarms fall back to the raw wall epoch) '
           '(corrupt_clock_reads_total=$_corruptClockReadCount).',
         );
@@ -1991,13 +1991,13 @@ class BleEngine {
           if (_clockCorrectTries < 3) {
             _clockCorrectTries++;
             _log(
-              'Clock drift over policy — re-issuing SET_CLOCK '
+              'Clock drift over policy - re-issuing SET_CLOCK '
               '(attempt $_clockCorrectTries/3).',
             );
             unawaited(setClock());
           } else {
             _log(
-              'Clock still off after 3 SET_CLOCK attempts — giving up; '
+              'Clock still off after 3 SET_CLOCK attempts - giving up; '
               'firmware may not accept our payload length.',
             );
           }
@@ -2019,7 +2019,7 @@ class BleEngine {
         _corruptDataRangeCount++;
         _log(
           '[SYNC] GET_DATA_RANGE newest=$newest is implausibly far in the '
-          'future — treating as a corrupt strap RTC read; NOT tightening '
+          'future - treating as a corrupt strap RTC read; NOT tightening '
           'this session\'s plausibility window '
           '(corrupt_ranges_total=$_corruptDataRangeCount).',
         );
@@ -2066,7 +2066,7 @@ class BleEngine {
       () {
         _log(
           '[SYNC] idle watchdog: strap silent ${kBackfillIdleTimeoutSeconds}s '
-          'mid-offload — aborting historical sync and scheduling a retry.',
+          'mid-offload - aborting historical sync and scheduling a retry.',
         );
         _drain?.discardOpenChunk();
         unawaited(_abortAndRetryHistorical(reason: 'idle_watchdog'));
@@ -2078,7 +2078,7 @@ class BleEngine {
     switch (event.eventId) {
       case EventId.highFreqSyncPrompt:
         _log(
-          '[SYNC] HighFreq prompt received — scheduling a one-shot historical refresh.',
+          '[SYNC] HighFreq prompt received - scheduling a one-shot historical refresh.',
         );
         unawaited(
           _startHistoricalRefresh(
@@ -2107,14 +2107,14 @@ class BleEngine {
     session.idleWatchdog?.cancel();
     session.historicalRetry?.cancel();
     _setOffloadActive(false);
-    _log('[SYNC] abort($reason) — sending ABORT_HISTORICAL.');
+    _log('[SYNC] abort($reason) - sending ABORT_HISTORICAL.');
     await _send(Cmd.abortHistoricalTransmits, const [0x00]);
     session.historicalRetry = Timer(
       const Duration(seconds: kHistoricalAbortRetryDelaySeconds),
       () {
         if (_session != session || !session.connected) return;
         _log(
-          '[SYNC] abort($reason) — retrying historical refresh after settle.',
+          '[SYNC] abort($reason) - retrying historical refresh after settle.',
         );
         unawaited(
           _startHistoricalRefresh(
@@ -2162,7 +2162,7 @@ class BleEngine {
         // not ours.
         _log(
           '[SYNC] HISTORY_END token=$tokenHex belongs to a session that is no '
-          'longer live — NOT ACKing. Writing it would put an old connection\'s '
+          'longer live - NOT ACKing. Writing it would put an old connection\'s '
           'token (with a re-used sync seq) onto the new link. The band '
           're-delivers this chunk next offload.',
         );
@@ -2174,7 +2174,7 @@ class BleEngine {
         await d.commit(null);
         _log(
           '[SYNC] HISTORY_END token=$tokenHex terminates a DISCARDED burst '
-          '(its open chunk was abandoned un-committed) — NOT ACKing, so the '
+          '(its open chunk was abandoned un-committed) - NOT ACKing, so the '
           'band cannot trim the records we dropped. It re-delivers them next '
           'offload.',
         );
@@ -2192,7 +2192,7 @@ class BleEngine {
         // them rather than losing them. Never ACK here: that is exactly the
         // path where records existed nowhere, permanently and silently.
         _log(
-          '[SYNC] DURABLE COMMIT FAILED for token=$tokenHex — NOT ACKing (the '
+          '[SYNC] DURABLE COMMIT FAILED for token=$tokenHex - NOT ACKing (the '
           'band must keep this chunk). Records were re-buffered; bouncing the '
           'link so the next session retries the commit from a clean batch.',
         );
@@ -2231,7 +2231,7 @@ class BleEngine {
       final d = _drain;
       if (_offloadActive && d != null && d.bufferedRecords > 0) {
         _log(
-          '[SYNC] HistoryStart received during active burst — discarding '
+          '[SYNC] HistoryStart received during active burst - discarding '
           'partial open chunk and restarting burst state.',
         );
         d.discardOpenChunk();
@@ -2411,14 +2411,14 @@ class BleEngine {
           ));
           _log(
             '[SYNC] Batch token=$tokenHex has failed ACK $failCount times '
-            'across reconnects — quarantined for diagnosis. Data is safe '
+            'across reconnects - quarantined for diagnosis. Data is safe '
             '(already committed); this only means the band has not yet '
             'been told to trim, so it keeps re-sending the same batch.',
           );
         }
         _log('[SYNC] BATCH-ACK FAILED after '
             '${ackRetryPolicy.maxAttempts} attempts (token=$tokenHex, '
-            'failures_for_this_token=$failCount) — bouncing the link; data '
+            'failures_for_this_token=$failCount) - bouncing the link; data '
             'is committed and the band will re-send.');
         // ONLY bounce a session that is still OURS. _writeAckVerified also
         // returns false when the session died under it, and tearing down then
@@ -2480,7 +2480,7 @@ class BleEngine {
         // the records buffered, so the next commit (the next burst's
         // HISTORY_END, or the flush on teardown) re-attempts them.
         _log(
-          '[SYNC] HistoryComplete tail commit FAILED — ${d.bufferedRecords} '
+          '[SYNC] HistoryComplete tail commit FAILED - ${d.bufferedRecords} '
           'records stay buffered for the next commit. Nothing was trimmed '
           '(HISTORY_COMPLETE is never ACKed), so no data is at risk.',
         );
@@ -2506,7 +2506,7 @@ class BleEngine {
         },
       ));
       _log(
-        '[SYNC] HistoryComplete — backlog drained (${d.records} records, '
+        '[SYNC] HistoryComplete - backlog drained (${d.records} records, '
         '${_recordGate.dropped} dropped). Still listening for live records.',
       );
       _setHpsTerminal(_HpsTerminalKind.success, drain: d);
@@ -2530,7 +2530,7 @@ class BleEngine {
       )) {
         state.syncClockLost = true;
         onState(state);
-        _log('[SYNC] empty-sync tripped — strap RTC likely lost.');
+        _log('[SYNC] empty-sync tripped - strap RTC likely lost.');
       }
     }
 
@@ -2539,7 +2539,7 @@ class BleEngine {
         _sessionNewestUnix, _recordGate.frontierTs, _wallSecs())) {
       state.strapNeedsReboot = true;
       onState(state);
-      _log('[SYNC] stuck-strap tripped — defensive SET_CLOCK.');
+      _log('[SYNC] stuck-strap tripped - defensive SET_CLOCK.');
       await setClock();
     }
 
@@ -2556,7 +2556,7 @@ class BleEngine {
     d.resetOffloadCounters();
     if (cont) {
       _autoContinueCount++;
-      _log('[SYNC] auto-continue #$_autoContinueCount — more backlog remains.');
+      _log('[SYNC] auto-continue #$_autoContinueCount - more backlog remains.');
       await _triggerBackfill(BackfillTrigger.autoContinue);
     } else {
       // nothing left to continue - this offload cycle is genuinely done
@@ -2622,7 +2622,7 @@ class BleEngine {
     final session = _session;
     final drain = _drain;
     if (session == null || !session.connected || drain == null) {
-      _log('runSync: no live link — nothing to await.');
+      _log('runSync: no live link - nothing to await.');
       return SyncReport(0, 0, false);
     }
     final report = await drain.awaitComplete(
@@ -2816,7 +2816,7 @@ class BleEngine {
   /// can't sustain it the detectors re-trip (and re-downgrade) within seconds.
   Future<void> retryFullLiveStreams() async {
     if (state.standardHrFallback) {
-      _log('Radio fallback: cleared by explicit user action — retrying the '
+      _log('Radio fallback: cleared by explicit user action - retrying the '
           'full live set.');
       state.standardHrFallback = false;
       _marginalRadio.reset();
@@ -2858,7 +2858,7 @@ class BleEngine {
       await _send(op[0] as int, (op[1] as List).cast<int>());
       await Future.delayed(const Duration(milliseconds: 60));
     }
-    _log('Live streams: HR-only (background downgrade — raw flood off).');
+    _log('Live streams: HR-only (background downgrade - raw flood off).');
   }
 
   /// Turn everything off. Safe + idempotent. Clears flags back to wrist-gated.
@@ -3257,7 +3257,7 @@ class DrainController {
     if (_raws.isEmpty && _archives.isEmpty) return;
     log('discarding ${_raws.length} un-ACKed buffered records + '
         '${_archives.length} archived (idle). This burst\'s HISTORY_END token '
-        'is now un-ACKable — the band keeps the chunk.');
+        'is now un-ACKable - the band keeps the chunk.');
     _raws.clear();
     _samples.clear();
     _archives.clear();
@@ -3309,7 +3309,7 @@ class DrainController {
       // Roll back the trim bookkeeping too — nothing advanced.
       _lastAckedToken = previousAckedToken;
       lastTrimAdvanced = previousTrimAdvanced;
-      log('offload commit FAILED ($e) — ${raws.length} records + '
+      log('offload commit FAILED ($e) - ${raws.length} records + '
           '${archives.length} archived re-buffered; the caller MUST NOT ACK '
           'this chunk (the band still holds it).');
       return false;
@@ -3347,7 +3347,7 @@ class DrainController {
         }
         t.cancel();
         await flush();
-        log('[SYNC] idle timeout — no offload progress for 60s.');
+        log('[SYNC] idle timeout - no offload progress for 60s.');
         done.complete(SyncReport(records, batches, false));
         return;
       }

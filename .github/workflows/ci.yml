@@ -1,0 +1,152 @@
+# Fork CI.
+#
+# Upstream's test.yml only triggers on `main`, so it never fires on this fork's
+# branches. This workflow covers them, and additionally tests the sibling
+# `analytics` package — which upstream's workflow cannot do, because in this
+# fork the two are developed together and a metric change lands there.
+name: ci
+
+on:
+  push:
+    branches: [main, "isa/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only. This workflow builds and tests code that can arrive from a pull
+# request, so it is given nothing it does not need.
+permissions:
+  contents: read
+
+env:
+  # PINNED, NOT INCIDENTAL. On 3.44.x this repo does not compile:
+  # phosphor_flutter declares `class PhosphorIconData extends IconData`, and
+  # IconData became a `final class`. The symptom is ~22 test files failing at
+  # LOAD while logic tests still pass, which reads as a test bug and is not.
+  FLUTTER_VERSION: "3.41.6"
+
+jobs:
+  analytics:
+    name: analytics (pure Dart)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The sibling package. Kept separate from edge on purpose: analytics is
+      # pure (dart:math only, no I/O, no clock, no randomness), which is what
+      # makes its results reproducible and its tests exact.
+      - name: Check out analytics
+        uses: actions/checkout@v4
+        with:
+          repository: isashahid10/analytics
+          path: analytics
+          # Absent on forks without access; the step below skips cleanly then.
+          token: ${{ secrets.SIBLING_REPO_TOKEN || github.token }}
+        continue-on-error: true
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Analyze and test
+        run: |
+          if [ ! -d analytics ]; then
+            echo "::notice::analytics checkout unavailable; skipping"
+            exit 0
+          fi
+          cd analytics
+          dart pub get
+          dart analyze lib
+          dart test
+
+  edge:
+    name: edge (Flutter)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Needed for the merge-base in the formatting step.
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # pubspec_overrides.yaml points at ../analytics and ../protocol for local
+      # development. CI has neither, so it must resolve the pinned commit SHAs
+      # from pubspec.yaml instead.
+      - name: Remove local dev overrides
+        run: rm -f pubspec_overrides.yaml
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Formatting is checked ONLY on files this change touches.
+      #
+      # Upstream's tree is not `dart format` clean (252 files differ), and
+      # reformatting them would produce an enormous gratuitous diff that makes
+      # rebasing onto an actively developed upstream painful. Keeping rebases
+      # tractable is a documented constraint of this fork, so the check is
+      # scoped to the diff rather than the repository.
+      - name: Verify formatting of changed files
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          base=$(git merge-base origin/${{ github.base_ref }} HEAD)
+          files=$(git diff --name-only --diff-filter=ACM "$base" HEAD -- '*.dart' || true)
+          if [ -z "$files" ]; then
+            echo "No Dart files changed."
+            exit 0
+          fi
+          echo "$files"
+          # shellcheck disable=SC2086
+          dart format --output=none --set-exit-if-changed $files
+
+      # lib and test only: upstream's tree has pre-existing findings elsewhere,
+      # and a check that is always red teaches people to ignore it.
+      - name: Analyze
+        run: flutter analyze lib test
+
+      - name: Test
+        run: flutter test
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # This repo holds personal health data tooling and a BYOK AI coach. A key
+      # committed once and removed later still lives in history, so the whole
+      # history is scanned rather than just the diff.
+      - name: Scan history for credential shapes
+        run: |
+          set -euo pipefail
+          # Firebase client keys in firebase_options.dart are PUBLIC BY DESIGN
+          # (security comes from Firebase rules, not key secrecy), so that file
+          # is excluded rather than the pattern being weakened.
+          if git log --all -p -- . ':(exclude)lib/firebase_options.dart' \
+             | grep -aoE 'AIza[0-9A-Za-z_-]{35}|sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}' \
+             | grep -v 'Dummy' | sort -u | grep .; then
+            echo "::error::Credential-shaped string found in git history"
+            exit 1
+          fi
+          echo "No credentials found in history."
+
+      - name: Verify secrets stay untracked
+        run: |
+          set -euo pipefail
+          for f in .env ios/Config/Signing.xcconfig; do
+            if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+              echo "::error::$f is tracked and must not be"
+              exit 1
+            fi
+          done
+          echo "Secret files are correctly untracked."

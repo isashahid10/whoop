@@ -179,6 +179,10 @@ dependencies:
   firebase_analytics: ^12.4.3
   webview_flutter: ^4.14.1
   device_calendar: ^4.3.3
+  adhan: ^2.0.0+1
+  google_sign_in: ^7.2.0
+  googleapis: ^16.0.0
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
 
 # NOTE: to build against the in-tree sibling packages during local development,
 # create a (gitignored) pubspec_overrides.yaml — pub auto-detects it. Keeping the
@@ -204,6 +208,9 @@ dev_dependencies:
   # exportDaysDb can run without a platform plugin (transitive via
   # path_provider; declared directly since test/ now imports it).
   path_provider_platform_interface: ^2.1.0
+  # Needed by test/backup_service_test.dart to fake path_provider — it has no
+  # implementation in a test binding, so the backup path must be stubbed.
+  plugin_platform_interface: ^2.1.8
 
 flutter_launcher_icons:
   android: "launcher_icon"
@@ -231,4 +238,21 @@ flutter:
         - asset: assets/fonts/BarlowCondensed/BarlowCondensed-Bold.ttf
           weight: 700
         - asset: assets/fonts/BarlowCondensed/BarlowCondensed-ExtraBold.ttf
+          weight: 800
+    # Manrope is BUNDLED rather than pulled at runtime by google_fonts. Two
+    # reasons: google_fonts downloads on first launch, so the very first render
+    # every install ever does is in a fallback face; and it needs network, which
+    # a local-first offline app should not require to look right. One variable
+    # file covers every weight (Flutter picks the axis instance per entry).
+    - family: Manrope
+      fonts:
+        - asset: assets/fonts/Manrope/Manrope-Variable.ttf
+          weight: 400
+        - asset: assets/fonts/Manrope/Manrope-Variable.ttf
+          weight: 500
+        - asset: assets/fonts/Manrope/Manrope-Variable.ttf
+          weight: 600
+        - asset: assets/fonts/Manrope/Manrope-Variable.ttf
+          weight: 700
+        - asset: assets/fonts/Manrope/Manrope-Variable.ttf
           weight: 800

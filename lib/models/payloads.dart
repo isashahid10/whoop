@@ -168,10 +168,22 @@ class TodayData {
     return null;
   }
 
-  // Sleep summary for the ring: asleep-vs-need (there is NO 0–100 sleep score).
+  // Sleep summary for the ring: asleep-vs-need, plus the 0-100 composite.
   Metric get sleepDuration => metricOf(_sleep, 'duration_min');
   Metric get sleepNeed => metricOf(_sleep, 'need_min');
   Metric get sleepEfficiency => metricOf(_sleep, 'efficiency');
+
+  /// The composite sleep score (analytics/sleep_score.dart). EMPTY rather than
+  /// zero when too little of the night was measurable — an abstention, not a
+  /// bad night, and the UI must render the difference.
+  Metric get sleepScore => metricOf(_sleep, 'score');
+
+  /// 0-1 share of the score's intended weight that was actually measured.
+  double? get sleepScoreCoverage =>
+      (_sleep['score_coverage'] as num?)?.toDouble();
+
+  /// Plain sentence naming what the score could and could not measure.
+  String? get sleepScoreBasis => _sleep['score_basis']?.toString();
 
   bool get isEmpty => _daily.isEmpty && _sleep.isEmpty;
 }

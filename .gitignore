@@ -85,4 +85,16 @@ scratch_*
 **/*_db2.dart
 /fetch_apps.js
 #adding firebase_options back so that we dont commit it accidentally in future releases
-lib/firebase_options.dart 
+lib/firebase_options.dart
+
+# Flutter writes failure snapshots here on a golden mismatch. Build output,
+# not source.
+test/failures/
+
+# Exported health data used by the diagnostic probes. NEVER commit: this is
+# real personal biometric data.
+*.db
+*.db-wal
+*.db-shm
+/backups/
+night*.csv

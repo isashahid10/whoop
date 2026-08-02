@@ -12,9 +12,14 @@ import 'device_action.dart';
 class GestureSettings extends ChangeNotifier {
   static const _kDoubleTap = 'gesture_double_tap';
 
-  /// What a double-tap currently does. Defaults to nothing — opt-in, so we never
-  /// surprise a user (or pay the iOS bg keep-alive cost) until they pick an action.
-  DeviceAction doubleTap = DeviceAction.none;
+  /// What a double-tap currently does.
+  ///
+  /// Defaults to "ring my phone" — find-my-phone from the wrist is the one
+  /// action that is useful without any setup, cannot misfire into anything
+  /// destructive, and is what a wrist tap is most often wanted for. Upstream
+  /// defaulted to [DeviceAction.none] to avoid surprising a stranger; this is a
+  /// single-user fork, and an opt-in default just means the feature sits unused.
+  DeviceAction doubleTap = DeviceAction.ringPhone;
 
   /// Actions offerable on THIS platform: `none` always, plus whatever native says
   /// it can do. Until bootstrap() runs we only know `none`.
@@ -23,7 +28,11 @@ class GestureSettings extends ChangeNotifier {
   /// Load the saved mapping and query native capabilities. Call once at startup.
   Future<void> bootstrap() async {
     final prefs = await SharedPreferences.getInstance();
-    doubleTap = DeviceActionX.fromId(prefs.getString(_kDoubleTap)) ?? DeviceAction.none;
+    // No stored choice → the ring-phone default above. A STORED `none` is a
+    // deliberate "do nothing" and is honoured; only an absent key falls back.
+    doubleTap =
+        DeviceActionX.fromId(prefs.getString(_kDoubleTap)) ??
+        DeviceAction.ringPhone;
 
     final caps = await DeviceActions.capabilities();
     supported = {

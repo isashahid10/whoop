@@ -1,5 +1,19 @@
 blank_issues_enabled: true
 contact_links:
+  # Fork-specific. Upstream's TestFlight link below does not apply here: this
+  # fork is built and installed from source.
+  - name: Setting this fork up on your own band
+    url: https://github.com/isashahid10/edge/blob/isa/customisations/docs/SETUP.md
+    about: >-
+      Full install walkthrough, no terminal experience assumed. Covers the
+      7-day signing expiry and the install command that does not wipe your data.
+
+  - name: What a number means, or why one is blank
+    url: https://github.com/isashahid10/edge/blob/isa/customisations/docs/METHODOLOGY.md
+    about: >-
+      Every metric, its method, and what it deliberately refuses to claim.
+      Most "this looks wrong" questions are answered here, deep sleep especially.
+
   - name: Protocol / byte-level finding
     url: https://github.com/OpenStrap/protocol/issues/new
     about: >-

@@ -7,7 +7,8 @@ on:
 
 jobs:
   pr_agent_job:
-    if: github.event.sender.type != 'Bot'
+    # Upstream-only: needs secrets a fork does not have.
+    if: github.event.sender.type != 'Bot' && github.repository == 'OpenStrap/edge'
     runs-on: ubuntu-latest
     permissions:
       issues: write
