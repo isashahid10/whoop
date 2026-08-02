@@ -43,16 +43,21 @@ dependencies:
       ref: a98cd7061346681db17a81844c300c46da118c02
   openstrap_analytics:
     git:
-      url: https://github.com/OpenStrap/analytics.git
-      # Tip of analytics main — OpenStrap/analytics#30 merged: the
-      # abstain-over-fabricate sweep, plus the step/activity rebuild on a
-      # calibration-invariant feature (dailyStepEstimate's new signature,
-      # personalDynFloorFromDailySummaries, dailyDynSummary — all called by
-      # lib/compute/).
-      # Verified present at THIS sha, not assumed from the PR being merged:
-      # steps.dart carries the new API, rr_correction.dart has the signed-dRR
-      # `seg.add(x[k])`, advanced_stager.dart has maxAccelCarryForwardSec.
-      ref: f5ccae61cbc6a8083425ae0121b665deadcb421d
+      # THIS FORK'S analytics, not upstream's.
+      #
+      # The fork adds metric modules that edge depends on directly
+      # (strength.dart, bulk_quality.dart, overreaching.dart, correlations.dart,
+      # caffeine.dart, sleep_score.dart). Upstream's analytics does not contain
+      # them, so pointing here at OpenStrap/analytics makes the project fail to
+      # compile from a clean clone while still working locally, because
+      # pubspec_overrides.yaml silently substitutes the sibling checkout.
+      #
+      # That failure mode is invisible on a developer machine and immediate for
+      # anyone else. Pinned to a SHA rather than a branch for the same reason
+      # upstream pins: a floating ref lets a later commit change the behaviour
+      # of an already reviewed build.
+      url: https://github.com/isashahid10/whoop-analytics.git
+      ref: 2eb94dae8516ce453c0db1655b3badc2ea1cced8
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
