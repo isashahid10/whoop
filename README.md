@@ -74,7 +74,7 @@ Everything below is additive. None of it exists upstream.
 
 | Feature | Source |
 |---|---|
-| **Nutrition** | Apple Health — protein, calories, carbs, fat, water |
+| **Nutrition** | Apple Health / Health Connect — protein, calories, carbs, fat, water |
 | **Weather** | Open-Meteo. Heat and humidity measurably move HRV |
 | **Calendar** | EventKit — counts and busy minutes only, never event contents |
 | **Caffeine** | Logged intake, 5-hour half-life model, "last safe coffee" time |
@@ -102,11 +102,27 @@ database anywhere.
 
 ---
 
-## Quick start
+## Getting it running
 
-**Not a developer?** → [**docs/SETUP.md**](docs/SETUP.md) assumes no terminal knowledge.
+Pick the row that matches you. **Android is the easier platform** — an iPhone build
+signed with a free Apple account expires every 7 days; an APK installs once and keeps
+working.
 
-**Building it yourself:**
+| You want | Do this |
+|---|---|
+| **Android, no setup** | [**Download the APK**](https://github.com/isashahid10/edge/releases) and open it. That is the whole process. |
+| **Let Claude do it** | [**docs/SETUP_WITH_CLAUDE.md**](docs/SETUP_WITH_CLAUDE.md) — copy one block of text, answer the questions |
+| **Android, from source** | [**docs/ANDROID.md**](docs/ANDROID.md) |
+| **iPhone** | [**docs/SETUP.md**](docs/SETUP.md) — no terminal knowledge assumed |
+| **You are a developer** | Carry on below |
+
+### Building it yourself
+
+```bash
+./tool/bootstrap.sh          # checks the toolchain, pins Flutter, writes configs
+```
+
+Or by hand:
 
 ```bash
 # Flutter is PINNED — see "Why Flutter is pinned" below.
@@ -116,7 +132,8 @@ cp .env.example .env                                     # add your Gemini key
 cp ios/Config/Signing.xcconfig.example ios/Config/Signing.xcconfig
 
 fvm flutter test                                         # 1075 tests
-fvm flutter build ios --release --dart-define-from-file=.env
+fvm flutter build apk --release --dart-define-from-file=.env   # Android
+fvm flutter build ios --release --dart-define-from-file=.env   # iOS
 ```
 
 Install to a connected iPhone:
@@ -126,9 +143,17 @@ xcrun devicectl device install app --device <UDID> build/ios/iphoneos/Runner.app
 ```
 
 > [!WARNING]
-> Use `devicectl`, **not** `fvm flutter install`. The latter uninstalls first and
-> **wipes the database** — every synced night, every logged lift. `devicectl` performs
-> an upgrade install, so the container survives.
+> On **iOS**, use `devicectl` and **never** `fvm flutter install`. The latter uninstalls
+> first and **wipes the database** — every synced night, every logged lift. `devicectl`
+> performs an upgrade install, so the container survives.
+>
+> On **Android** `flutter install` is fine; there it is a normal package upgrade.
+
+### Platform differences
+
+Everything this fork adds is pure Dart and works on both. Three things are iOS-only:
+the AlarmKit backup alarm, Siri phrases, and find-my-phone on double tap. Nutrition and
+steps route through Health Connect on Android instead of Apple Health.
 
 ---
 

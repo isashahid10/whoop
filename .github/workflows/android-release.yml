@@ -1,0 +1,131 @@
+# Android release for this fork: one APK, no secrets, no toolchain on the
+# recipient's side.
+#
+# WHY THIS EXISTS SEPARATELY from upstream's build.yml: that workflow needs a
+# release keystore, Firebase config and backend URLs as repository secrets. A
+# fork has none of them, so it fails on every tag. This builds a debug-signed
+# release APK, which is exactly what sideloading needs and requires nothing.
+#
+# Android is the EASY path for this app. iOS on a free Apple account re-signs
+# every 7 days; an APK installs once and keeps working.
+name: android-release
+
+on:
+  push:
+    tags: ["android-v*"]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to publish (e.g. android-v1.0.0)"
+        required: true
+
+permissions:
+  contents: write # needed to create the release
+
+env:
+  FLUTTER_VERSION: "3.41.6"
+
+jobs:
+  build:
+    name: build APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # pubspec_overrides.yaml points at sibling checkouts for local
+      # development. CI has neither, so it resolves the pinned SHAs instead.
+      - name: Remove local dev overrides
+        run: rm -f pubspec_overrides.yaml
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Build-time config. Deliberately minimal.
+      #
+      # HEALTH DATA CONTRIBUTION IS FORCED OFF. Upstream's own release builds
+      # set this true (still opt-in per user), which is their call for their
+      # backend. A fork must not ship a build flagged to contribute to someone
+      # else's data collection, so it is explicitly false here rather than
+      # merely unset.
+      - name: Write build config
+        run: |
+          echo "ENABLE_HEALTH_DATA_CONTRIBUTION=false" > .env
+
+      - name: Run tests
+        run: flutter test
+
+      # No keystore. android/app/build.gradle.kts already falls back to debug
+      # signing when no release key is configured, which produces a perfectly
+      # installable APK. It cannot go to the Play Store, which is fine: this is
+      # for sideloading to people you know.
+      - name: Build release APK
+        run: flutter build apk --release --dart-define-from-file=.env
+
+      - name: Rename artifact
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.tag_name || github.ref_name }}"
+          mv build/app/outputs/flutter-apk/app-release.apk "whoop-${tag}.apk"
+          ls -lh "whoop-${tag}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: "*.apk"
+          retention-days: 30
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: "Whoop for Android ${{ github.event.inputs.tag_name || github.ref_name }}"
+          files: "*.apk"
+          body: |
+            ## Install
+
+            1. Download the `.apk` below on your Android phone.
+            2. Open it. Android will ask permission to install from this
+               source — allow it.
+            3. Open the app and pair your WHOOP 4.0 band.
+
+            **Close the official WHOOP app first.** Bluetooth only lets one app
+            own the band at a time.
+
+            ## Before you start
+
+            > Once you use this app with your band, stop opening the official
+            > WHOOP app with it. If the band reconnects to WHOOP it may pull a
+            > firmware update, and there is a real chance the records this app
+            > depends on stop working.
+
+            ## What to expect
+
+            Most of the app is empty on day one, and that is it working
+            correctly rather than failing. Sleep needs one night. Recovery
+            needs about seven, because it compares you against *your* baseline
+            rather than a population average. Each blank card says what it is
+            waiting for.
+
+            ## Notes
+
+            - This APK is **debug-signed**. That is normal for sideloading and
+              does not affect how it runs. Android may warn about an unknown
+              developer.
+            - No WHOOP subscription or account is needed.
+            - Health data stays on the phone. There is no backend.
+            - Alarms via AlarmKit, Siri phrases and find-my-phone are
+              iOS-only. Everything else works here.
+
+            Built from `${{ github.sha }}`.
+          fail_on_unmatched_files: true

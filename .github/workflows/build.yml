@@ -9,6 +9,9 @@ permissions:
 
 jobs:
   android:
+    # Upstream-only: needs a release keystore, Firebase config and backend
+    # URLs as repository secrets. Forks use android-release.yml instead.
+    if: github.repository == 'OpenStrap/edge'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
