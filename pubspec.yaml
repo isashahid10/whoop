@@ -88,7 +88,7 @@ dependencies:
   # pulls heavier native storage deps, so v1 uses live OSM tiles only.
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
-  geolocator: ^13.0.2
+  geolocator: ^14.0.2
 
   # Modern type (ONE family — Manrope, tabular figures for all metrics).
   google_fonts: ^6.2.1
