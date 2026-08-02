@@ -17,9 +17,24 @@ void main() {
 
   late List<String> presented;
 
+  /// Preference seed that makes these tests independent of the wall clock.
+  ///
+  /// NotificationCenter suppresses non-critical events during quiet hours,
+  /// which default to 22:00-07:00 LOCAL. Without disabling that, every
+  /// expectation below depends on what time of day the suite happens to run:
+  /// green in the afternoon, red overnight. CI runs around 02:00 UTC, so this
+  /// file failed there while passing on a developer machine in AEST.
+  ///
+  /// Quiet hours have their own tests. These are about the nudge's rate
+  /// limiting and escalation, so the gate is taken out of the picture.
+  Map<String, Object> prefs([Map<String, Object> extra = const {}]) => {
+        'notif_quiet_enabled': false,
+        ...extra,
+      };
+
   setUp(() {
     presented = [];
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues(prefs());
     // Capture instead of hitting the OS.
     NotificationCenter.instance.presentSink =
         (e, {bool allowPermissionPrompt = true}) async {
@@ -40,18 +55,18 @@ void main() {
 
   test('stays quiet while the weight is fresh', () async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    SharedPreferences.setMockInitialValues({
+    SharedPreferences.setMockInitialValues(prefs({
       'weight_confirmed_at': now - const Duration(days: 30).inSeconds,
-    });
+    }));
     expect(await ProfileNudges.maybePromptWeight(), isFalse);
     expect(presented, isEmpty);
   });
 
   test('prompts once the weight is over two months old', () async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    SharedPreferences.setMockInitialValues({
+    SharedPreferences.setMockInitialValues(prefs({
       'weight_confirmed_at': now - const Duration(days: 70).inSeconds,
-    });
+    }));
     expect(await ProfileNudges.maybePromptWeight(), isTrue);
     expect(presented.length, 1);
     expect(presented.single, contains('weight_recheck'));
@@ -59,9 +74,9 @@ void main() {
 
   test('does not ask twice in the same day', () async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    SharedPreferences.setMockInitialValues({
+    SharedPreferences.setMockInitialValues(prefs({
       'weight_confirmed_at': now - const Duration(days: 70).inSeconds,
-    });
+    }));
     expect(await ProfileNudges.maybePromptWeight(), isTrue);
     expect(await ProfileNudges.maybePromptWeight(), isFalse);
     expect(presented.length, 1);
@@ -69,10 +84,10 @@ void main() {
 
   test('confirming resets the clock AND the escalation counter', () async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    SharedPreferences.setMockInitialValues({
+    SharedPreferences.setMockInitialValues(prefs({
       'weight_confirmed_at': now - const Duration(days: 70).inSeconds,
       'weight_prompt_count': 3,
-    });
+    }));
     expect(await ProfileNudges.maybePromptWeight(), isTrue);
 
     await ProfileNudges.markWeightConfirmed();
@@ -96,11 +111,11 @@ void main() {
       final stamp = '${fiveDaysAgo.year.toString().padLeft(4, '0')}-'
           '${fiveDaysAgo.month.toString().padLeft(2, '0')}-'
           '${fiveDaysAgo.day.toString().padLeft(2, '0')}';
-      SharedPreferences.setMockInitialValues({
+      SharedPreferences.setMockInitialValues(prefs({
         'weight_confirmed_at': now - const Duration(days: 70).inSeconds,
         'weight_prompted_day': stamp,
         'weight_prompt_count': 1,
-      });
+      }));
 
       expect(await ProfileNudges.maybePromptWeight(), isTrue,
           reason: 'an ignored prompt must come back, not disappear');
@@ -115,11 +130,11 @@ void main() {
     final stamp = '${yesterday.year.toString().padLeft(4, '0')}-'
         '${yesterday.month.toString().padLeft(2, '0')}-'
         '${yesterday.day.toString().padLeft(2, '0')}';
-    SharedPreferences.setMockInitialValues({
+    SharedPreferences.setMockInitialValues(prefs({
       'weight_confirmed_at': now - const Duration(days: 70).inSeconds,
       'weight_prompted_day': stamp,
       'weight_prompt_count': 2,
-    });
+    }));
 
     expect(await ProfileNudges.maybePromptWeight(), isFalse);
     expect(presented, isEmpty);
