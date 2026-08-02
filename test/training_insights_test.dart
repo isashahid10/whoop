@@ -134,11 +134,16 @@ void main() {
 
   group('caffeine log', () {
     test('logs and reads back in time order', () async {
-      final now = DateTime.now();
-      await CaffeineService.log(
-          mg: 95, at: now.subtract(const Duration(hours: 3)), label: 'Filter');
-      await CaffeineService.log(
-          mg: 63, at: now.subtract(const Duration(hours: 6)), label: 'Espresso');
+      // Anchored to fixed times WITHIN today rather than offsets from now.
+      // `now - 6h` is only on the same calendar day if the suite happens to
+      // run after 06:00 local, so the original form passed in the afternoon
+      // and returned an empty list overnight. CI runs around 02:00 UTC and
+      // failed there while passing on a developer machine in AEST.
+      final today = DateTime.now();
+      DateTime at(int hour) =>
+          DateTime(today.year, today.month, today.day, hour);
+      await CaffeineService.log(mg: 95, at: at(11), label: 'Filter');
+      await CaffeineService.log(mg: 63, at: at(8), label: 'Espresso');
       final all = await CaffeineService.today();
       expect(all, hasLength(2));
       expect(all.first.mg, 63, reason: 'earliest first');

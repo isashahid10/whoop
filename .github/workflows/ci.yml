@@ -115,6 +115,19 @@ jobs:
       - name: Test
         run: flutter test
 
+      # Run the suite again in a very different timezone.
+      #
+      # Several tests were silently clock-dependent: they passed in the
+      # maintainer's UTC+10 afternoon and failed at UTC, because notification
+      # quiet hours (22:00-07:00 local) suppressed the events they asserted on,
+      # and because "six hours ago" is only the same calendar day after 06:00.
+      # A single-timezone run cannot see that class of bug, and it would have
+      # hit anyone running this outside Australia.
+      - name: Test again under a different timezone
+        run: flutter test
+        env:
+          TZ: America/Los_Angeles
+
   secrets:
     name: secret scan
     runs-on: ubuntu-latest

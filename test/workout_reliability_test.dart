@@ -22,9 +22,16 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// nothing on a fast machine - it only buys headroom on a loaded CI runner.
 /// Deliberately does NOT assert; the caller asserts afterwards so the failure
 /// message names the real expectation rather than "timed out".
+/// Poll until [condition] holds, or give up.
+///
+/// The timeout is generous ON PURPOSE. It is not part of the assertion: the
+/// expectation that follows still requires the condition to be true, so a
+/// longer wait cannot make a real failure pass. It only stops a slow or
+/// loaded machine reporting a timeout as a logic error, which is how this
+/// test failed once on a CI runner while passing locally every time.
 Future<void> _until(
   bool Function() condition, {
-  Duration timeout = const Duration(seconds: 5),
+  Duration timeout = const Duration(seconds: 30),
 }) async {
   final deadline = DateTime.now().add(timeout);
   while (!condition() && DateTime.now().isBefore(deadline)) {
