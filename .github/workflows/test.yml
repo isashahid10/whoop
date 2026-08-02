@@ -19,7 +19,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Don't leave GITHUB_TOKEN in .git/config where PR-authored test code
           # could read it. Nothing in this job pushes back to the repo.

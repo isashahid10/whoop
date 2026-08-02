@@ -14,7 +14,7 @@ jobs:
     if: github.repository == 'OpenStrap/edge'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # need all tags so the versionCode guard can read prior releases' pubspec
 
@@ -68,7 +68,7 @@ jobs:
           fi
           echo "versionCode $build (versionName $name) OK — exceeds prior max $max."
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5.6.0
         with:
           distribution: temurin
           java-version: '17'
@@ -124,7 +124,7 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk dist/openstrap-edge-${GITHUB_REF_NAME}.apk
           echo "apk=dist/openstrap-edge-${GITHUB_REF_NAME}.apk" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: openstrap-edge-apk
           path: ${{ steps.rename.outputs.apk }}
@@ -132,7 +132,7 @@ jobs:
       # Publish a Release with the signed APK attached so people download a real
       # .apk, not a zipped CI artifact.
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ steps.rename.outputs.apk }}
           generate_release_notes: true
@@ -164,7 +164,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
@@ -229,13 +229,13 @@ jobs:
           zip -qr -y "$IPA" Payload
           echo "ipa=openstrap-edge-${GITHUB_REF_NAME}-unsigned.ipa" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: openstrap-edge-ipa
           path: ${{ steps.ipa.outputs.ipa }}
 
       # Attach to the same Release the android job created/updates (upsert by tag).
       - name: Attach IPA to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ steps.ipa.outputs.ipa }}
