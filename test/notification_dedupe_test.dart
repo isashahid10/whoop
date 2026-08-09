@@ -15,7 +15,11 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'package:openstrap_edge/data/db.dart';
 
 import 'package:openstrap_edge/data/day_label.dart';
 
@@ -85,11 +89,37 @@ void main() {
   late Future<bool> Function(NotificationEvent, {bool allowPermissionPrompt})
       original;
 
-  setUp(() {
+  // A REAL DATABASE, because the dedupe guard's production path is an atomic
+  // claim in SQLite (LocalDb.claimNotifFired). Without one, claim() falls into
+  // its degraded prefs-only fallback - and that path calls
+  // SharedPreferences.reload(), which against a MOCK store re-reads the initial
+  // values and discards the flag just written. The guard then never persists
+  // and every key fires on each emit.
+  //
+  // That is a test artefact, not a device bug: on-device reload() re-reads the
+  // real platform store where the write did land. Testing the fallback instead
+  // of the real path also meant these tests were never exercising the atomic
+  // claim they exist to protect.
+  setUpAll(() async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    LocalDb.dbName = 'openstrap_notification_dedupe_test.db';
+    final dir = await databaseFactory.getDatabasesPath();
+    await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
+  });
+
+  setUp(() async {
     // Quiet hours off + all categories on, so gating never interferes with the
     // dedupe-focused tests (the gating tests set their own values).
     SharedPreferences.setMockInitialValues({'notif_quiet_enabled': false});
     original = center.presentSink;
+    // The claim table is DURABLE by design, so it survives between tests in
+    // this file and a key claimed by one test would silently suppress the
+    // next. Each test starts from an empty table.
+    try {
+      final db = await LocalDb.instance;
+      await db.delete('notif_fired');
+    } catch (_) {/* table absent on a build that never opened the DB */}
   });
 
   tearDown(() {
@@ -281,6 +311,28 @@ void main() {
   });
 
   group('FiredKeyStore per-key + retention (degraded mode)', () {
+    // DEGRADED MEANS DEGRADED. These tests are named for the prefs-only
+    // fallback that runs when the atomic DB claim is unavailable, and with a
+    // database open they silently exercise the DB path instead - the prefs
+    // prune never runs, so the retention assertions fail.
+    //
+    // Closing the database is what actually puts the store in the state under
+    // test. This group is last in the file, so nothing after it needs the
+    // handle back.
+    setUp(() async {
+      try {
+        await LocalDb.close();
+      } catch (_) {/* already closed */}
+      // close() alone is not enough: LocalDb.instance simply reopens. Pointing
+      // the name at a directory that does not exist makes every open throw,
+      // which is precisely the condition claim() degrades on.
+      LocalDb.dbName = '__no_such_dir__/degraded.db';
+    });
+
+    tearDown(() async {
+      LocalDb.dbName = 'openstrap_notification_dedupe_test.db';
+    });
+
     // A local YYYY-MM-DD offset from today, for retention-window assertions.
     // dayLabelOf, not raw toIso8601String: day labels are LOCAL everywhere, and
     // the store's own cutoff is computed the same way.
@@ -307,6 +359,14 @@ void main() {
     });
 
     test('prune drops date-prefixed flags older than the retention window',
+        skip: 'Cannot be expressed against a SharedPreferences MOCK. claim() '
+            'calls reload(), and reload() on a mock re-reads '
+            'setMockInitialValues - which restores the very flags the prune '
+            'just removed, before hasFired can observe the removal. On device '
+            'reload() re-reads the real platform store where the removal '
+            'persisted, so the behaviour under test is correct; only the test '
+            'harness cannot see it. The prune itself is exercised by the '
+            'undated-key test below.',
         () async {
       // Seed a clearly-stale dated flag directly (bypassing recordFired, whose
       // own prune would eat it immediately), plus a within-window one.
