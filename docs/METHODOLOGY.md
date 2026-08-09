@@ -16,6 +16,8 @@ substitutes a population average and presents it as yours.
 - [Deep sleep](#deep-sleep) ← the most important section here
 - [Naps](#naps)
 - [Steps](#steps)
+- [Energy](#energy)
+- [Active minutes](#active-minutes)
 - [Strength](#strength)
 - [Bulk quality](#bulk-quality)
 - [Overreaching](#overreaching)
@@ -189,6 +191,62 @@ to produce a **range**. While the app is open and streaming at ~100 Hz it counts
 steps (AN-2554, calibrated against a ground-truth walk).
 
 A phone-sourced count is not badged as an estimate, because it is not one.
+
+---
+
+## Energy
+
+**Method.** Active energy is **Keytel et al. 2005**, which estimates expenditure
+from **heart rate** together with weight, age and sex. Resting burn uses the revised
+Harris-Benedict equation. Steps play no part in it.
+
+**The source rule differs from steps, deliberately.**
+
+| Quantity | Preferred source | Why |
+|---|---|---|
+| Steps | **Phone** | The iPhone counts steps in dedicated hardware. A real measurement beats an estimate. |
+| Energy | **Band** | Keytel on measured heart rate beats accelerometry that sees nothing when the phone is not on your body. |
+
+This was not theoretical. On 2026-08-07 a 2.5-hour badminton session at a mean
+125 bpm (peaks to 163) was charged **2,432 kcal** by the band and **176 kcal** by
+the phone, which spent the session in a bag courtside. Phone-first displayed the
+176. Any sport played without a phone in your pocket hits this, and the failure is
+silent and large.
+
+The band falls back to the phone when it has nothing - off the wrist, never
+synced, or a zero reading.
+
+**Breakdown.** The energy screen slices the *same* computation by time rather
+than running a second model, so the blocks sum back to the day. A block opens
+when heart rate passes 40% of reserve and closes after 12 minutes below it, so a
+water break does not split a match in two.
+
+**Labels are not measurements.** A block matching a logged workout takes that
+name. Everything else is named from the clock and marked a guess: the app knows
+your heart rate was high, not what you were doing.
+
+---
+
+## Active minutes
+
+A minute counts as active if **either** the wrist moved **or** heart rate sat at
+or above **40% of heart-rate reserve** - the ACSM/WHO moderate-intensity
+threshold, expressed as reserve so it means the same thing at any fitness level.
+
+**Why heart rate is an independent path rather than a corroborator.** A wrist
+accelerometer detects activity by proxy: the arm swing of walking. That proxy
+fails on any sport where the body works hard without gait-like wrist motion -
+racquet sports, cycling with hands on the bars, rowing, carrying a load.
+
+Measured on the same badminton session: the wrist-tilt detector scored the whole
+**day** at 55 active minutes. Since the band's step estimate is literally
+`activeMinutes x cadence`, the step count inherited that error directly.
+
+Requiring *both* signals would have kept the failure. Requiring neither is what
+produced it.
+
+The heart-rate path is skipped entirely when the profile lacks the bounds to
+compute reserve, rather than substituting population values.
 
 ---
 

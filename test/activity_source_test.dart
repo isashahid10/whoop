@@ -100,14 +100,50 @@ void main() {
   });
 
   group('energy', () {
-    test('active energy prefers the phone', () async {
+    test('active energy prefers the BAND, unlike steps', () async {
+      // Deliberately the opposite rule to steps. The band's figure is Keytel
+      // applied to measured heart rate; the phone's is inferred from motion and
+      // sees nothing when the phone is not on you.
+      //
+      // Real case, 2026-08-07: 2.5 h of badminton at a mean 125 bpm. Band 2432
+      // kcal, phone 176 kcal because it sat in a bag courtside. Phone-first
+      // displayed the 176.
+      await _put(ActivitySourceResolver.kPhoneActiveKcal, 176);
+      final c = await ActivitySourceResolver.activeCalories(
+        _day,
+        bandCalories: 2432,
+      );
+      expect(c.value, 2432);
+      expect(c.source, ActivitySource.band);
+    });
+
+    test('falls back to the phone when the band has nothing', () async {
+      // Band off the wrist, or never synced. The phone is then the only
+      // source and must still be used.
+      await _put(ActivitySourceResolver.kPhoneActiveKcal, 640);
+      final c = await ActivitySourceResolver.activeCalories(_day);
+      expect(c.value, 640);
+      expect(c.source, ActivitySource.phone);
+    });
+
+    test('a zero band figure does not beat a real phone reading', () async {
+      // Zero means the band contributed nothing usable, not that the day was
+      // genuinely sedentary.
       await _put(ActivitySourceResolver.kPhoneActiveKcal, 640);
       final c = await ActivitySourceResolver.activeCalories(
         _day,
-        bandCalories: 99,
+        bandCalories: 0,
       );
       expect(c.value, 640);
       expect(c.source, ActivitySource.phone);
+    });
+
+    test('energyDisagreement surfaces the gap', () async {
+      await _put(ActivitySourceResolver.kPhoneActiveKcal, 176);
+      await _put(ActivitySourceResolver.kBandCalories, 2432);
+      final r = await ActivitySourceResolver.energyDisagreement(_day);
+      expect(r, isNotNull);
+      expect(r!, closeTo(2432 / 176, 0.01));
     });
 
     test('total = active + basal', () async {

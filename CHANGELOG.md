@@ -11,7 +11,7 @@ what a given build computes.
 
 ## Unreleased
 
-`schemaVersion 29` · `kAlgoVersion 52`
+`schemaVersion 29` · `kAlgoVersion 53`
 
 ### Added - training
 
@@ -22,6 +22,16 @@ what a given build computes.
 - **Bulk quality** - weight trend against strength trend, abstaining when strength is unknown
 - **HR-recovery rest timer** targeting 40% of heart-rate reserve, using the user's own
   median resting HR rather than a population default
+
+### Added - energy
+
+- **Calorie breakdown screen.** Slices the same Keytel computation by time, so
+  the blocks sum back to the day rather than being a second model. A block opens
+  above 40% of heart-rate reserve and closes after 12 minutes below it, so a
+  water break does not split a match. Blocks matching a logged Hevy workout take
+  its name; everything else is labelled from the clock and marked a guess.
+  Validated on a real 2.5-hour badminton session: isolated 13:39-16:04, 144
+  minutes at a mean 123 bpm.
 
 ### Added - context
 
@@ -84,6 +94,19 @@ what a given build computes.
 - **`db.dart` `_open(version:)` was hardcoded separately from `schemaVersion`**, so
   bumping the constant did not run `onUpgrade`
 - Migration ladder runtime: 12 min → 4.8 s
+
+- **Calories were phone-first, which is backwards.** The phone infers energy
+  from motion and sees nothing when it is not on your body; the band applies
+  Keytel to measured heart rate. A 2.5-hour badminton session at a mean 125 bpm
+  was charged 2,432 kcal by the band and 176 by the phone, sitting in a bag
+  courtside, and the home screen showed the 176. Recomputing never changed it,
+  because the displayed number never came from the band at all. Energy is now
+  band-first with a phone fallback; steps stay phone-first, where a hardware
+  pedometer genuinely beats a wrist estimate that 1 Hz cannot produce anyway.
+- **Active minutes missed any sport without arm swing.** Wrist tilt is a
+  walking proxy, so the same badminton day scored 55 active minutes. Steps are
+  `activeMinutes x cadence` and inherited it. A heart-rate path was added at 40%
+  of reserve, the ACSM/WHO moderate-intensity threshold.
 
 ### Investigated, deliberately not changed
 

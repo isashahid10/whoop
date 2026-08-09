@@ -358,7 +358,11 @@ import 'substrate.dart';
 // fragmented by ordinary beat-to-beat variation and then deleted. Deep read
 // 2-3% of TST on every night against a normal 13-23%. Gaps are now closed
 // before run length is measured.
-const int kAlgoVersion = 52;
+// v53: active minutes gain a heart-rate path. Wrist tilt alone is an arm-swing
+// proxy that misses racquet sports, cycling and rowing; a real 2.5 h badminton
+// session at 125 bpm scored 55 active minutes for the whole day. Steps are
+// activeMinutes x cadence, so they inherited it.
+const int kAlgoVersion = 53;
 
 /// Raw is kept this many days past derivation, then pruned (derived stays).
 const int rawRetentionDays = 3;
@@ -2767,7 +2771,13 @@ class DerivationEngine {
     double? restingHr,
     double? dynFloorG,
   }) {
-    final activeMin = _activeMinutes(daySub, sleepOnsetSec, sleepOffsetSec);
+    final activeMin = _activeMinutes(
+      daySub,
+      sleepOnsetSec,
+      sleepOffsetSec,
+      restingHr: restingHr ?? profile.restingHrManual?.toDouble(),
+      maxHr: profile.hrMaxTanaka,
+    );
     final wear = _wearBlock(daySub);
     final perMin = _perMinuteMeanWake(daySub, sleepOnsetSec, sleepOffsetSec);
     final motion = _motionMinutes(daySub);
@@ -2888,7 +2898,27 @@ class DerivationEngine {
   }
 
   /// Active minutes over the WAKE span — a coarse 1 Hz movement proxy.
-  static int _activeMinutes(Substrate s, int sleepOnsetSec, int sleepOffsetSec) {
+  /// Waking minutes spent active.
+  ///
+  /// Wrist tilt alone is an ARM-SWING proxy. It detects walking well, because
+  /// the wrist rotates through a large arc every step, and it misses sports
+  /// where the body works hard without gait-like wrist motion. On a real
+  /// session (2026-08-07, 2.5 h badminton at a mean 125 bpm) it scored the
+  /// whole day at 55 minutes, and the step estimate - which is literally
+  /// activeMinutes x cadence - inherited that error directly.
+  ///
+  /// Heart rate is therefore an independent path: a minute at or above 40% of
+  /// heart-rate reserve counts regardless of what the wrist did. That is the
+  /// ACSM/WHO moderate-intensity threshold, not a tuned constant. The
+  /// heart-rate path is skipped entirely when the profile lacks the bounds to
+  /// compute reserve, rather than guessing them.
+  static int _activeMinutes(
+    Substrate s,
+    int sleepOnsetSec,
+    int sleepOffsetSec, {
+    double? restingHr,
+    double? maxHr,
+  }) {
     final n = s.length;
     if (n < 60) return 0;
     final ang = List<double>.filled(n, 0);
@@ -2899,6 +2929,8 @@ class DerivationEngine {
     const activeFrac = 0.20;
     final moveSec = <int, int>{};
     final totSec = <int, int>{};
+    final hrSum = <int, double>{};
+    final hrN = <int, int>{};
     for (var i = 1; i < n; i++) {
       final t = s.tsSec[i];
       if (sleepOffsetSec > sleepOnsetSec &&
@@ -2911,10 +2943,25 @@ class DerivationEngine {
       if ((ang[i] - ang[i - 1]).abs() > moveDeg) {
         moveSec[m] = (moveSec[m] ?? 0) + 1;
       }
+      final hr = s.hr[i];
+      if (hr > 0) {
+        hrSum[m] = (hrSum[m] ?? 0) + hr.toDouble();
+        hrN[m] = (hrN[m] ?? 0) + 1;
+      }
     }
     var active = 0;
     totSec.forEach((m, tot) {
-      if (tot > 0 && (moveSec[m] ?? 0) / tot >= activeFrac) active++;
+      if (tot <= 0) return;
+      final nHr = hrN[m] ?? 0;
+      if (ana.isActiveMinute(
+        movementFraction: (moveSec[m] ?? 0) / tot,
+        movementThreshold: activeFrac,
+        hr: nHr > 0 ? hrSum[m]! / nHr : null,
+        restingHr: restingHr,
+        maxHr: maxHr,
+      )) {
+        active++;
+      }
     });
     return active;
   }

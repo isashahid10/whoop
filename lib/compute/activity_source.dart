@@ -15,10 +15,28 @@
 // and previous days were blank (the band has no history before you owned it,
 // while Health does).
 //
-// THE RULE: prefer the phone, fall back to the band, and SAY WHICH. A silent
-// switch between two sources that disagree is worse than either, because the
-// user cannot tell whether a jump is real. Every result carries its provenance
-// so the UI can label it.
+// THE RULE DEPENDS ON THE QUANTITY, because the two sources fail differently.
+//
+//   STEPS  -> PHONE FIRST. The iPhone counts steps in dedicated hardware and
+//             is a real measurement. The band cannot count steps at all from
+//             its 1 Hz stream (gait is 1.4-2.5 Hz, above the Nyquist limit), so
+//             its figure is ambulatory-minutes x a cadence band. A real count
+//             beats an estimate.
+//
+//   ENERGY -> BAND FIRST. This is the opposite, for a concrete reason. The
+//             band's figure comes from Keytel et al. 2005 applied to MEASURED
+//             HEART RATE; the phone's comes from accelerometry, which sees
+//             nothing whenever the phone is not on your body.
+//
+//             Observed on 2026-08-07: 2.5 hours of badminton at a mean 125 bpm
+//             with peaks to 163. The band charged 2,432 kcal. The phone, sitting
+//             in a bag courtside, charged 176. Phone-first showed the 176.
+//             Any sport played without a phone in your pocket hits this, and
+//             the failure is silent and large.
+//
+// Both paths SAY WHICH source won. A silent switch between two sources that
+// disagree is worse than either, because the user cannot tell whether a jump is
+// real. Every result carries its provenance so the UI can label it.
 //
 // Deliberately NOT summed. Both sources count the same walking, so adding them
 // would roughly double a day spent with band and phone together.
@@ -113,19 +131,39 @@ class ActivitySourceResolver {
     return SourcedValue.absent;
   }
 
-  /// Active energy for [date] — the "move" number, excluding resting burn.
+  /// Active energy for [date] - the "move" number, excluding resting burn.
+  ///
+  /// BAND FIRST, unlike [steps]. See the rule at the top of this file: the
+  /// band's figure is Keytel applied to measured heart rate, the phone's is
+  /// inferred from motion, and the phone measures nothing at all when it is not
+  /// on you. Falling back to the phone still matters for days the band was off
+  /// the wrist or never synced.
   static Future<SourcedValue> activeCalories(
     String date, {
     num? bandCalories,
   }) async {
+    final band = bandCalories?.toDouble() ?? await _metric(date, kBandCalories);
+    // A zero or negative figure means the band contributed nothing usable, not
+    // that the day was genuinely sedentary; treat it as absent rather than
+    // letting it beat a real phone reading.
+    if (band != null && band > 0) return SourcedValue(band, ActivitySource.band);
     final phone = await _metric(date, kPhoneActiveKcal);
     if (phone != null) return SourcedValue(phone, ActivitySource.phone);
-    if (bandCalories != null) {
-      return SourcedValue(bandCalories.toDouble(), ActivitySource.band);
-    }
-    final stored = await _metric(date, kBandCalories);
-    if (stored != null) return SourcedValue(stored, ActivitySource.band);
     return SourcedValue.absent;
+  }
+
+  /// How far apart the two energy sources are for [date], as a ratio of the
+  /// larger to the smaller. Null when only one source has a figure.
+  ///
+  /// A large gap is INFORMATION, not noise: it means you trained while the
+  /// phone was elsewhere. The UI uses it to explain the number rather than
+  /// silently presenting whichever source won.
+  static Future<double?> energyDisagreement(String date) async {
+    final band = await _metric(date, kBandCalories);
+    final phone = await _metric(date, kPhoneActiveKcal);
+    if (band == null || phone == null) return null;
+    if (band <= 0 || phone <= 0) return null;
+    return band > phone ? band / phone : phone / band;
   }
 
   /// Total energy = active + basal.
@@ -137,16 +175,17 @@ class ActivitySourceResolver {
     String date, {
     num? bandTotal,
   }) async {
+    // Band first, to stay consistent with [activeCalories]. Mixing sources
+    // between the two would let "total" come out BELOW "active" on a day the
+    // band saw a hard session the phone missed, which is nonsense on its face.
+    final band = bandTotal?.toDouble() ?? await _metric(date, kBandCaloriesTotal);
+    if (band != null && band > 0) return SourcedValue(band, ActivitySource.band);
+
     final active = await _metric(date, kPhoneActiveKcal);
     final basal = await _metric(date, kPhoneBasalKcal);
     if (active != null && basal != null) {
       return SourcedValue(active + basal, ActivitySource.phone);
     }
-    if (bandTotal != null) {
-      return SourcedValue(bandTotal.toDouble(), ActivitySource.band);
-    }
-    final stored = await _metric(date, kBandCaloriesTotal);
-    if (stored != null) return SourcedValue(stored, ActivitySource.band);
     return SourcedValue.absent;
   }
 }

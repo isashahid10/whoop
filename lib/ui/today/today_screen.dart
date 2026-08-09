@@ -7,6 +7,7 @@
 // invisible: pull-to-refresh quietly asks the strap for fresh data — there is
 // deliberately NO "stored to / syncs every / last data" copy on this screen.
 
+import '../activity/calorie_breakdown_screen.dart';
 import '../readiness/readiness_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -431,6 +432,9 @@ class _TodayScreenState extends State<TodayScreen>
 
   void _open(String id) {
     switch (id) {
+      case 'energy':
+        _push(() => CalorieBreakdownScreen(date: todayLabel()));
+        return;
       case 'readiness':
         // The glass-box breakdown, which the score has always carried and
         // nothing ever displayed. Falls back to the coach, then to the info
@@ -1309,7 +1313,9 @@ class TodayVitals extends StatelessWidget {
       tone: BentoTone.accent,
       accent: DomainAccent.calories,
       minHeight: _statTileMinHeight,
-      onTap: () => onOpen('body'),
+      // Straight to the breakdown. "How much" is already on the tile; the
+      // question a tap is asking is "from what".
+      onTap: () => onOpen('energy'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
