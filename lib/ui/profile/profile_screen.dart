@@ -21,6 +21,7 @@ import 'backups_screen.dart';
 import '../../health/health_export.dart';
 import '../../platform/tasker_bridge.dart';
 import '../../integrations/hevy_login_screen.dart';
+import '../../integrations/claude_connector.dart';
 import '../../notify/profile_nudges.dart';
 import '../../integrations/hevy_store.dart';
 import '../../state/app_state.dart';
@@ -292,6 +293,8 @@ class ProfileScreen extends StatelessWidget {
           _HealthSection(app: app),
           const SizedBox(height: Sp.x5),
           _HevySection(app: app),
+          const SizedBox(height: Sp.x5),
+          _ConnectorSection(app: app),
 
           const SizedBox(height: Sp.x6),
 
@@ -1958,6 +1961,126 @@ class _HevySectionState extends State<_HevySection> {
                 child: const Text('Unlink'),
               ),
             ]),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// Claude connector: whether Claude (claude.ai, desktop, mobile) has fresh data.
+///
+/// The push itself runs on every sync; this card exists so a broken one is
+/// visible. A connector that quietly stopped would have Claude answering from
+/// stale numbers with no hint that they are stale.
+class _ConnectorSection extends StatefulWidget {
+  final AppState app;
+  const _ConnectorSection({required this.app});
+
+  @override
+  State<_ConnectorSection> createState() => _ConnectorSectionState();
+}
+
+class _ConnectorSectionState extends State<_ConnectorSection> {
+  bool _busy = false;
+
+  Future<void> _push({bool everything = false}) async {
+    setState(() => _busy = true);
+    final r = await widget.app.connectorPushNow(everything: everything);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(switch (r.outcome) {
+        ConnectorOutcome.pushed => 'Sent ${r.rows} rows across ${r.days} days',
+        ConnectorOutcome.upToDate => 'Claude already has everything',
+        ConnectorOutcome.failed => r.message ?? 'Push failed',
+        _ => 'Nothing sent',
+      }),
+    ));
+  }
+
+  static String _ago(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inHours < 1) return '${d.inMinutes} min ago';
+    if (d.inDays < 1) return '${d.inHours} h ago';
+    return '${d.inDays} d ago';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    final last = app.lastConnectorPush;
+    final String status;
+    if (!app.connectorConfigured) {
+      status = 'Not set up. Add CONNECTOR_URL and CONNECTOR_TOKEN to .env and rebuild.';
+    } else if (last == null) {
+      status = 'Claude reads your data from the connector. Nothing sent since launch.';
+    } else if (last.isError) {
+      status = 'Last push failed ${_ago(last.at)}.';
+    } else {
+      status = 'Claude reads your data from the connector. Last checked ${_ago(last.at)}.';
+    }
+
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(Sp.x2),
+                decoration: BoxDecoration(
+                  color: AppColors.accentSoft,
+                  borderRadius: BorderRadius.circular(R.chip),
+                ),
+                child: AppIcon(OsIcon.ai, size: 18, color: AppColors.onAccentSoft),
+              ),
+              const SizedBox(width: Sp.x3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Claude connector', style: AppText.title),
+                    const SizedBox(height: 1),
+                    Text(status, style: AppText.captionMuted),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (last != null && last.isError) ...[
+            const SizedBox(height: Sp.x3),
+            Text(last.message ?? 'Push failed.',
+                style: AppText.captionMuted.copyWith(color: AppColors.bad)),
+          ],
+          if (app.connectorConfigured) ...[
+            const SizedBox(height: Sp.x4),
+            if (_busy)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: Sp.x2),
+                  child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+              )
+            else
+              Row(children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => _push(),
+                    child: const Text('Push now'),
+                  ),
+                ),
+                const SizedBox(width: Sp.x3),
+                OutlinedButton(
+                  onPressed: () => _push(everything: true),
+                  child: const Text('Re-send all'),
+                ),
+              ]),
+          ],
         ],
       ),
     );

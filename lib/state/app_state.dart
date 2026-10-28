@@ -57,6 +57,7 @@ import '../gestures/gesture_settings.dart';
 import '../health/health_export.dart';
 import '../health/health_import.dart';
 import '../integrations/calendar_client.dart';
+import '../integrations/claude_connector.dart';
 import '../notify/profile_nudges.dart';
 import '../integrations/hevy_store.dart';
 import '../integrations/weather_client.dart';
@@ -440,6 +441,34 @@ class AppState extends ChangeNotifier {
   /// since a silent no-op import is indistinguishable from a broken one.
   int lastHealthImportCount = 0;
 
+  // ── Claude connector ───────────────────────────────────────────────────────
+  // Pushes the coach's view of the data to the Worker Claude reads over MCP.
+  // Throttled and change-detecting inside ClaudeConnector, so calling it from
+  // every sync point below costs nothing when nothing changed.
+  final ClaudeConnector _connector = ClaudeConnector();
+
+  /// Last push that did something (pushed, up to date, or failed). Held in
+  /// state so the Profile card can say when Claude last got fresh data.
+  ConnectorResult? lastConnectorPush;
+
+  bool get connectorConfigured => _connector.configured;
+
+  /// Manual push from Profile. [everything] re-sends all history.
+  Future<ConnectorResult> connectorPushNow({bool everything = false}) async {
+    final r = await _connector.push(force: true, everything: everything);
+    lastConnectorPush = r;
+    notifyListeners();
+    return r;
+  }
+
+  Future<void> _connectorPass() async {
+    if (!_connector.configured) return;
+    final r = await _connector.push();
+    if (r.outcome == ConnectorOutcome.skipped) return;
+    lastConnectorPush = r;
+    notifyListeners();
+  }
+
   // ── Hevy resistance training ───────────────────────────────────────────────
   final HevyStore _hevy = HevyStore();
 
@@ -552,6 +581,7 @@ class AppState extends ChangeNotifier {
     // TRIMP, so it gets its own escalating re-check (see profile_nudges.dart).
     await ProfileNudges.maybePromptWeight();
     if (lastHealthImportCount > 0 || lastHevySync != null) notifyListeners();
+    unawaited(_connectorPass());
     return n;
   }
 
@@ -1197,6 +1227,8 @@ class AppState extends ChangeNotifier {
       // Companion (opt-in): flush any queued telemetry now that we're doing network
       // work anyway, and — on a heavy (finalize) pass — consider the once/day full
       // .db upload (itself gated on Wi-Fi + charging + >24h). Both best-effort.
+      // Claude connector: freshly derived days go up with the same pass.
+      unawaited(_connectorPass());
       if (telemetryConsent) unawaited(TelemetryService.instance.flush());
       if (heavy && healthShareConsent) {
         unawaited(HealthUploader.instance.maybeUpload(consented: true));
@@ -1302,6 +1334,8 @@ class AppState extends ChangeNotifier {
       // nothing to explain why. They are ambient context, independent of
       // Health, so they belong on the ordinary cadence.
       await _maybeSyncAmbient();
+      // After health and ambient, so the push carries what they just wrote.
+      unawaited(_connectorPass());
       await _maybeNotifyStepGoal();
       await _maybeNotifyInactivity();
       await _maybeGenerateBriefing();
