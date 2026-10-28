@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "whoop-connector",
+  "main": "src/index.ts",
+  // Pinned so a deploy can only ever land in <your-account>'s Cloudflare
+  // account, whatever `wrangler login` happens to be pointing at.
+  "account_id": "52ee742116eb3e005568016de140930b",
+  "compatibility_date": "2026-10-01",
+  // global_fetch_strictly_public: required by the OAuth library for Client ID
+  // Metadata Document fetches (SSRF protection).
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": true,
+  "vars": { "USER_TZ": "Australia/Melbourne" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "whoop", "database_id": "fd3d0c4c-4657-4079-b2eb-48a2fa04d1fe", "migrations_dir": "migrations" }
+  ],
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "462cd946b6164049bdee3791f6495505" }],
+  // Logs only carry what the code prints, and it never prints request bodies.
+  "observability": { "enabled": true }
+}

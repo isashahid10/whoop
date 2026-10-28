@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+.dev.vars
+# Generated secrets: the connector password and the phone's ingest token.
+.secrets.local
+
+# The repo root ignores *.sql (database dumps). Schema migrations are code.
+!migrations/*.sql
