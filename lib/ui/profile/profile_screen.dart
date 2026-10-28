@@ -1172,6 +1172,28 @@ class _HealthSection extends StatelessWidget {
           subtitle,
           style: AppText.caption.copyWith(color: AppColors.inkMuted),
         ),
+        // Reads that iOS is refusing. Said loudly and with the exact path,
+        // because the button below cannot fix it: iOS never re-asks about a
+        // type that was already answered.
+        if (app.healthIsApple && app.healthReadsBlocked.isNotEmpty) ...[
+          const SizedBox(height: Sp.x3),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AppIcon(OsIcon.info, size: 16, color: AppColors.bad),
+              const SizedBox(width: Sp.x2),
+              Expanded(
+                child: Text(
+                  'Apple Health is not letting Whoop read '
+                  '${app.healthReadsBlocked.join(', ')}. Turn them on in '
+                  'Settings > Health > Data Access & Devices > Whoop, under '
+                  '"Allow Whoop to Read". This sticks across rebuilds.',
+                  style: AppText.captionMuted.copyWith(color: AppColors.bad),
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: Sp.x2),
         Wrap(
           spacing: Sp.x2,

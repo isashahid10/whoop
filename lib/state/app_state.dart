@@ -441,6 +441,11 @@ class AppState extends ChangeNotifier {
   /// since a silent no-op import is indistinguishable from a broken one.
   int lastHealthImportCount = 0;
 
+  /// Apple Health types whose READ access looks switched off (see
+  /// HealthImporter._phoneRecorded). Shown in Profile with the Settings path,
+  /// since no in-app prompt can turn a denied read back on.
+  List<String> get healthReadsBlocked => _healthImport.lastBlockedReads;
+
   // ── Claude connector ───────────────────────────────────────────────────────
   // Pushes the coach's view of the data to the Worker Claude reads over MCP.
   // Throttled and change-detecting inside ClaudeConnector, so calling it from
@@ -522,9 +527,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Prompt for write access (user gesture). On grant + enabled, kick a sync.
+  /// Prompt for access (user gesture). On grant + enabled, kick a sync.
+  ///
+  /// Asks for READ as well as write. This used to request write only, so the
+  /// "Allow access" button could never repair a missing read grant, and the
+  /// import quietly returned nothing. iOS only shows types not yet answered, so
+  /// the second request costs nothing when reads are already decided.
   Future<void> requestHealth() async {
     healthState = await _healthExport.request();
+    await _healthImport.requestPermission();
     notifyListeners();
     if (healthState == HealthLinkState.ready && healthSyncEnabled) {
       unawaited(healthSyncNow());
@@ -547,10 +558,8 @@ class AppState extends ChangeNotifier {
     await prefs.setBool(_kHealthSync, on);
     notifyListeners();
     if (on) {
+      // Requests write AND read: they are separate grants on both platforms.
       await requestHealth();
-      // READ access is a SEPARATE grant from write on both platforms — asking
-      // for write alone leaves the import silently returning zero forever.
-      await _healthImport.requestPermission();
       if (healthState == HealthLinkState.ready) unawaited(healthSyncNow());
     }
   }

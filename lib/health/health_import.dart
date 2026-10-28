@@ -80,6 +80,33 @@ class HealthImporter {
 
   static const String _cursorKey = 'health_import_through';
 
+  /// Types the iPhone itself records whenever it is carried, which the app ALSO
+  /// writes. They are the only types where "Apple Health is refusing our read"
+  /// can be told apart from "there is no data":
+  ///
+  /// HealthKit never says a read was denied. A denied read just looks empty,
+  /// EXCEPT that an app still sees the samples it wrote itself. So a type we
+  /// export comes back holding only our own points, which [_isOwnSource] then
+  /// drops, and the import reports zero forever with nothing to explain it.
+  /// Measured on Isa's phone 2026-10-26: steps, active and resting energy all
+  /// went to zero on 2026-09-27 while distance (read-only, never exported)
+  /// kept importing. Re-tapping the in-app permission button cannot fix it,
+  /// because iOS never re-asks about a type the user already answered.
+  static const Map<HealthDataType, String> _phoneRecorded = {
+    HealthDataType.STEPS: 'Steps',
+    HealthDataType.ACTIVE_ENERGY_BURNED: 'Active Energy',
+    HealthDataType.BASAL_ENERGY_BURNED: 'Resting Energy',
+  };
+
+  /// The window must be long enough that "no phone data at all" cannot be an
+  /// ordinary quiet day.
+  static const int _minDaysToJudgeBlocked = 3;
+
+  /// Names (as the Health app labels them) of types whose read access looks
+  /// switched off, from the last import. Empty when everything is flowing or
+  /// when the import window was too short to tell.
+  List<String> lastBlockedReads = const [];
+
   /// What we pull, and the daily scalar each becomes.
   ///
   /// Deliberately excludes heart rate, HRV, resting HR, respiratory rate and
@@ -242,6 +269,7 @@ class HealthImporter {
       // costing every other one. Slower, but a bad type now costs only itself.
       final points = <HealthDataPoint>[];
       var failedTypes = 0;
+      final failed = <HealthDataType>{};
       for (final spec in _specs) {
         try {
           points.addAll(await _health.getHealthDataFromTypes(
@@ -251,6 +279,7 @@ class HealthImporter {
           ));
         } catch (_) {
           failedTypes++;
+          failed.add(spec.type);
         }
       }
 
@@ -261,11 +290,13 @@ class HealthImporter {
       final specByType = {for (final s in _specs) s.type: s};
 
       var skippedOwn = 0;
+      final foreignByType = <HealthDataType, int>{};
       for (final p in points) {
         if (_isOwnSource(p)) {
           skippedOwn++;
           continue;
         }
+        foreignByType[p.type] = (foreignByType[p.type] ?? 0) + 1;
         final spec = specByType[p.type];
         if (spec == null) continue;
         final value = _numeric(p);
@@ -294,6 +325,26 @@ class HealthImporter {
               bucket[spec.key] = value;
               lastSeenAt[stamp] = p.dateFrom;
             }
+        }
+      }
+
+      // Judge only when OTHER phone data came through. While the phone is
+      // locked the store is encrypted, and the plugin answers every query with
+      // an empty list rather than an error (SwiftHealthPlugin getData's default
+      // branch returns nil), which would look like every read was blocked.
+      if (isApple &&
+          foreignByType.isNotEmpty &&
+          now.difference(start).inDays >= _minDaysToJudgeBlocked) {
+        lastBlockedReads = [
+          for (final e in _phoneRecorded.entries)
+            // A query that THREW (store locked while the phone is locked)
+            // says nothing about permission; only an empty answer does.
+            if (!failed.contains(e.key) && (foreignByType[e.key] ?? 0) == 0)
+              e.value,
+        ];
+        if (lastBlockedReads.isNotEmpty) {
+          debugPrint('[health_import] reads look blocked for: '
+              '${lastBlockedReads.join(', ')}');
         }
       }
 
