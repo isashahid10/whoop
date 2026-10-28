@@ -23,6 +23,20 @@ import 'day_label.dart';
 import 'live_coverage_policy.dart';
 import 'models.dart';
 
+/// Thrown when an export would not fit in the space available.
+class InsufficientSpaceException implements Exception {
+  final int needed;
+  final int free;
+  const InsufficientSpaceException({required this.needed, required this.free});
+
+  @override
+  String toString() {
+    String mb(int b) => '${(b / 1048576).round()} MB';
+    return 'Not enough space to export: needs about ${mb((needed * 1.3).round())}, '
+        '${mb(free)} free.';
+  }
+}
+
 class LocalDb {
   static Database? _db;
   static String dbName = 'whoop.db';
@@ -93,7 +107,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 29;
+  static const int schemaVersion = 30;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -427,7 +441,28 @@ class LocalDb {
           // model has nothing to work with and abstains.
           await _createCaffeine(db);
         }
-      },
+      
+        if (oldV < 30) {
+          // RECLAIM ~46 MB of duplication and dead index.
+          //
+          // `samples` (counter, ts, hr) is fully contained in decoded_onehz,
+          // which has the same primary key plus accel and SpO2. Verified on a
+          // real device: 1,181,653 samples rows against 1,135,841 in
+          // decoded_onehz, and a join on counter matched all 1,135,841 - so
+          // the table held nothing decoded_onehz does not. It cost 18 MB plus
+          // an 18 MB index on ts.
+          //
+          // `idx_decoded_rr_ts(rr_ts_ms)` is a strict PREFIX of
+          // `idx_decoded_rr_ts_beat_unique(rr_ts_ms, beat_index)`. SQLite can
+          // use the leftmost columns of a composite index, so the shorter one
+          // served no query and cost 9 MB.
+          //
+          // Both are derived or duplicate: nothing here is a raw sample, and
+          // decoded_onehz - the actual archive - is untouched.
+          await db.execute('DROP TABLE IF EXISTS samples');
+          await db.execute('DROP INDEX IF EXISTS idx_decoded_rr_ts');
+        }
+},
       onOpen: (db) async {
         await _repairOpenSchema(db);
       },
@@ -1113,13 +1148,12 @@ class LocalDb {
         final raw = raws[i];
         final recTs = _recTsFor(raw);
         final sample = samples[i];
-        if (sample != null) {
-          batch.insert('samples', {
-            'counter': raw.counter,
-            ...sample.toDbMap(),
-          }, conflictAlgorithm: ConflictAlgorithm.ignore);
-          ops++;
-        }
+        // NOTE: the legacy `samples` table is no longer written. Every row it
+        // held (counter, ts, hr) is already in decoded_onehz, which carries the
+        // same key plus accelerometer and SpO2. Measured on a real device at
+        // 1.18 M rows: the duplicate cost 18 MB of table and 18 MB of index for
+        // data that was read in exactly two places, both trivially served by
+        // decoded_onehz. Dropped in schema v30.
         ops += _queueDecodedOneHz(batch, raw, sample);
         if (raw.counter > maxCounter) maxCounter = raw.counter;
         if (recTs > maxRecTs) maxRecTs = recTs;
@@ -2749,8 +2783,9 @@ class LocalDb {
         hr: (row['hr'] as num?)?.toInt() ?? 0,
       );
     }
-    final rows = await db.query('samples', orderBy: 'ts DESC', limit: 1);
-    return rows.isEmpty ? null : Sample.fromDbMap(rows.first);
+    // The legacy `samples` fallback is gone with schema v30. decoded_onehz is
+    // queried above and holds every row `samples` ever did.
+    return null;
   }
 
   static Future<Map<String, int>> counts() async {
@@ -3086,19 +3121,157 @@ class LocalDb {
     return m;
   }
 
+  /// Reclaim free pages by rewriting the database file.
+  ///
+  /// Dropping a table frees PAGES, not disk: SQLite keeps them for reuse and
+  /// the file stays the same size. VACUUM is what actually returns the space,
+  /// and after v30 there is roughly 46 MB of it to return.
+  ///
+  /// Not run automatically on upgrade. VACUUM needs room for a second copy of
+  /// the file, and doing that inside a migration on a phone that is already
+  /// short of space is how you turn a cleanup into a failed boot.
+  static Future<int> compact() async {
+    final before = await databaseFileBytes();
+    final db = await instance;
+    await db.execute('VACUUM');
+    final after = await databaseFileBytes();
+    return before - after;
+  }
+
   /// Write a consistent, compacted snapshot of the DB to a temp file for export.
   /// Uses `VACUUM INTO` (NOT a raw file copy) so the snapshot is transactionally
   /// consistent — a plain copy of a live SQLite file can produce torn pages
   /// (a corrupt export). VACUUM INTO also defragments, so the file is small.
+  /// Prefix for export copies, so old ones can be found and removed.
+  static const String _exportPrefix = 'whoop_export_';
+
+  /// Delete every previous export copy from the temporary directory.
+  ///
+  /// WHY THIS EXISTS. Each export writes a full VACUUM copy of the database
+  /// under a fresh timestamped name, and nothing used to remove the previous
+  /// one. On a 128 MB database a handful of taps wrote a gigabyte of orphaned
+  /// copies, filled the container, and left the app unable to launch. iOS may
+  /// reclaim the temporary directory eventually, but "eventually" is no use to
+  /// someone who tapped export three times because the first two appeared to
+  /// do nothing.
+  static Future<void> _pruneExports() async {
+    try {
+      final tmp = await getTemporaryDirectory();
+      await for (final e in tmp.list()) {
+        if (e is File && p.basename(e.path).startsWith(_exportPrefix)) {
+          try {
+            await e.delete();
+          } catch (_) {/* a file in use is not worth failing the export over */}
+        }
+      }
+    } catch (_) {/* best-effort cleanup, never blocks the export itself */}
+  }
+
+  /// A VACUUMed copy of the database, for sharing off-device.
+  ///
+  /// Throws [InsufficientSpaceException] rather than filling the disk: VACUUM
+  /// INTO needs room for a whole second copy, and failing that check silently
+  /// is what bricked the app once already.
   static Future<String> exportCopy() async {
     final db = await instance;
+    // Remove earlier copies FIRST: they are the main reason space runs out,
+    // and freeing them may be exactly what makes this export fit.
+    await _pruneExports();
+
     final tmp = await getTemporaryDirectory();
+    final needed = await databaseFileBytes();
+    if (needed > 0) {
+      try {
+        final free = (await tmp.stat()).size >= 0
+            ? await _freeBytes(tmp.path)
+            : null;
+        // Ask for headroom beyond the raw size: VACUUM writes a journal too.
+        if (free != null && free < needed * 1.3) {
+          throw InsufficientSpaceException(needed: needed, free: free);
+        }
+      } on InsufficientSpaceException {
+        rethrow;
+      } catch (_) {/* cannot measure free space - proceed and let IO report */}
+    }
+
     final stamp = DateTime.now().millisecondsSinceEpoch;
-    final dest = p.join(tmp.path, 'whoop_export_$stamp.db');
+    final dest = p.join(tmp.path, '$_exportPrefix$stamp.db');
     final f = File(dest);
     if (await f.exists()) await f.delete(); // VACUUM INTO requires a fresh path
     await db.execute('VACUUM INTO ?', [dest]);
     return dest;
+  }
+
+  /// Every daily metric as a single wide CSV: one row per day, one column per
+  /// metric key.
+  ///
+  /// This is the export people actually want. A .db copy is a quarter of a
+  /// gigabyte, chokes the iOS share sheet, and needs SQLite to read. The daily
+  /// series is a few hundred kilobytes and opens in any spreadsheet.
+  static Future<String> exportDailyCsv() async {
+    final db = await instance;
+    await _pruneExports();
+
+    final rows = await db.rawQuery(
+      'SELECT date, key, value FROM metric_series '
+      'WHERE value IS NOT NULL ORDER BY date ASC',
+    );
+
+    // Pivot (date, key, value) into a wide table.
+    final byDay = <String, Map<String, double>>{};
+    final keys = <String>{};
+    for (final r in rows) {
+      final d = r['date'];
+      final k = r['key'];
+      final v = r['value'];
+      if (d is! String || k is! String || v is! num) continue;
+      (byDay[d] ??= <String, double>{})[k] = v.toDouble();
+      keys.add(k);
+    }
+
+    final cols = keys.toList()..sort();
+    final buf = StringBuffer()
+      ..writeln(['date', ...cols].map(_csvCell).join(','));
+    final days = byDay.keys.toList()..sort();
+    for (final d in days) {
+      final m = byDay[d]!;
+      buf.writeln([
+        _csvCell(d),
+        for (final c in cols) m.containsKey(c) ? _trimNum(m[c]!) : '',
+      ].join(','));
+    }
+
+    final tmp = await getTemporaryDirectory();
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final dest = p.join(tmp.path, '${_exportPrefix}daily_$stamp.csv');
+    await File(dest).writeAsString(buf.toString());
+    return dest;
+  }
+
+  /// Quote a CSV cell only when it needs it.
+  static String _csvCell(String v) =>
+      v.contains(RegExp(r'[",\n]')) ? '"${v.replaceAll('"', '""')}"' : v;
+
+  /// Numbers without trailing noise: 8.0 becomes 8, 72.5061 stays readable.
+  static String _trimNum(double v) {
+    if (v == v.roundToDouble() && v.abs() < 1e15) return v.toInt().toString();
+    return v.toStringAsFixed(4).replaceAll(RegExp(r'0+$'), '')
+        .replaceAll(RegExp(r'\.$'), '');
+  }
+
+  /// Free bytes on the volume holding [path], or null when it cannot be read.
+  static Future<int?> _freeBytes(String path) async {
+    try {
+      final r = await Process.run('df', ['-k', path]);
+      final lines = (r.stdout as String).trim().split('\n');
+      if (lines.length < 2) return null;
+      final cols = lines[1].split(RegExp(r'\s+'));
+      // df -k reports 1K blocks; the 4th column is available.
+      if (cols.length < 4) return null;
+      return (int.tryParse(cols[3]) ?? 0) * 1024;
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<int> databaseFileBytes() async {
@@ -3602,11 +3775,9 @@ class LocalDb {
           await db.rawQuery('SELECT COUNT(*) FROM decoded_rr'),
         ) ??
         0;
-    final legacySamples =
-        Sqflite.firstIntValue(
-          await db.rawQuery('SELECT COUNT(*) FROM samples'),
-        ) ??
-        0;
+    // `samples` was dropped in v30 as a duplicate of decoded_onehz. Kept as a
+    // key so any UI reading this map does not have to special-case its absence.
+    const legacySamples = 0;
     return {
       'count': count,
       'min_rec_ts': (tsRow['lo'] as num?)?.toInt(),

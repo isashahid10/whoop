@@ -65,19 +65,102 @@ class _DataHistoryScreenState extends State<DataHistoryScreen> {
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 
+  /// Anchor rect for the iOS share sheet.
+  ///
+  /// iOS REQUIRES this. Without it share_plus throws
+  /// "sharePositionOrigin: argument must be set", which is what made every
+  /// export on this screen fail. It presents as a popover anchored to the
+  /// tapped control, and a zero rect is rejected outright.
+  Rect? get _shareOrigin {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  /// Rewrite the database file to return freed pages to the filesystem.
+  Future<void> _compact() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final freed = await LocalDb.compact();
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(freed > 0
+              ? 'Reclaimed ${(freed / 1048576).round()} MB.'
+              : 'Already compact.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Compact failed: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// The default export: a wide CSV of every daily metric.
+  ///
+  /// Small enough that the iOS share sheet handles it, and readable in any
+  /// spreadsheet without SQLite.
+  Future<void> _shareCsv() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final path = await LocalDb.exportDailyCsv();
+      if (!mounted) return;
+      await Share.shareXFiles([XFile(path)],
+          text: 'Whoop daily metrics', sharePositionOrigin: _shareOrigin);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('CSV export failed: $e'),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _shareWholeDb() async {
+    // Guard re-entry explicitly. The button is disabled while busy, but an
+    // export of a large database takes long enough that a frustrated second
+    // tap can land before the first frame renders the disabled state - and
+    // each one used to write another full copy.
+    if (_busy) return;
     setState(() => _busy = true);
     try {
       final path = await LocalDb.exportCopy();
       if (!mounted) return;
-      await Share.shareXFiles([XFile(path)], text: 'Whoop data export');
+      await Share.shareXFiles([XFile(path)],
+          text: 'Whoop data export', sharePositionOrigin: _shareOrigin);
+    } catch (e) {
+      // This used to have NO catch at all, so any failure threw uncaught and
+      // the screen simply sat there. That silence is what invited repeated
+      // taps, and repeated taps are what filled the container.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e is InsufficientSpaceException
+                ? '$e Free some space and try again.'
+                : 'Export failed: $e',
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _shareSelected() async {
-    if (_selected.isEmpty) return;
+    if (_selected.isEmpty || _busy) return;
     final app = context.read<AppState>();
     setState(() => _busy = true);
     try {
@@ -87,6 +170,7 @@ class _DataHistoryScreenState extends State<DataHistoryScreen> {
         [XFile(path)],
         text:
             'Whoop selected day export (${_selected.length} day${_selected.length == 1 ? '' : 's'})',
+        sharePositionOrigin: _shareOrigin,
       );
     } catch (e) {
       if (!mounted) return;
@@ -208,6 +292,20 @@ class _DataHistoryScreenState extends State<DataHistoryScreen> {
             ProCard(
               child: Column(
                 children: [
+                  DetailRow(
+                    icon: OsIcon.history,
+                    label: 'Reclaim space',
+                    value: _busy ? 'Working…' : 'Compact',
+                    onTap: _busy ? null : _compact,
+                  ),
+                  const Divider(height: 1),
+                  DetailRow(
+                    icon: OsIcon.sync,
+                    label: 'Export daily metrics (.csv)',
+                    value: _busy ? 'Working…' : 'Share',
+                    onTap: _busy ? null : _shareCsv,
+                  ),
+                  const Divider(height: 1),
                   DetailRow(
                     icon: OsIcon.sync,
                     label: 'Export full database',
