@@ -36,12 +36,14 @@ class _NotificationSettingsScreenState
   // NotificationPrefs: both are personal opt-ins with their own schedules and
   // their own id bands, and folding them into the shared prefs object would
   // couple every unrelated reminder to their reschedule.
+  // ignore: unused_field (prayer times disabled; read only by the commented-out section)
   bool _prayerOn = false;
   bool _suppOn = true;
   ({int hour, int minute}) _suppTime = (
     hour: SupplementReminder.defaultHour,
     minute: SupplementReminder.defaultMinute,
   );
+  // ignore: unused_field (prayer times disabled; read only by the commented-out section)
   Madhab _madhab = Madhab.shafi;
   bool _ramadanOn = false;
   ({DateTime start, DateTime end})? _ramadanWindow;
@@ -256,58 +258,59 @@ class _NotificationSettingsScreenState
             ]),
           ),
           const SizedBox(height: Sp.x6),
-          const SectionHeader('Prayer times'),
-          SurfaceCard(
-            child: Column(children: [
-              _toggle(
-                title: 'Prayer reminders',
-                subtitle:
-                    'The five daily prayers for your location, calculated on '
-                    'your phone. Reminders repeat through each prayer window '
-                    'until you mark it prayed.',
-                value: _prayerOn,
-                onChanged: (v) async {
-                  setState(() => _prayerOn = v);
-                  final ok = await PrayerTimesService.setEnabled(v);
-                  if (!context.mounted) return;
-                  // A switch that is ON but silently computing nothing is the
-                  // worst outcome — say so rather than let the user wait all
-                  // day for a notification that can never arrive.
-                  if (v && !ok) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Prayer times need location. Enable it for Whoop in '
-                          'Settings, then toggle this again.',
-                        ),
-                      ),
-                    );
-                  }
-                },
-              ),
-              if (_prayerOn) ...[
-                const _HairLine(),
-                // Madhab changes the Asr calculation only — worth exposing
-                // because the two conventions differ by roughly an hour, which
-                // is the difference between a useful reminder and a wrong one.
-                ListRow(
-                  icon: OsIcon.info,
-                  title: 'Asr calculation',
-                  subtitle: _madhab == Madhab.hanafi
-                      ? 'Hanafi (later Asr)'
-                      : 'Standard (Shafi, Maliki, Hanbali)',
-                  onTap: () async {
-                    final next = _madhab == Madhab.hanafi
-                        ? Madhab.shafi
-                        : Madhab.hanafi;
-                    await PrayerTimesService.setMadhab(next);
-                    setState(() => _madhab = next);
-                  },
-                ),
-              ],
-            ]),
-          ),
-          const SizedBox(height: Sp.x6),
+          // PRAYER TIMES DISABLED (Isa, 2026-10-26). Code kept, not deleted: uncomment to restore.
+          // const SectionHeader('Prayer times'),
+          // SurfaceCard(
+            // child: Column(children: [
+              // _toggle(
+                // title: 'Prayer reminders',
+                // subtitle:
+                    // 'The five daily prayers for your location, calculated on '
+                    // 'your phone. Reminders repeat through each prayer window '
+                    // 'until you mark it prayed.',
+                // value: _prayerOn,
+                // onChanged: (v) async {
+                  // setState(() => _prayerOn = v);
+                  // final ok = await PrayerTimesService.setEnabled(v);
+                  // if (!context.mounted) return;
+                  // // A switch that is ON but silently computing nothing is the
+                  // // worst outcome — say so rather than let the user wait all
+                  // // day for a notification that can never arrive.
+                  // if (v && !ok) {
+                    // ScaffoldMessenger.of(context).showSnackBar(
+                      // const SnackBar(
+                        // content: Text(
+                          // 'Prayer times need location. Enable it for Whoop in '
+                          // 'Settings, then toggle this again.',
+                        // ),
+                      // ),
+                    // );
+                  // }
+                // },
+              // ),
+              // if (_prayerOn) ...[
+                // const _HairLine(),
+                // // Madhab changes the Asr calculation only — worth exposing
+                // // because the two conventions differ by roughly an hour, which
+                // // is the difference between a useful reminder and a wrong one.
+                // ListRow(
+                  // icon: OsIcon.info,
+                  // title: 'Asr calculation',
+                  // subtitle: _madhab == Madhab.hanafi
+                      // ? 'Hanafi (later Asr)'
+                      // : 'Standard (Shafi, Maliki, Hanbali)',
+                  // onTap: () async {
+                    // final next = _madhab == Madhab.hanafi
+                        // ? Madhab.shafi
+                        // : Madhab.hanafi;
+                    // await PrayerTimesService.setMadhab(next);
+                    // setState(() => _madhab = next);
+                  // },
+                // ),
+              // ],
+            // ]),
+          // ),
+          // const SizedBox(height: Sp.x6),
           const SectionHeader('Ramadan'),
           SurfaceCard(
             child: Column(children: [

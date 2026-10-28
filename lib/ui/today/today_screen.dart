@@ -861,8 +861,9 @@ class TodayVitals extends StatelessWidget {
         // so this section shrinks to nothing rather than filling with dashes.
         SupplementCard().dsEnter(index: 2),
         const SizedBox(height: Sp.x3),
-        PrayerCard().dsEnter(index: 3),
-        const SizedBox(height: Sp.x3),
+        // PRAYER TIMES DISABLED (Isa, 2026-10-26). Code kept, not deleted: uncomment to restore.
+        // PrayerCard().dsEnter(index: 3),
+        // const SizedBox(height: Sp.x3),
         LastLiftCard(onTap: () => onOpen('workouts')).dsEnter(index: 3),
         const SizedBox(height: Sp.x3),
         BentoColumns(

@@ -2027,7 +2027,12 @@ class AppState extends ChangeNotifier {
       // particular MUST be rebuilt daily: they move a minute or two each day
       // and change entirely when the user travels.
       await SupplementReminder.reschedule();
-      await PrayerTimesService.reschedule();
+      // PRAYER TIMES DISABLED (Isa, 2026-10-26). Code kept, not deleted: uncomment to restore.
+      // cancelAll() instead of reschedule(): if reminders were ever switched
+      // on, up to two days of them are already pending with iOS, and merely
+      // not rescheduling would leave those to fire.
+      // await PrayerTimesService.reschedule();
+      await PrayerTimesService.cancelAll();
     } catch (e) {
       _log('[notify] schedule reminders skipped: $e');
     }

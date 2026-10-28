@@ -89,10 +89,14 @@ class _DayDetailsSheetState extends State<_DayDetailsSheet> {
   }
 
   Future<void> _load() async {
-    final on = await PrayerTimesService.enabled();
-    final slots = on ? await PrayerTimesService.slotsFor(DateTime.now()) : null;
-    final done =
-        on ? await PrayerTimesService.todayStatus() : const <Prayer5, bool>{};
+    // PRAYER TIMES DISABLED (Isa, 2026-10-26). Code kept, not deleted: uncomment to restore.
+    // final on = await PrayerTimesService.enabled();
+    // final slots = on ? await PrayerTimesService.slotsFor(DateTime.now()) : null;
+    // final done =
+    //     on ? await PrayerTimesService.todayStatus() : const <Prayer5, bool>{};
+    const on = false;
+    const List<PrayerSlot>? slots = null;
+    const done = <Prayer5, bool>{};
     final ctx = await _loadContext();
     final phone = await AlarmIntents.pendingBackups();
     final caff = await CaffeineService.impactTonight();
@@ -189,7 +193,8 @@ class _DayDetailsSheetState extends State<_DayDetailsSheet> {
             else ...[
               ..._alarmSection(),
               ..._fastingSection(),
-              ..._prayerSection(),
+              // PRAYER TIMES DISABLED (Isa, 2026-10-26). Code kept, not deleted: uncomment to restore.
+              // ..._prayerSection(),
               ..._caffeineSection(),
               ..._section('Nutrition', OsIcon.calories, [
                 _stat('Calories in', _ctx['hk_kcal_in'], 'kcal'),
@@ -324,6 +329,7 @@ class _DayDetailsSheetState extends State<_DayDetailsSheet> {
         ),
       );
 
+  // ignore: unused_element
   List<Widget> _prayerSection() {
     if (!_prayerOn) {
       return [
